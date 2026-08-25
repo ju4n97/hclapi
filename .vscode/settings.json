@@ -1,0 +1,9 @@
+{
+  "gopls": {
+    "build.buildFlags": ["-tags=integration"]
+  },
+  "go.testTags": "integration",
+  "go.buildTags": "integration",
+  "go.testEnvFile": "${workspaceFolder}/.env.test",
+  "go.testFlags": ["-tags=integration"]
+}

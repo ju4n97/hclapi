@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=../schema/sqlmux.schema.json
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeouts:
+    read: 10s
+    write: 10s
+    idle: 60s
+
+database:
+  driver: mssql
+  url: ${DATABASE_URL}
+  pool:
+    max_open_conns: 10
+    max_idle_conns: 2
+    conn_max_lifetime: 30m
+    conn_max_idle_time: 10m
+
+api:
+  prefix: /api
+
+  resources:
+    - name: patients
+      base_path: /patients
+
+      routes:
+        - method: POST
+          body:
+            name: { type: string, required: true }
+          query:
+            procedure: dbo.CreatePatient
+            params:
+              name: body.name
+          returns: none
+
+        - method: GET
+          query:
+            procedure: dbo.ListPatients
+          returns: many
+
+        - method: GET
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          query:
+            procedure: dbo.GetPatient
+            params:
+              id: path_params.id
+          returns: one
+
+        - method: PUT
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          body:
+            name: { type: string, required: true }
+          query:
+            procedure: dbo.UpdatePatient
+            params:
+              id: path_params.id
+              name: body.name
+          returns: none
+
+        - method: DELETE
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          query:
+            procedure: dbo.DeletePatient
+            params:
+              id: path_params.id
+          returns: none
+
+        - method: GET
+          path: /:id/summary
+          path_params:
+            id: { type: int, required: true }
+          query:
+            procedure: dbo.GetPatientSummary
+            params:
+              patient_id: path_params.id
+          returns: one

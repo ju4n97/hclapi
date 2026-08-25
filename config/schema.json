@@ -20,15 +20,9 @@
       "properties": {
         "host": { "type": "string" },
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
-        "timeouts": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "read":  { "$ref": "#/$defs/duration" },
-            "write": { "$ref": "#/$defs/duration" },
-            "idle":  { "$ref": "#/$defs/duration" }
-          }
-        }
+        "read_timeout": { "$ref": "#/$defs/duration" },
+        "write_timeout": { "$ref": "#/$defs/duration" },
+        "idle_timeout": { "$ref": "#/$defs/duration" }
       }
     },
 

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../config/schema.json
+# yaml-language-server: $schema=./config/schema.json
 
 server:
   host: 0.0.0.0
@@ -28,14 +28,15 @@ api:
           body:
             name: { type: string, required: true }
           query:
-            procedure: dbo.CreatePatient
-            params:
-              name: body.name
+            sql: |
+              INSERT INTO patients (name)
+              VALUES (@name)
           returns: none
 
         - method: GET
           query:
-            procedure: dbo.ListPatients
+            sql: |
+              SELECT * FROM patients
           returns: many
 
         - method: GET
@@ -43,9 +44,10 @@ api:
           path_params:
             id: { type: int, required: true }
           query:
-            procedure: dbo.GetPatient
-            params:
-              id: path_params.id
+            sql: |
+              SELECT id, name
+              FROM patients
+              WHERE id = @id
           returns: one
 
         - method: PUT
@@ -55,10 +57,10 @@ api:
           body:
             name: { type: string, required: true }
           query:
-            procedure: dbo.UpdatePatient
-            params:
-              id: path_params.id
-              name: body.name
+            sql: |
+              UPDATE patients
+              SET name = @name
+              WHERE id = @id
           returns: none
 
         - method: DELETE
@@ -66,17 +68,7 @@ api:
           path_params:
             id: { type: int, required: true }
           query:
-            procedure: dbo.DeletePatient
-            params:
-              id: path_params.id
+            sql: |
+              DELETE FROM patients
+              WHERE id = @id
           returns: none
-
-        - method: GET
-          path: /:id/summary
-          path_params:
-            id: { type: int, required: true }
-          query:
-            procedure: dbo.GetPatientSummary
-            params:
-              patient_id: path_params.id
-          returns: one

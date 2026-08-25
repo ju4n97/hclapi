@@ -1,12 +1,11 @@
-# yaml-language-server: $schema=../schema/sqlmux.schema.json
+# yaml-language-server: $schema=../config/schema.json
 
 server:
   host: 0.0.0.0
   port: 8080
-  timeouts:
-    read: 10s
-    write: 10s
-    idle: 60s
+  read_timeout: 10s
+  write_timeout: 10s
+  idle_timeout: 60s
 
 database:
   driver: mssql

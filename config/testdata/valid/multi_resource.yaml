@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=../config/schema.json
+# yaml-language-server: $schema=../../schema.json
 
 server:
   host: 0.0.0.0
@@ -18,24 +18,23 @@ database:
 
 api:
   prefix: /api
-
   resources:
     - name: patients
       base_path: /patients
-
       routes:
         - method: POST
           body:
             name: { type: string, required: true }
           query:
-            procedure: dbo.CreatePatient
-            params:
-              name: body.name
+            sql: |
+              INSERT INTO patients (name)
+              VALUES (@name)
           returns: none
 
         - method: GET
           query:
-            procedure: dbo.ListPatients
+            sql: |
+              SELECT * FROM patients
           returns: many
 
         - method: GET
@@ -48,35 +47,37 @@ api:
               id: path_params.id
           returns: one
 
-        - method: PUT
-          path: /:id
-          path_params:
-            id: { type: int, required: true }
-          body:
-            name: { type: string, required: true }
-          query:
-            procedure: dbo.UpdatePatient
-            params:
-              id: path_params.id
-              name: body.name
-          returns: none
-
         - method: DELETE
           path: /:id
           path_params:
             id: { type: int, required: true }
           query:
-            procedure: dbo.DeletePatient
+            sql: |
+              DELETE FROM patients
+              WHERE id = @id
+          returns: none
+
+    - name: appointments
+      base_path: /appointments
+      routes:
+        - method: POST
+          body:
+            patient_id: { type: int, required: true }
+            scheduled_at: { type: datetime, required: true }
+          query:
+            procedure: dbo.CreateAppointment
             params:
-              id: path_params.id
+              patient_id: body.patient_id
+              scheduled_at: body.scheduled_at
           returns: none
 
         - method: GET
-          path: /:id/summary
+          path: /:id
           path_params:
             id: { type: int, required: true }
           query:
-            procedure: dbo.GetPatientSummary
-            params:
-              patient_id: path_params.id
+            sql: |
+              SELECT id, patient_id, scheduled_at
+              FROM appointments
+              WHERE id = @id
           returns: one

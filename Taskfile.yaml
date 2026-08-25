@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmd: task --list
+
+  dev:
+    desc: Start the development server
+    cmds:
+      - go run cmd/sqlmux/main.go
+    env:
+      SQLMUX_CONFIG: ./sqlmux.example.yaml

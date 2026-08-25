@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../schema/sqlmux.schema.json
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  timeouts:
+    read: 10s
+    write: 10s
+    idle: 60s
+
+database:
+  driver: mssql
+  url: ${DATABASE_URL}
+  pool:
+    max_open_conns: 10
+    max_idle_conns: 2
+    conn_max_lifetime: 30m
+    conn_max_idle_time: 10m
+
+api:
+  prefix: /api
+
+  resources:
+    - name: patients
+      base_path: /patients
+
+      routes:
+        - method: POST
+          body:
+            name: { type: string, required: true }
+          query:
+            sql: |
+              INSERT INTO patients (name)
+              VALUES (@name)
+          returns: none
+
+        - method: GET
+          query:
+            sql: |
+              SELECT * FROM patients
+          returns: many
+
+        - method: GET
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          query:
+            sql: |
+              SELECT id, name
+              FROM patients
+              WHERE id = @id
+          returns: one
+
+        - method: PUT
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          body:
+            name: { type: string, required: true }
+          query:
+            sql: |
+              UPDATE patients
+              SET name = @name
+              WHERE id = @id
+          returns: none
+
+        - method: DELETE
+          path: /:id
+          path_params:
+            id: { type: int, required: true }
+          query:
+            sql: |
+              DELETE FROM patients
+              WHERE id = @id
+          returns: none

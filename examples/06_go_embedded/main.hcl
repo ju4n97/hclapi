@@ -2,7 +2,7 @@ connection "postgres" "main" {
   url = env("DATABASE_URL")
 }
 
-endpoint "GET /api/v1/weather/:city" {
+endpoint "GET /api/v1/weather/{city}" {
   description = "Fetches live weather via Go HTTP client and logs the query to PostgreSQL."
 
   request {

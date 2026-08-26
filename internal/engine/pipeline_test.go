@@ -1,0 +1,123 @@
+package engine_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/engine"
+	"github.com/ju4n97/hclapi/internal/parser"
+)
+
+func parseExpr(t *testing.T, src string) hcl.Expression {
+	t.Helper()
+	expr, diags := hclsyntax.ParseExpression([]byte(src), "test.hcl", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("syntax error: %s", diags.Error())
+	}
+	return expr
+}
+
+func TestPipelineExecutor(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Executes Go step, Starlark step, and resolves conditional Respond", func(t *testing.T) {
+		t.Parallel()
+
+		goSteps := map[string]core.StepHandler{
+			"auth.verify": func(ctx *core.Context) (any, error) {
+				return map[string]any{
+					"valid": ctx.Args["token"] == "secret-token",
+					"uid":   42,
+				}, nil
+			},
+		}
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "auth",
+				Go: &parser.GoStepConfig{
+					Use:  "auth.verify",
+					Args: parseExpr(t, `{ token = ctx.request.headers.authorization }`),
+				},
+			},
+			{
+				Type: parser.StepTypeStarlark,
+				Name: "format",
+				Starlark: &parser.StarlarkStepConfig{
+					Source: `
+def execute(ctx):
+    return {
+        "user_id": ctx.steps.auth.uid,
+        "authorized": ctx.steps.auth.valid
+    }
+`,
+				},
+			},
+			// Fallback 401 response when unauthorized
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepConfig{
+					Condition: parseExpr(t, `steps.format.result.authorized == false`),
+					Status:    parseExpr(t, `401`),
+					Body:      parseExpr(t, `{ error = "unauthorized" }`),
+				},
+			},
+			// Success 200 response when authorized
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepConfig{
+					Condition: parseExpr(t, `steps.format.result.authorized == true`),
+					Status:    parseExpr(t, `200`),
+					Body:      parseExpr(t, `steps.format.result`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps)
+
+		// 1. Test Authorized Request
+		reqAuth := httptest.NewRequest(http.MethodGet, "/test", nil)
+		reqAuth.Header.Set("Authorization", "secret-token")
+		ctxAuth := core.NewContext(reqAuth, nil)
+
+		recAuth := httptest.NewRecorder()
+		if err := executor.Execute(recAuth, ctxAuth); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if recAuth.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", recAuth.Code)
+		}
+
+		var bodyAuth map[string]any
+		_ = json.NewDecoder(recAuth.Body).Decode(&bodyAuth)
+		if bodyAuth["authorized"] != true || bodyAuth["user_id"] != float64(42) {
+			t.Errorf("unexpected body payload: %+v", bodyAuth)
+		}
+
+		// 2. Test Unauthorized Request (Hits 401 Condition)
+		reqUnauth := httptest.NewRequest(http.MethodGet, "/test", nil)
+		reqUnauth.Header.Set("Authorization", "wrong-token")
+		ctxUnauth := core.NewContext(reqUnauth, nil)
+
+		recUnauth := httptest.NewRecorder()
+		if err := executor.Execute(recUnauth, ctxUnauth); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if recUnauth.Code != http.StatusUnauthorized {
+			t.Errorf("expected status 401, got %d", recUnauth.Code)
+		}
+
+		if !strings.Contains(recUnauth.Body.String(), "unauthorized") {
+			t.Errorf("expected unauthorized error body, got: %s", recUnauth.Body.String())
+		}
+	})
+}

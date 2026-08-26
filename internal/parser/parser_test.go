@@ -85,6 +85,7 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -120,7 +121,6 @@ func TestParse(t *testing.T) {
 func TestDecodePipelineSteps(t *testing.T) {
 	t.Parallel()
 
-	// Helper to create a parser.Pipeline from an HCL snippet
 	parsePipeline := func(t *testing.T, hclSnippet string) parser.Pipeline {
 		t.Helper()
 
@@ -139,30 +139,50 @@ func TestDecodePipelineSteps(t *testing.T) {
 		validate      func(t *testing.T, steps []parser.ParsedStep)
 	}{
 		{
-			name: "Valid sequential steps with correct order and labels",
+			name: "Valid sequential steps with correct order, labels, and dynamic expressions",
 			hclSnippet: `
 				go "step_one" {
-					use = "crypto.hash"
+					use  = "crypto.hash"
+					args = { algorithm = "sha256" }
 				}
 				go "step_two" {
 					use = "auth.verify"
 				}
 				respond {
-					status = 200
-					body   = "OK"
+					condition = steps.step_one.result != null
+					status    = 200
+					body      = "OK"
 				}
 			`,
 			expectError:   false,
 			expectedSteps: 3,
 			validate: func(t *testing.T, steps []parser.ParsedStep) {
+				// Step 0: Go with Args
 				if steps[0].Type != parser.StepTypeGo || steps[0].Name != "step_one" || steps[0].Go.Use != "crypto.hash" {
 					t.Errorf("step 0 mismatch: %+v", steps[0])
 				}
+				val0, _ := steps[0].Go.Args.Value(nil)
+				if val0.IsNull() {
+					t.Errorf("expected step 0 args to be defined")
+				}
+
+				// Step 1: Go without Args
 				if steps[1].Type != parser.StepTypeGo || steps[1].Name != "step_two" || steps[1].Go.Use != "auth.verify" {
 					t.Errorf("step 1 mismatch: %+v", steps[1])
 				}
-				if steps[2].Type != parser.StepTypeRespond || steps[2].Respond.Status != 200 || *steps[2].Respond.Body != "OK" {
+				if steps[1].Go.Args != nil {
+					val1, _ := steps[1].Go.Args.Value(nil)
+					if !val1.IsNull() {
+						t.Errorf("expected step 1 args to be null/omitted, got: %v", val1)
+					}
+				}
+
+				// Step 2: Respond
+				if steps[2].Type != parser.StepTypeRespond {
 					t.Errorf("step 2 mismatch: %+v", steps[2])
+				}
+				if steps[2].Respond.Condition == nil || steps[2].Respond.Status == nil || steps[2].Respond.Body == nil {
+					t.Errorf("step 2 missing expressions: %+v", steps[2].Respond)
 				}
 			},
 		},
@@ -186,15 +206,6 @@ func TestDecodePipelineSteps(t *testing.T) {
 			hclSnippet: `
 				go "bad_step" {
 					use = ["cannot", "be", "a", "list"] # HCL can't coerce a list to string
-				}
-			`,
-			expectError: true,
-		},
-		{
-			name: "Invalid attribute type in respond step returns error",
-			hclSnippet: `
-				respond {
-					status = "not-an-int"
 				}
 			`,
 			expectError: true,
@@ -224,11 +235,21 @@ func TestDecodePipelineSteps(t *testing.T) {
 				if steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
 					t.Errorf("step 0 mismatch: %+v", steps[0])
 				}
+				if steps[1].Type != parser.StepTypeRespond {
+					t.Errorf("step 1 mismatch: %+v", steps[1])
+				}
+				if steps[1].Respond.Body != nil {
+					val, _ := steps[1].Respond.Body.Value(nil)
+					if !val.IsNull() {
+						t.Errorf("expected step 1 body to be null/omitted, got: %v", val)
+					}
+				}
 			},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

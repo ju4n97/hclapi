@@ -96,7 +96,7 @@ endpoint "POST /api/v1/todos" {
   }
 }
 
-endpoint "GET /api/v1/todos/:id" {
+endpoint "GET /api/v1/todos/{id}" {
   description = "Fetches a single todo by ID."
 
   request {
@@ -142,7 +142,7 @@ endpoint "GET /api/v1/todos/:id" {
   }
 }
 
-endpoint "PUT /api/v1/todos/:id" {
+endpoint "PUT /api/v1/todos/{id}" {
   description = "Updates an existing todo."
 
   request {
@@ -195,7 +195,7 @@ endpoint "PUT /api/v1/todos/:id" {
   }
 }
 
-endpoint "DELETE /api/v1/todos/:id" {
+endpoint "DELETE /api/v1/todos/{id}" {
   description = "Deletes a todo item."
 
   request {

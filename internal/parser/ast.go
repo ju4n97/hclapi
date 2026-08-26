@@ -2,24 +2,58 @@ package parser
 
 import "github.com/hashicorp/hcl/v2"
 
-// Manifest is the root structure representing all merged HCL files.
+// Manifest represents the root collection of merged HCL route definitions.
 type Manifest struct {
-	Endpoints []Endpoint `hcl:"endpoint,block"`
+	Server      *Server      `hcl:"server,block"`
+	Connections []Connection `hcl:"connection,block"`
+	Schemas     []Schema     `hcl:"schema,block"`
+	Endpoints   []Endpoint   `hcl:"endpoint,block"`
+	Remain      hcl.Body     `hcl:",remain"`
 }
 
-// Endpoint represents a single HTTP route definition.
+// Server represents the global server configuration.
+type Server struct {
+	Host         *string  `hcl:"host,attr"`
+	Port         *int     `hcl:"port,attr"`
+	ReadTimeout  *string  `hcl:"read_timeout,attr"`
+	WriteTimeout *string  `hcl:"write_timeout,attr"`
+	Remain       hcl.Body `hcl:",remain"`
+}
+
+// Connection represents a connection pool configuration.
+type Connection struct {
+	Type   string   `hcl:"type,attr"`
+	Name   string   `hcl:"name,label"`
+	URL    string   `hcl:"url,attr"`
+	Remain hcl.Body `hcl:",remain"`
+}
+
+// Schema represents a request body schema definition.
+type Schema struct {
+	Name   string   `hcl:"name,label"`
+	Remain hcl.Body `hcl:",remain"`
+}
+
+// Endpoint represents a single HTTP route declaration and its execution pipeline.
 type Endpoint struct {
 	MethodAndPath string   `hcl:"name,label"`
 	Description   *string  `hcl:"description,attr"`
+	Request       *Request `hcl:"request,block"`
 	Pipeline      Pipeline `hcl:"pipeline,block"`
+	Remain        hcl.Body `hcl:",remain"`
 }
 
-// Pipeline holds the raw HCL body so steps are evaluated in exact source order.
+// Request represents the request body schema and validation.
+type Request struct {
+	Remain hcl.Body `hcl:",remain"`
+}
+
+// Pipeline encapsulates the raw HCL body of pipeline steps to preserve definition order.
 type Pipeline struct {
 	Body hcl.Body `hcl:",remain"`
 }
 
-// StepType identifies the runner type for a step.
+// StepType defines the runner category for a pipeline step.
 type StepType string
 
 const (
@@ -28,27 +62,29 @@ const (
 	StepTypeRespond  StepType = "respond"
 )
 
-// ParsedStep is an intermediate representation of an ordered pipeline step.
+// ParsedStep is an intermediate representation of a sequential step in a pipeline.
 type ParsedStep struct {
 	Type     StepType
-	Name     string // e.g. 'hash_token' in: go "hash_token" { ... }
+	Name     string
 	Go       *GoStepConfig
 	Starlark *StarlarkStepConfig
 	Respond  *RespondStepConfig
 }
 
-// GoStepConfig represents configuration for the `go` step.
+// GoStepConfig defines invocation settings for a custom Go handler.
 type GoStepConfig struct {
-	Use string `hcl:"use,attr"`
+	Use  string         `hcl:"use,attr"`
+	Args hcl.Expression `hcl:"args,optional"`
 }
 
-// StarlarkStepConfig represents configuration for the `starlark` step.
+// StarlarkStepConfig defines the script source for a Starlark step.
 type StarlarkStepConfig struct {
 	Source string `hcl:"source,attr"`
 }
 
-// RespondStepConfig represents configuration for the `respond` step.
+// RespondStepConfig defines the parameters for terminating and serializing an HTTP response.
 type RespondStepConfig struct {
-	Status int     `hcl:"status,attr"`
-	Body   *string `hcl:"body,attr"`
+	Condition hcl.Expression `hcl:"condition,optional"`
+	Status    hcl.Expression `hcl:"status,optional"`
+	Body      hcl.Expression `hcl:"body,optional"`
 }

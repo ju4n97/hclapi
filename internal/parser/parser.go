@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"path/filepath"
 
@@ -11,6 +12,14 @@ import (
 
 // ParseDir reads all *.hcl files in a directory and merges them into a single Manifest.
 func ParseDir(dir string) (*Manifest, error) {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat directory: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("path is not a directory")
+	}
+
 	matches, err := filepath.Glob(path.Join(dir, "*.hcl"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list HCL files: %w", err)
@@ -22,34 +31,17 @@ func ParseDir(dir string) (*Manifest, error) {
 	for _, match := range matches {
 		file, diags := p.ParseHCLFile(match)
 		if diags.HasErrors() {
-			return nil, fmt.Errorf("failed to parse HCL file: %w", diags)
+			return nil, fmt.Errorf("failed to parse HCL file %s: %s", match, diags.Error())
 		}
 
 		var fileManifest Manifest
 		diags = gohcl.DecodeBody(file.Body, nil, &fileManifest)
 		if diags.HasErrors() {
-			return nil, fmt.Errorf("failed to decode HCL file: %w", diags)
+			return nil, fmt.Errorf("failed to decode HCL file %s: %s", match, diags.Error())
 		}
 
 		mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
 	}
 
 	return &mergedManifest, nil
-}
-
-// ParseBytes parses a raw HCL bytes slice. This is primarily used for testing.
-func ParseBytes(src []byte, filename string) (*Manifest, error) {
-	p := hclparse.NewParser()
-	file, diags := p.ParseHCL(src, filename)
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to parse HCL file: %w", diags)
-	}
-
-	var manifest Manifest
-	diags = gohcl.DecodeBody(file.Body, nil, &manifest)
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to decode HCL file: %w", diags)
-	}
-
-	return &manifest, nil
 }

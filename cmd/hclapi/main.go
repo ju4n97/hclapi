@@ -1,35 +1,26 @@
 package main
 
 import (
-	"errors"
-	"log"
-	"net/http"
-	"time"
+	"context"
+	"log/slog"
+	"os"
 
-	"github.com/ju4n97/hclapi"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
-	log.Println("Booting Hclapi API engine...")
+	ctx := context.Background()
 
-	engine, err := hclapi.NewEngine(hclapi.Options{
-		ManifestDir:  ".",
-		StrictTyping: true,
-	})
-	if err != nil {
-		log.Fatalf("Failed to initialize Hclapi engine: %v", err)
+	cmd := &cli.Command{
+		Name:  "hclapi",
+		Usage: "Declarative API runtime that turns Hclapi manifests into structured HTTP services.",
+		Commands: []*cli.Command{
+			serveCommand(),
+		},
 	}
 
-	server := &http.Server{
-		Addr:         ":8080",
-		Handler:      engine.Handler(),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	log.Println("Server successfully started on :8080")
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("HTTP server error: %v", err)
+	if err := cmd.Run(ctx, os.Args); err != nil {
+		slog.Error("cli execution failed", "error", err)
+		os.Exit(1)
 	}
 }

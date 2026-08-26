@@ -2,6 +2,8 @@ package hclapi
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -11,6 +13,7 @@ import (
 // pools, and the HTTP multiplexer.
 type Engine struct {
 	options Options
+	logger  *slog.Logger
 	mux     *http.ServeMux
 	goSteps map[string]func(*Context) (any, error)
 }
@@ -18,25 +21,39 @@ type Engine struct {
 // NewEngine initializes the Hclapi engine, parses the HCL manifest, and
 // builds the routing table.
 func NewEngine(options Options) (*Engine, error) {
+	logger := options.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+
+	logger.Debug("initializing Hclapi engine", "manifest_dir", options.ManifestDir)
+
 	engine := &Engine{
 		options: options,
+		logger:  logger,
 		mux:     http.NewServeMux(),
 		goSteps: make(map[string]func(*Context) (any, error)),
 	}
 
 	manifest, err := parser.ParseDir(options.ManifestDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse HCL manifests: %w", err)
+		logger.Error("failed to parse manifests", "error", err)
+		return nil, fmt.Errorf("failed to parse manifests: %w", err)
 	}
 
-	for _, e := range manifest.Endpoints {
-		status := e.Pipeline.Respond.Status
+	logger.Info("manifests parsed successfully", "endpoints_found", len(manifest.Endpoints))
+
+	for _, ep := range manifest.Endpoints {
+		status := ep.Pipeline.Respond.Status
 		var body string
-		if e.Pipeline.Respond.Body != nil {
-			body = *e.Pipeline.Respond.Body
+		if ep.Pipeline.Respond.Body != nil {
+			body = *ep.Pipeline.Respond.Body
 		}
 
-		engine.mux.HandleFunc(e.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+		logger.Debug("registering route", "route", ep.MethodAndPath)
+
+		engine.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+			engine.logger.Debug("handling request", "method", r.Method, "path", r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
 			if body != "" {

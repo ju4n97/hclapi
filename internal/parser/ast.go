@@ -1,5 +1,7 @@
 package parser
 
+import "github.com/hashicorp/hcl/v2"
+
 // Manifest is the root structure representing all merged HCL files.
 type Manifest struct {
 	Endpoints []Endpoint `hcl:"endpoint,block"`
@@ -12,13 +14,34 @@ type Endpoint struct {
 	Pipeline      Pipeline `hcl:"pipeline,block"`
 }
 
-// Pipeline represents the ordered execution steps.
+// Pipeline holds the raw HCL body so steps are evaluated in exact source order.
 type Pipeline struct {
-	Respond RespondStep `hcl:"respond,block"`
+	Body hcl.Body `hcl:",remain"`
 }
 
-// RespondStep is the terminal step that writes the HTTP response.
-type RespondStep struct {
+// StepType identifies the runner type for a step.
+type StepType string
+
+const (
+	StepTypeGo      StepType = "go"
+	StepTypeRespond StepType = "respond"
+)
+
+// ParsedStep is an intermediate representation of an ordered pipeline step.
+type ParsedStep struct {
+	Type    StepType
+	Name    string // e.g. 'hash_token' in: go "hash_token" { ... }
+	Go      *GoStepConfig
+	Respond *RespondStepConfig
+}
+
+// GoStepConfig represents configuration for the `go` step.
+type GoStepConfig struct {
+	Use string `hcl:"use,attr"`
+}
+
+// RespondStepConfig represents configuration for the `respond` step.
+type RespondStepConfig struct {
 	Status int     `hcl:"status,attr"`
 	Body   *string `hcl:"body,attr"`
 }

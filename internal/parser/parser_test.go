@@ -7,46 +7,70 @@ import (
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-func TestParseDir(t *testing.T) {
+func TestParse(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name           string
-		fixtureDir     string
+		targetPath     string
 		expectError    bool
 		expectedRoutes int
 	}{
 		{
-			name:           "Valid single file",
-			fixtureDir:     "01_valid_basic",
+			name:           "Case 01: Flat single file in directory",
+			targetPath:     "01_flat_single_file",
 			expectError:    false,
 			expectedRoutes: 1,
 		},
 		{
-			name:           "Valid multiple files merged into one AST",
-			fixtureDir:     "02_multiple_files",
+			name:           "Case 02: Deeply nested directory tree merged into one AST",
+			targetPath:     "02_nested_tree",
 			expectError:    false,
-			expectedRoutes: 2,
+			expectedRoutes: 4, // 1 in root Hclapifile + 2 in v1/users + 1 in v2/orders
 		},
 		{
-			name:        "Invalid HCL syntax / type mismatch",
-			fixtureDir:  "03_invalid_syntax",
+			name:           "Case 03: Mixed extensions (Hclapifile, .hclapi, .hcl) and ignores non-manifests",
+			targetPath:     "03_mixed_extensions",
+			expectError:    false,
+			expectedRoutes: 3,
+		},
+		{
+			name:           "Case 04: Hidden directories (.git) are skipped completely",
+			targetPath:     "04_hidden_dir_ignored",
+			expectError:    false,
+			expectedRoutes: 1,
+		},
+		{
+			name:        "Case 05: Invalid HCL syntax / type mismatch",
+			targetPath:  "05_syntax_error",
 			expectError: true,
 		},
 		{
-			name:        "Missing required block (pipeline)",
-			fixtureDir:  "04_missing_block",
+			name:        "Case 06: Missing required pipeline block",
+			targetPath:  "06_missing_block",
 			expectError: true,
 		},
 		{
-			name:           "Empty directory returns empty manifest without error",
-			fixtureDir:     "05_empty_dir",
+			name:           "Case 07: Empty directory tree returns empty manifest without error",
+			targetPath:     "07_empty_tree",
 			expectError:    false,
 			expectedRoutes: 0,
 		},
 		{
-			name:        "Non-existent directory returns error",
-			fixtureDir:  "does_not_exist",
+			name:           "Direct file target: Single HCL file path",
+			targetPath:     "01_flat_single_file/main.hcl",
+			expectError:    false,
+			expectedRoutes: 1,
+		},
+		{
+			name:           "Direct file target: Extensionless Hclapifile path",
+			targetPath:     "02_nested_tree/Hclapifile",
+			expectError:    false,
+			expectedRoutes: 1,
+		},
+		{
+			name:        "Non-existent path returns error",
+			targetPath:  "does_not_exist",
 			expectError: true,
 		},
 	}
@@ -55,14 +79,14 @@ func TestParseDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dirPath := filepath.Join("testdata", tt.fixtureDir)
-			manifest, err := parser.ParseDir(dirPath)
+			target := filepath.Join("testdata", tt.targetPath)
+			manifest, err := parser.Parse(target)
 
 			if tt.expectError {
 				if err == nil {
 					t.Fatalf("expected an error but got nil")
 				}
-				return // Test passes; error was correctly returned
+				return // Expected error occurred, test passed
 			}
 
 			if err != nil {

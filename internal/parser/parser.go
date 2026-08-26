@@ -2,46 +2,78 @@ package parser
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-// ParseDir reads all *.hcl files in a directory and merges them into a single Manifest.
-func ParseDir(dir string) (*Manifest, error) {
-	info, err := os.Stat(dir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat directory: %w", err)
+// isHclapiManifest returns true if the file is a Hclapifile, .hcl, or .hclapi file.
+func isHclapiManifest(filename string) bool {
+	lower := strings.ToLower(filename)
+	if lower == "hclapifile" {
+		return true
 	}
-	if !info.IsDir() {
-		return nil, fmt.Errorf("path is not a directory")
-	}
+	ext := filepath.Ext(lower)
+	return ext == ".hcl" || ext == ".hclapi"
+}
 
-	matches, err := filepath.Glob(path.Join(dir, "*.hcl"))
+// Parse reads a path (either a single file or a directory) and returns the merged Manifest.
+func Parse(path string) (*Manifest, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list HCL files: %w", err)
+		return nil, fmt.Errorf("failed to access path %q: %w", path, err)
 	}
 
 	p := hclparse.NewParser()
+
+	if !info.IsDir() {
+		return parseFile(path, p)
+	}
+
 	var mergedManifest Manifest
-
-	for _, match := range matches {
-		file, diags := p.ParseHCLFile(match)
-		if diags.HasErrors() {
-			return nil, fmt.Errorf("failed to parse HCL file %s: %s", match, diags.Error())
+	err = filepath.WalkDir(path, func(currentPath string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 
-		var fileManifest Manifest
-		diags = gohcl.DecodeBody(file.Body, nil, &fileManifest)
-		if diags.HasErrors() {
-			return nil, fmt.Errorf("failed to decode HCL file %s: %s", match, diags.Error())
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") && currentPath != path {
+			return filepath.SkipDir
 		}
 
-		mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
+		if !d.IsDir() && isHclapiManifest(d.Name()) {
+			fileManifest, err := parseFile(currentPath, p)
+			if err != nil {
+				return err
+			}
+
+			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return &mergedManifest, nil
+}
+
+// parseFile decodes a single HCL file into a Manifest struct.
+func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
+	file, diags := p.ParseHCLFile(path)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to parse HCL file %s: %s", path, diags.Error())
+	}
+
+	var manifest Manifest
+	diags = gohcl.DecodeBody(file.Body, nil, &manifest)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to decode HCL file %s: %s", path, diags.Error())
+	}
+
+	return &manifest, nil
 }

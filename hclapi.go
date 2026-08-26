@@ -35,7 +35,7 @@ func NewEngine(options Options) (*Engine, error) {
 		goSteps: make(map[string]func(*Context) (any, error)),
 	}
 
-	manifest, err := parser.ParseDir(options.ManifestDir)
+	manifest, err := parser.Parse(options.ManifestDir)
 	if err != nil {
 		logger.Error("failed to parse manifests", "error", err)
 		return nil, fmt.Errorf("failed to parse manifests: %w", err)

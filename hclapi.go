@@ -1,7 +1,6 @@
 package hclapi
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,6 +8,9 @@ import (
 	"regexp"
 
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/steps/xgo"
+	"github.com/ju4n97/hclapi/internal/steps/xrespond"
+	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
 )
 
 // pathParamRegex matches path parameter placeholders in a route pattern.
@@ -39,7 +41,7 @@ func NewEngine(options Options) (*Engine, error) {
 	engine := &Engine{
 		options: options,
 		mux:     http.NewServeMux(),
-		goSteps: map[string]StepHandler{},
+		goSteps: make(map[string]StepHandler),
 		logger:  logger,
 	}
 
@@ -65,7 +67,7 @@ func NewEngine(options Options) (*Engine, error) {
 }
 
 // bindRoute binds a route to the HTTP handler.
-func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
+func (e *Engine) bindRoute(routePattern string, stepsList []parser.ParsedStep) {
 	var paramNames []string
 	matches := pathParamRegex.FindAllStringSubmatch(routePattern, -1)
 	for _, match := range matches {
@@ -82,41 +84,79 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		ctx := newContext(r, paramNames)
 		var lastResult any
 
-		for _, step := range steps {
+		for _, step := range stepsList {
 			switch step.Type {
 			case parser.StepTypeGo:
-				handler, exists := e.goSteps[step.Go.Use]
-				if !exists {
-					e.logger.Error("unregistered go function referenced", "use", step.Go.Use)
-					http.Error(w, `{"error":"internal_server_error"}`, http.StatusInternalServerError)
-					return
-				}
-
-				result, err := handler(ctx)
+				res, err := e.execGoStep(step, ctx)
 				if err != nil {
-					e.logger.Error("go step execution failed", "step", step.Name, "error", err)
+					e.logger.Error("go step failed", "step", step.Name, "error", err)
 					http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
 					return
 				}
+				lastResult = res
 
-				lastResult = result
-				if step.Name != "" {
-					ctx.Steps[step.Name] = StepResult{Result: result}
+			case parser.StepTypeStarlark:
+				res, err := e.execStarlarkStep(step, ctx)
+				if err != nil {
+					e.logger.Error("starlark step failed", "step", step.Name, "error", err)
+					http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+					return
 				}
+				lastResult = res
 
 			case parser.StepTypeRespond:
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(step.Respond.Status)
-
-				if step.Respond.Body != nil {
-					_, _ = w.Write([]byte(*step.Respond.Body))
-				} else if lastResult != nil {
-					_ = json.NewEncoder(w).Encode(lastResult)
+				if err := xrespond.Write(w, step.Respond, lastResult); err != nil {
+					e.logger.Error("failed to write response", "error", err)
 				}
-				return
+				return // Terminal step
 			}
 		}
 	})
+}
+
+func (e *Engine) execGoStep(step parser.ParsedStep, ctx *Context) (any, error) {
+	handler, exists := e.goSteps[step.Go.Use]
+	if !exists {
+		return nil, fmt.Errorf("unregistered go function %q", step.Go.Use)
+	}
+
+	result, err := xgo.Execute(handler, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if step.Name != "" {
+		ctx.Steps[step.Name] = StepResult{Result: result}
+	}
+
+	return result, nil
+}
+
+func (e *Engine) execStarlarkStep(step parser.ParsedStep, ctx *Context) (any, error) {
+	ctxData := map[string]any{
+		"request": map[string]any{
+			"method":  ctx.Request.Method,
+			"path":    ctx.Request.Path,
+			"query":   ctx.Request.Query,
+			"headers": ctx.Request.Headers,
+			"body":    ctx.Request.Body,
+		},
+		"steps": make(map[string]any),
+	}
+	for k, v := range ctx.Steps {
+		ctxData["steps"].(map[string]any)[k] = v.Result
+	}
+
+	result, err := xstarlark.Eval(step.Starlark.Source, ctxData)
+	if err != nil {
+		return nil, err
+	}
+
+	if step.Name != "" {
+		ctx.Steps[step.Name] = StepResult{Result: result}
+	}
+
+	return result, nil
 }
 
 // RegisterStep registers a native Go function that can be invoked via

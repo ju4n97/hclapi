@@ -208,6 +208,24 @@ func TestDecodePipelineSteps(t *testing.T) {
 			`,
 			expectError: true,
 		},
+		{
+			name: "Valid starlark step decoding",
+			hclSnippet: `
+				starlark "transform" {
+					source = "def execute(ctx): return {'ok': True}"
+				}
+				respond {
+					status = 200
+				}
+			`,
+			expectError:   false,
+			expectedSteps: 2,
+			validate: func(t *testing.T, steps []parser.ParsedStep) {
+				if steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
+					t.Errorf("step 0 mismatch: %+v", steps[0])
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

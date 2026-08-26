@@ -23,21 +23,28 @@ type Pipeline struct {
 type StepType string
 
 const (
-	StepTypeGo      StepType = "go"
-	StepTypeRespond StepType = "respond"
+	StepTypeGo       StepType = "go"
+	StepTypeStarlark StepType = "starlark"
+	StepTypeRespond  StepType = "respond"
 )
 
 // ParsedStep is an intermediate representation of an ordered pipeline step.
 type ParsedStep struct {
-	Type    StepType
-	Name    string // e.g. 'hash_token' in: go "hash_token" { ... }
-	Go      *GoStepConfig
-	Respond *RespondStepConfig
+	Type     StepType
+	Name     string // e.g. 'hash_token' in: go "hash_token" { ... }
+	Go       *GoStepConfig
+	Starlark *StarlarkStepConfig
+	Respond  *RespondStepConfig
 }
 
 // GoStepConfig represents configuration for the `go` step.
 type GoStepConfig struct {
 	Use string `hcl:"use,attr"`
+}
+
+// StarlarkStepConfig represents configuration for the `starlark` step.
+type StarlarkStepConfig struct {
+	Source string `hcl:"source,attr"`
 }
 
 // RespondStepConfig represents configuration for the `respond` step.

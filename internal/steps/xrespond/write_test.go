@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/steps/xrespond"
 )
 
@@ -14,50 +13,54 @@ func TestWrite(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		cfg          *parser.RespondStepConfig
-		lastResult   any
-		expectStatus int
-		expectBody   string
+		name          string
+		status        int
+		evaluatedBody any
+		lastResult    any
+		expectStatus  int
+		expectBody    string
 	}{
 		{
-			name: "Static body write",
-			cfg: &parser.RespondStepConfig{
-				Status: http.StatusOK,
-				Body:   new(`{"message":"hello"}`),
-			},
-			lastResult:   map[string]string{"should": "ignore"},
-			expectStatus: http.StatusOK,
-			expectBody:   `{"message":"hello"}`,
+			name:          "Explicit evaluated body takes precedence over lastResult",
+			status:        http.StatusOK,
+			evaluatedBody: map[string]string{"message": "hello"},
+			lastResult:    map[string]string{"ignored": "true"},
+			expectStatus:  http.StatusOK,
+			expectBody:    `{"message":"hello"}`,
 		},
 		{
-			name: "Fallback to lastResult serialization",
-			cfg: &parser.RespondStepConfig{
-				Status: http.StatusCreated,
-				Body:   nil,
-			},
-			lastResult:   map[string]int{"count": 42},
-			expectStatus: http.StatusCreated,
-			expectBody:   `{"count":42}`,
+			name:          "Fallback to lastResult when evaluatedBody is nil",
+			status:        http.StatusCreated,
+			evaluatedBody: nil,
+			lastResult:    map[string]int{"count": 42},
+			expectStatus:  http.StatusCreated,
+			expectBody:    `{"count":42}`,
 		},
 		{
-			name: "Empty response when both are nil",
-			cfg: &parser.RespondStepConfig{
-				Status: http.StatusNoContent,
-				Body:   nil,
-			},
-			lastResult:   nil,
-			expectStatus: http.StatusNoContent,
-			expectBody:   "",
+			name:          "Empty body when both evaluatedBody and lastResult are nil",
+			status:        http.StatusNoContent,
+			evaluatedBody: nil,
+			lastResult:    nil,
+			expectStatus:  http.StatusNoContent,
+			expectBody:    "",
+		},
+		{
+			name:          "Serializes custom error payload with 404 status",
+			status:        http.StatusNotFound,
+			evaluatedBody: map[string]string{"error": "user not found"},
+			lastResult:    nil,
+			expectStatus:  http.StatusNotFound,
+			expectBody:    `{"error":"user not found"}`,
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			w := httptest.NewRecorder()
-			err := xrespond.Write(w, tt.cfg, tt.lastResult)
+			err := xrespond.Write(w, tt.status, tt.evaluatedBody, tt.lastResult)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -66,9 +69,13 @@ func TestWrite(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectStatus, w.Code)
 			}
 
+			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("expected Content-Type application/json, got %q", ct)
+			}
+
 			trimmed := strings.TrimSpace(w.Body.String())
 			if trimmed != tt.expectBody {
-				t.Errorf("expected body %s, got %s", tt.expectBody, trimmed)
+				t.Errorf("expected body %q, got %q", tt.expectBody, trimmed)
 			}
 		})
 	}

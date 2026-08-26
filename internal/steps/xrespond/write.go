@@ -1,24 +1,23 @@
+// Package xrespond serializes payloads and writes final HTTP headers and status codes.
 package xrespond
 
 import (
 	"encoding/json"
 	"net/http"
-
-	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-// Write writes the HTTP status code, headers and payload to the ResponseWriter.
-func Write(w http.ResponseWriter, cfg *parser.RespondStepConfig, lastResult any) error {
+// Write writes the HTTP status code, sets Content-Type to JSON, and serializes
+// either the evaluated body or the fallback result from the previous pipeline step.
+func Write(w http.ResponseWriter, status int, evaluatedBody any, lastResult any) error {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(cfg.Status)
+	w.WriteHeader(status)
 
-	// Explicit static body defined in HCL
-	if cfg.Body != nil {
-		_, err := w.Write([]byte(*cfg.Body))
-		return err
+	// Explicit body defined in HCL
+	if evaluatedBody != nil {
+		return json.NewEncoder(w).Encode(evaluatedBody)
 	}
 
-	// Output of the immediately preceding step
+	// Implicit fallback to the output of the preceding step
 	if lastResult != nil {
 		return json.NewEncoder(w).Encode(lastResult)
 	}

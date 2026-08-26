@@ -7,7 +7,7 @@ connection "postgres" "main" {
   url = env("DATABASE_URL")
 }
 
-endpoint "GET /api/v1/accounts/:id/overview" {
+endpoint "GET /api/v1/accounts/{id}/overview" {
   description = "Aggregates account details, invoices, and audit events concurrently."
 
   request {

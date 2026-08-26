@@ -16,7 +16,7 @@ connection "redis" "cache" {
   }
 }
 
-endpoint "GET /api/v1/products/:sku" {
+endpoint "GET /api/v1/products/{sku}" {
   description = "Fetches product metadata with Redis cache-aside fallback."
 
   request {

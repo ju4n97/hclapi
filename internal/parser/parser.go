@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-// isHclapiManifest returns true if the file is a Hclapifile, .hcl, or .hclapi file.
+// isHclapiManifest returns true if the filename matches Hclapifile, .hcl, or .hclapi.
 func isHclapiManifest(filename string) bool {
 	lower := strings.ToLower(filename)
 	if lower == "hclapifile" {
@@ -22,7 +22,7 @@ func isHclapiManifest(filename string) bool {
 	return ext == ".hcl" || ext == ".hclapi"
 }
 
-// Parse reads a path (either a single file or a directory) and returns the merged Manifest.
+// Parse reads a file or directory tree and returns the merged Manifest AST.
 func Parse(path string) (*Manifest, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -50,7 +50,6 @@ func Parse(path string) (*Manifest, error) {
 			if err != nil {
 				return err
 			}
-
 			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
 		}
 
@@ -63,7 +62,6 @@ func Parse(path string) (*Manifest, error) {
 	return &mergedManifest, nil
 }
 
-// parseFile decodes a single HCL file into a Manifest struct.
 func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
 	file, diags := p.ParseHCLFile(path)
 	if diags.HasErrors() {
@@ -79,13 +77,13 @@ func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
 	return &manifest, nil
 }
 
-// DecodePipelineSteps extracts pipeline steps in the exact sequential order they're defined.
+// DecodePipelineSteps decodes steps from a pipeline block preserving declaration order.
 func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
 	schema := &hcl.BodySchema{
 		Blocks: []hcl.BlockHeaderSchema{
-			{Type: "go", LabelNames: []string{"name"}},
-			{Type: "starlark", LabelNames: []string{"name"}},
-			{Type: "respond"},
+			{Type: string(StepTypeGo), LabelNames: []string{"name"}},
+			{Type: string(StepTypeStarlark), LabelNames: []string{"name"}},
+			{Type: string(StepTypeRespond)},
 		},
 	}
 
@@ -98,35 +96,35 @@ func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
 	for _, block := range content.Blocks {
 		switch block.Type {
 		case string(StepTypeGo):
-			var goStepConfig GoStepConfig
-			if diags := gohcl.DecodeBody(block.Body, nil, &goStepConfig); diags.HasErrors() {
-				return nil, fmt.Errorf("failed to decode go step: %s", diags.Error())
+			var cfg GoStepConfig
+			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
+				return nil, fmt.Errorf("failed to decode go step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type: StepTypeGo,
 				Name: block.Labels[0],
-				Go:   &goStepConfig,
+				Go:   &cfg,
 			})
 
 		case string(StepTypeStarlark):
-			var starlarkStepConfig StarlarkStepConfig
-			if diags := gohcl.DecodeBody(block.Body, nil, &starlarkStepConfig); diags.HasErrors() {
-				return nil, fmt.Errorf("failed to decode starlark step: %s", diags.Error())
+			var cfg StarlarkStepConfig
+			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
+				return nil, fmt.Errorf("failed to decode starlark step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type:     StepTypeStarlark,
 				Name:     block.Labels[0],
-				Starlark: &starlarkStepConfig,
+				Starlark: &cfg,
 			})
 
 		case string(StepTypeRespond):
-			var respondStepConfig RespondStepConfig
-			if diags := gohcl.DecodeBody(block.Body, nil, &respondStepConfig); diags.HasErrors() {
+			var cfg RespondStepConfig
+			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("failed to decode respond step: %s", diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type:    StepTypeRespond,
-				Respond: &respondStepConfig,
+				Respond: &cfg,
 			})
 
 		default:

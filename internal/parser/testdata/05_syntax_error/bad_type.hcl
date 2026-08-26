@@ -1,7 +1,5 @@
 endpoint "GET /bad" {
   pipeline {
-    respond {
-      status = "not-an-integer"
-    }
+    respond = = = invalid syntax here !!!
   }
 }

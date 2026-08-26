@@ -1,4 +1,4 @@
-endpoint "GET /users" {
+endpoint "GET /from-hcl-ext" {
   pipeline {
     respond {
       status = 200

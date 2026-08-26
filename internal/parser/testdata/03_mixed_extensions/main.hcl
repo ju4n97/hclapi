@@ -1,4 +1,4 @@
-endpoint "GET /orders" {
+endpoint "GET /from-hclapifile" {
   pipeline {
     respond {
       status = 200

@@ -31,3 +31,24 @@ go.work.sum
 .idea/
 .vscode/
 .zedX
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+.cache/
+.task/
+
+# Debug
+__debug_bin*
+
+# JavaScript/TypeScript specific
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+pnpm-debug.log

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ekisa-team/hclapi"
+	"github.com/ju4n97/hclapi"
 )
 
 func main() {

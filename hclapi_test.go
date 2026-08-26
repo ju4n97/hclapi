@@ -186,7 +186,7 @@ func TestEngine_ErrorHandling(t *testing.T) {
 			name:           "Unregistered Go step returns 500",
 			path:           "/api/v1/unregistered",
 			expectedStatus: http.StatusInternalServerError,
-			expectedBody:   `{"error":"internal_server_error"}`,
+			expectedBody:   `unregistered go function \"does.not.exist\"`,
 		},
 		{
 			name:           "Failing Go step returns 500 with error details",
@@ -264,6 +264,87 @@ func TestEngine_LifecycleGuards(t *testing.T) {
 		})
 		if err == nil {
 			t.Fatalf("expected error when booting with non-existent directory, got nil")
+		}
+	})
+}
+
+func TestEngine_StarlarkPipeline(t *testing.T) {
+	t.Parallel()
+
+	manifest := `
+		endpoint "POST /api/v1/normalize" {
+			pipeline {
+				starlark "prep" {
+					source = <<-STARLARK
+						def execute(ctx):
+						    raw_tags = ctx.request.body.tags
+						    cleaned_tags = [t.strip().lower() for t in raw_tags if len(t.strip()) > 0]
+						    return {
+						        "username": ctx.request.body.name.strip().upper(),
+						        "tag_count": len(cleaned_tags),
+						        "tags": cleaned_tags
+						    }
+					STARLARK
+				}
+				respond {
+					status = 200
+				}
+			}
+		}
+
+		endpoint "GET /api/v1/starlark-error" {
+			pipeline {
+				starlark "bad" {
+					source = <<-STARLARK
+						def execute(ctx):
+						    return 10 / 0 # Runtime division by zero
+					STARLARK
+				}
+				respond {
+					status = 200
+				}
+			}
+		}
+	`
+
+	engine := setupTestEngine(t, manifest, nil)
+
+	t.Run("Valid Starlark Transformation", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest("POST", "/api/v1/normalize", strings.NewReader(`{"name":"  jane  ","tags":[" Golang ",""," PYTHON "]}`))
+		req.Header.Set("Content-Type", "application/json")
+
+		w := httptest.NewRecorder()
+		engine.Handler().ServeHTTP(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", resp.StatusCode)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		expected := `{"tag_count":2,"tags":["golang","python"],"username":"JANE"}`
+		if strings.TrimSpace(string(body)) != expected {
+			t.Errorf("expected %s, got %s", expected, strings.TrimSpace(string(body)))
+		}
+	})
+
+	t.Run("Starlark Runtime Error Returns 500", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest("GET", "/api/v1/starlark-error", nil)
+		w := httptest.NewRecorder()
+
+		engine.Handler().ServeHTTP(w, req)
+
+		resp := w.Result()
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("expected status 500, got %d", resp.StatusCode)
 		}
 	})
 }

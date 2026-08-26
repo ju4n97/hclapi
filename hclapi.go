@@ -1,21 +1,29 @@
 package hclapi
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/ju4n97/hclapi/internal/parser"
 )
+
+// pathParamRegex matches path parameter placeholders in a route pattern.
+var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+
+// StepHandler is the type of a function that executes a single step.
+type StepHandler func(ctx *Context) (any, error)
 
 // Engine is the core Hclapi runtime. It holds the parsed AST, connection
 // pools, and the HTTP multiplexer.
 type Engine struct {
 	options Options
-	logger  *slog.Logger
 	mux     *http.ServeMux
-	goSteps map[string]func(*Context) (any, error)
+	goSteps map[string]StepHandler
+	logger  *slog.Logger
 }
 
 // NewEngine initializes the Hclapi engine, parses the HCL manifest, and
@@ -30,9 +38,9 @@ func NewEngine(options Options) (*Engine, error) {
 
 	engine := &Engine{
 		options: options,
-		logger:  logger,
 		mux:     http.NewServeMux(),
-		goSteps: make(map[string]func(*Context) (any, error)),
+		goSteps: map[string]StepHandler{},
+		logger:  logger,
 	}
 
 	manifest, err := parser.Parse(options.ManifestDir)
@@ -41,28 +49,74 @@ func NewEngine(options Options) (*Engine, error) {
 		return nil, fmt.Errorf("failed to parse manifests: %w", err)
 	}
 
-	logger.Info("manifests parsed successfully", "endpoints_found", len(manifest.Endpoints))
+	logger.Info("manifests loaded", "endpoints_count", len(manifest.Endpoints))
 
 	for _, ep := range manifest.Endpoints {
-		status := ep.Pipeline.Respond.Status
-		var body string
-		if ep.Pipeline.Respond.Body != nil {
-			body = *ep.Pipeline.Respond.Body
+		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
+		if err != nil {
+			logger.Error("failed to decode pipeline steps", "error", err)
+			return nil, fmt.Errorf("failed to decode pipeline steps: %w", err)
 		}
 
-		logger.Debug("registering route", "route", ep.MethodAndPath)
-
-		engine.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
-			engine.logger.Debug("handling request", "method", r.Method, "path", r.URL.Path)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(status)
-			if body != "" {
-				w.Write([]byte(body))
-			}
-		})
+		engine.bindRoute(ep.MethodAndPath, steps)
 	}
 
 	return engine, nil
+}
+
+// bindRoute binds a route to the HTTP handler.
+func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
+	var paramNames []string
+	matches := pathParamRegex.FindAllStringSubmatch(routePattern, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			paramNames = append(paramNames, match[1])
+		}
+	}
+
+	e.logger.Debug("registering route", "pattern", routePattern)
+
+	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
+		e.logger.Debug("request received", "method", r.Method, "path", r.URL.Path)
+
+		ctx := newContext(r, paramNames)
+		var lastResult any
+
+		for _, step := range steps {
+			switch step.Type {
+			case parser.StepTypeGo:
+				handler, exists := e.goSteps[step.Go.Use]
+				if !exists {
+					e.logger.Error("unregistered go function referenced", "use", step.Go.Use)
+					http.Error(w, `{"error":"internal_server_error"}`, http.StatusInternalServerError)
+					return
+				}
+
+				result, err := handler(ctx)
+				if err != nil {
+					e.logger.Error("go step execution failed", "step", step.Name, "error", err)
+					http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+					return
+				}
+
+				lastResult = result
+				if step.Name != "" {
+					ctx.Steps[step.Name] = StepResult{Result: result}
+				}
+
+			case parser.StepTypeRespond:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(step.Respond.Status)
+
+				if step.Respond.Body != nil {
+					_, _ = w.Write([]byte(*step.Respond.Body))
+				} else if lastResult != nil {
+					_ = json.NewEncoder(w).Encode(lastResult)
+				}
+				return
+			}
+		}
+	})
 }
 
 // RegisterStep registers a native Go function that can be invoked via

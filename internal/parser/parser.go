@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
@@ -76,4 +77,54 @@ func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
 	}
 
 	return &manifest, nil
+}
+
+// DecodePipelineSteps extracts pipeline steps in the exact sequential order they're defined.
+func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
+	schema := &hcl.BodySchema{
+		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "go", LabelNames: []string{"name"}},
+			{Type: "respond"},
+		},
+	}
+
+	content, diags := pipeline.Body.Content(schema)
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("failed to decode pipeline steps: %s", diags.Error())
+	}
+
+	var steps []ParsedStep
+	for _, block := range content.Blocks {
+		switch block.Type {
+		case string(StepTypeGo):
+			var goStepConfig GoStepConfig
+			if diags := gohcl.DecodeBody(block.Body, nil, &goStepConfig); diags.HasErrors() {
+				return nil, fmt.Errorf("failed to decode go step: %s", diags.Error())
+			}
+			stepName := ""
+			if len(block.Labels) > 0 {
+				stepName = block.Labels[0]
+			}
+			steps = append(steps, ParsedStep{
+				Type: StepTypeGo,
+				Name: stepName,
+				Go:   &goStepConfig,
+			})
+
+		case string(StepTypeRespond):
+			var respondStepConfig RespondStepConfig
+			if diags := gohcl.DecodeBody(block.Body, nil, &respondStepConfig); diags.HasErrors() {
+				return nil, fmt.Errorf("failed to decode respond step: %s", diags.Error())
+			}
+			steps = append(steps, ParsedStep{
+				Type:    StepTypeRespond,
+				Respond: &respondStepConfig,
+			})
+
+		default:
+			return nil, fmt.Errorf("unknown step type %q", block.Type)
+		}
+	}
+
+	return steps, nil
 }

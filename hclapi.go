@@ -3,6 +3,8 @@ package hclapi
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/ju4n97/hclapi/internal/parser"
 )
 
 // Engine is the core Hclapi runtime. It holds the parsed AST, connection
@@ -16,20 +18,34 @@ type Engine struct {
 // NewEngine initializes the Hclapi engine, parses the HCL manifest, and
 // builds the routing table.
 func NewEngine(options Options) (*Engine, error) {
-	e := &Engine{
+	engine := &Engine{
 		options: options,
 		mux:     http.NewServeMux(),
 		goSteps: make(map[string]func(*Context) (any, error)),
 	}
 
-	// TODO: parse HCL manifests and create routing table
-	e.mux.HandleFunc("GET /api/v1/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "hclapi_engine_active", "version": "0.1.0-dev"}`))
-	})
+	manifest, err := parser.ParseDir(options.ManifestDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HCL manifests: %w", err)
+	}
 
-	return e, nil
+	for _, e := range manifest.Endpoints {
+		status := e.Pipeline.Respond.Status
+		var body string
+		if e.Pipeline.Respond.Body != nil {
+			body = *e.Pipeline.Respond.Body
+		}
+
+		engine.mux.HandleFunc(e.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			if body != "" {
+				w.Write([]byte(body))
+			}
+		})
+	}
+
+	return engine, nil
 }
 
 // RegisterStep registers a native Go function that can be invoked via

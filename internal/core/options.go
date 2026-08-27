@@ -10,6 +10,10 @@ type Options struct {
 	// StrictTyping enforces schema validation across all request endpoints.
 	StrictTyping bool
 
+	// ErrorHandler allows consumers to override how error responses are formatted.
+	// If nil, Hclapi uses the standard RFC 9457 DefaultErrorHandler.
+	ErrorHandler ErrorHandler
+
 	// Logger receives structured operational telemetry. If nil, output is discarded.
 	Logger *slog.Logger
 }

@@ -85,7 +85,11 @@ def execute(ctx):
 		// 1. Test authorized request
 		reqAuth := httptest.NewRequest(http.MethodGet, "/test", nil)
 		reqAuth.Header.Set("Authorization", "secret-token")
-		ctxAuth := core.NewContext(reqAuth, nil)
+
+		ctxAuth, err := core.NewContext(reqAuth, nil)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
 
 		recAuth := httptest.NewRecorder()
 		if err := executor.Execute(recAuth, ctxAuth); err != nil {
@@ -105,7 +109,11 @@ def execute(ctx):
 		// 2. Test unauthorized request (hits 401 condition)
 		reqUnauth := httptest.NewRequest(http.MethodGet, "/test", nil)
 		reqUnauth.Header.Set("Authorization", "wrong-token")
-		ctxUnauth := core.NewContext(reqUnauth, nil)
+
+		ctxUnauth, err := core.NewContext(reqUnauth, nil)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
 
 		recUnauth := httptest.NewRecorder()
 		if err := executor.Execute(recUnauth, ctxUnauth); err != nil {

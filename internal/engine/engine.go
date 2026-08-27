@@ -17,11 +17,12 @@ var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 
 // Engine is the central HTTP coordinator.
 type Engine struct {
-	options core.Options
-	server  core.Server
-	mux     *http.ServeMux
-	goSteps map[string]core.StepHandler
-	logger  *slog.Logger
+	options      core.Options
+	server       core.Server
+	mux          *http.ServeMux
+	goSteps      map[string]core.StepHandler
+	errorHandler core.ErrorHandler
+	logger       *slog.Logger
 }
 
 // New initializes an Engine by parsing manifests and registering route endpoints.
@@ -31,17 +32,23 @@ func New(options core.Options) (*Engine, error) {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
+	errorHandler := options.ErrorHandler
+	if errorHandler == nil {
+		errorHandler = core.DefaultErrorHandler
+	}
+
 	manifest, err := parser.Parse(options.ManifestDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifests: %w", err)
 	}
 
 	e := &Engine{
-		options: options,
-		server:  manifest.Server.ToServer(),
-		mux:     http.NewServeMux(),
-		goSteps: make(map[string]core.StepHandler),
-		logger:  logger,
+		options:      options,
+		server:       manifest.Server.ToServer(),
+		mux:          http.NewServeMux(),
+		goSteps:      make(map[string]core.StepHandler),
+		errorHandler: errorHandler,
+		logger:       logger,
 	}
 
 	for _, ep := range manifest.Endpoints {
@@ -68,10 +75,28 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	executor := NewPipelineExecutor(steps, e.goSteps)
 
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
-		hclapiCtx := core.NewContext(r, paramNames)
+		hclapiCtx, err := core.NewContext(r, paramNames)
+		if err != nil {
+			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
+			e.errorHandler(w, r, core.ProblemDetails{
+				Type:     "https://github.com/ekisa-team/hclapi/errors/bad-request",
+				Title:    "Invalid Request Payload",
+				Status:   http.StatusBadRequest,
+				Detail:   err.Error(),
+				Instance: r.URL.Path,
+			})
+			return
+		}
+
 		if err := executor.Execute(w, hclapiCtx); err != nil {
-			e.logger.Error("pipeline execution failed", "error", err)
-			http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusInternalServerError)
+			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
+			e.errorHandler(w, r, core.ProblemDetails{
+				Type:     "https://github.com/ekisa-team/hclapi/errors/pipeline-execution-failed",
+				Title:    "Pipeline Execution Error",
+				Status:   http.StatusInternalServerError,
+				Detail:   err.Error(),
+				Instance: r.URL.Path,
+			})
 		}
 	})
 }

@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -36,8 +37,8 @@ type Context struct {
 	RawRequest     *http.Request         `json:"-"`
 }
 
-// NewContext parses an incoming HTTP request into an isolated pipeline Context.
-func NewContext(req *http.Request, pathParamNames []string) *Context {
+// NewContext parses the HTTP request and returns an error if body decoding fails.
+func NewContext(req *http.Request, pathParamNames []string) (*Context, error) {
 	queryParams := make(map[string]string, len(req.URL.Query()))
 	for k, v := range req.URL.Query() {
 		if len(v) > 0 {
@@ -60,8 +61,13 @@ func NewContext(req *http.Request, pathParamNames []string) *Context {
 	var bodyData any
 	if req.Body != nil {
 		bodyBytes, err := io.ReadAll(req.Body)
-		if err == nil && len(bodyBytes) > 0 {
-			_ = json.Unmarshal(bodyBytes, &bodyData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request body: %w", err)
+		}
+		if len(bodyBytes) > 0 {
+			if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
+				return nil, fmt.Errorf("invalid JSON payload: %w", err)
+			}
 			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 	}
@@ -74,9 +80,9 @@ func NewContext(req *http.Request, pathParamNames []string) *Context {
 			Headers: headers,
 			Body:    bodyData,
 		},
-		Steps:          map[string]StepResult{},
-		Args:           map[string]any{},
+		Steps:          make(map[string]StepResult),
+		Args:           make(map[string]any),
 		TimestampEpoch: time.Now().Unix(),
 		RawRequest:     req,
-	}
+	}, nil
 }

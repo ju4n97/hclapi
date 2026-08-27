@@ -85,7 +85,6 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -121,14 +120,14 @@ func TestParse(t *testing.T) {
 func TestDecodePipelineSteps(t *testing.T) {
 	t.Parallel()
 
-	parsePipeline := func(t *testing.T, hclSnippet string) parser.Pipeline {
+	parsePipeline := func(t *testing.T, hclSnippet string) parser.PipelineBlock {
 		t.Helper()
 
 		file, diags := hclsyntax.ParseConfig([]byte(hclSnippet), "snippet.hcl", hcl.Pos{Line: 1, Column: 1})
 		if diags.HasErrors() {
 			t.Fatalf("test helper syntax error: %s", diags.Error())
 		}
-		return parser.Pipeline{Body: file.Body}
+		return parser.PipelineBlock{Body: file.Body}
 	}
 
 	tests := []struct {
@@ -249,7 +248,6 @@ func TestDecodePipelineSteps(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -42,7 +42,7 @@ func TestPipelineExecutor(t *testing.T) {
 			{
 				Type: parser.StepTypeGo,
 				Name: "auth",
-				Go: &parser.GoStepConfig{
+				Go: &parser.GoStepBlock{
 					Use:  "auth.verify",
 					Args: parseExpr(t, `{ token = ctx.request.headers.authorization }`),
 				},
@@ -50,7 +50,7 @@ func TestPipelineExecutor(t *testing.T) {
 			{
 				Type: parser.StepTypeStarlark,
 				Name: "format",
-				Starlark: &parser.StarlarkStepConfig{
+				Starlark: &parser.StarlarkStepBlock{
 					Source: `
 def execute(ctx):
     return {
@@ -63,7 +63,7 @@ def execute(ctx):
 			// Fallback 401 response when unauthorized
 			{
 				Type: parser.StepTypeRespond,
-				Respond: &parser.RespondStepConfig{
+				Respond: &parser.RespondStepBlock{
 					Condition: parseExpr(t, `steps.format.result.authorized == false`),
 					Status:    parseExpr(t, `401`),
 					Body:      parseExpr(t, `{ error = "unauthorized" }`),
@@ -72,7 +72,7 @@ def execute(ctx):
 			// Success 200 response when authorized
 			{
 				Type: parser.StepTypeRespond,
-				Respond: &parser.RespondStepConfig{
+				Respond: &parser.RespondStepBlock{
 					Condition: parseExpr(t, `steps.format.result.authorized == true`),
 					Status:    parseExpr(t, `200`),
 					Body:      parseExpr(t, `steps.format.result`),

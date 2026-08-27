@@ -23,12 +23,21 @@ type StepHandler = core.StepHandler
 // Options defines the configuration options for the Hclapi engine.
 type Options = core.Options
 
+// Duration wraps a time.Duration with universal text deserialization.
+type Duration = core.Duration
+
+// ByteSize represents a quantity of bytes that can be unmarshaled from text.
+type ByteSize = core.ByteSize
+
+// Server defines the resolved HTTP server configuration.
+type Server = core.Server
+
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
 	inner *engine.Engine
 }
 
-// NewEngine initializes and boots the Hclapi engine from directory manifests.
+// NewEngine initializes an Engine by parsing manifests and registering route endpoints.
 func NewEngine(options Options) (*Engine, error) {
 	eng, err := engine.New(options)
 	if err != nil {
@@ -38,12 +47,17 @@ func NewEngine(options Options) (*Engine, error) {
 	return &Engine{inner: eng}, nil
 }
 
-// RegisterStep binds a custom Go function for use in pipeline step definitions.
+// RegisterStep registers a named custom Go function for the pipeline runtime.
 func (e *Engine) RegisterStep(name string, handler func(*Context) (any, error)) error {
 	return e.inner.RegisterStep(name, core.StepHandler(handler))
 }
 
-// Handler returns the underlying http.Handler to mount Hclapi into an HTTP multiplexer.
+// Handler returns the underlying http.Handler multiplexer.
 func (e *Engine) Handler() http.Handler {
 	return e.inner.Handler()
+}
+
+// Server returns the server configuration with defaults applied.
+func (e *Engine) Server() Server {
+	return e.inner.Server()
 }

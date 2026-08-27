@@ -6,7 +6,7 @@ Demonstrates in-memory execution, request manipulation, and response generation 
 
 ```hcl
 server {
-  host = "0.0.0.0"
+  host = "127.0.0.1"
   port = 8080
 }
 

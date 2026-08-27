@@ -54,8 +54,8 @@ func TestPipelineExecutor(t *testing.T) {
 					Source: `
 def execute(ctx):
     return {
-        "user_id": ctx.steps.auth.uid,
-        "authorized": ctx.steps.auth.valid
+        "user_id": ctx.steps.auth.get("uid"),
+        "authorized": ctx.steps.auth.get("valid")
     }
 `,
 				},
@@ -82,7 +82,7 @@ def execute(ctx):
 
 		executor := engine.NewPipelineExecutor(steps, goSteps)
 
-		// 1. Test Authorized Request
+		// 1. Test authorized request
 		reqAuth := httptest.NewRequest(http.MethodGet, "/test", nil)
 		reqAuth.Header.Set("Authorization", "secret-token")
 		ctxAuth := core.NewContext(reqAuth, nil)
@@ -102,7 +102,7 @@ def execute(ctx):
 			t.Errorf("unexpected body payload: %+v", bodyAuth)
 		}
 
-		// 2. Test Unauthorized Request (Hits 401 Condition)
+		// 2. Test unauthorized request (hits 401 condition)
 		reqUnauth := httptest.NewRequest(http.MethodGet, "/test", nil)
 		reqUnauth.Header.Set("Authorization", "wrong-token")
 		ctxUnauth := core.NewContext(reqUnauth, nil)

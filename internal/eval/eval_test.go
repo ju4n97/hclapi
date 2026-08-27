@@ -9,7 +9,7 @@ import (
 	"github.com/ju4n97/hclapi/internal/eval"
 )
 
-func parseExpr(t *testing.T, src string) *hcl.Expression {
+func parseExpr(t *testing.T, src string) hcl.Expression {
 	t.Helper()
 
 	expr, diags := hclsyntax.ParseExpression([]byte(src), "test.hcl", hcl.InitialPos)
@@ -18,7 +18,7 @@ func parseExpr(t *testing.T, src string) *hcl.Expression {
 	}
 
 	hclExpr := expr.(hcl.Expression)
-	return &hclExpr
+	return hclExpr
 }
 
 func TestEval(t *testing.T) {
@@ -51,7 +51,7 @@ func TestEval(t *testing.T) {
 
 		tests := []struct {
 			name       string
-			expr       *hcl.Expression
+			expr       hcl.Expression
 			defaultVal bool
 			expected   bool
 		}{
@@ -94,7 +94,7 @@ func TestEval(t *testing.T) {
 
 		tests := []struct {
 			name       string
-			expr       *hcl.Expression
+			expr       hcl.Expression
 			defaultVal int
 			expected   int
 		}{

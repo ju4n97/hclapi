@@ -9,10 +9,9 @@ import (
 	"go.starlark.net/syntax"
 )
 
-// Eval compiles and executes a Starlark script against a Go context data map.
-func Eval(source string, ctxData map[string]any) (any, error) {
+// Eval compiles and executes a Starlark script against a context value.
+func Eval(source string, ctxValue starlark.Value) (any, error) {
 	thread := &starlark.Thread{Name: "hclapi-starlark-vm"}
-
 	opts := &syntax.FileOptions{}
 
 	globals, err := starlark.ExecFileOptions(opts, thread, "manifest.star", source, nil)
@@ -30,9 +29,7 @@ func Eval(source string, ctxData map[string]any) (any, error) {
 		return nil, errors.New("'execute' must be a callable function")
 	}
 
-	starlarkCtx := GoToStarlarkValue(ctxData)
-
-	resultVal, err := starlark.Call(thread, execCallable, starlark.Tuple{starlarkCtx}, nil)
+	resultVal, err := starlark.Call(thread, execCallable, starlark.Tuple{ctxValue}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starlark runtime error: %w", err)
 	}
@@ -40,7 +37,7 @@ func Eval(source string, ctxData map[string]any) (any, error) {
 	return StarlarkToGoValue(resultVal), nil
 }
 
-// GoToStarlarkValue converts arbitrary Go data into Starlark values.
+// GoToStarlarkValue converts Go primitives, slices, and maps into standard Starlark values.
 func GoToStarlarkValue(val any) starlark.Value {
 	if val == nil {
 		return starlark.None
@@ -58,27 +55,27 @@ func GoToStarlarkValue(val any) starlark.Value {
 	case float64:
 		return starlark.Float(v)
 	case map[string]any:
-		dict := make(starlark.StringDict)
+		dict := starlark.NewDict(len(v))
 		for key, subVal := range v {
-			dict[key] = GoToStarlarkValue(subVal)
+			_ = dict.SetKey(starlark.String(key), GoToStarlarkValue(subVal))
 		}
-		return starlarkstruct.FromStringDict(starlarkstruct.Default, dict)
+		return dict
 	case map[string]string:
-		dict := make(starlark.StringDict)
+		dict := starlark.NewDict(len(v))
 		for key, subVal := range v {
-			dict[key] = starlark.String(subVal)
+			_ = dict.SetKey(starlark.String(key), starlark.String(subVal))
 		}
-		return starlarkstruct.FromStringDict(starlarkstruct.Default, dict)
+		return dict
 	case []any:
-		var list []starlark.Value
-		for _, item := range v {
-			list = append(list, GoToStarlarkValue(item))
+		list := make([]starlark.Value, len(v))
+		for i, item := range v {
+			list[i] = GoToStarlarkValue(item)
 		}
 		return starlark.NewList(list)
 	case []string:
-		var list []starlark.Value
-		for _, item := range v {
-			list = append(list, starlark.String(item))
+		list := make([]starlark.Value, len(v))
+		for i, item := range v {
+			list[i] = starlark.String(item)
 		}
 		return starlark.NewList(list)
 	default:
@@ -86,7 +83,7 @@ func GoToStarlarkValue(val any) starlark.Value {
 	}
 }
 
-// StarlarkToGoValue converts Starlark values back into standard Go structures.
+// StarlarkToGoValue converts standard Starlark values back into standard Go structures.
 func StarlarkToGoValue(val starlark.Value) any {
 	if val == nil || val == starlark.None {
 		return nil
@@ -103,13 +100,13 @@ func StarlarkToGoValue(val starlark.Value) any {
 	case starlark.Float:
 		return float64(v)
 	case *starlark.List:
-		var res []any
+		res := make([]any, v.Len())
 		for i := 0; i < v.Len(); i++ {
-			res = append(res, StarlarkToGoValue(v.Index(i)))
+			res[i] = StarlarkToGoValue(v.Index(i))
 		}
 		return res
 	case *starlark.Dict:
-		res := make(map[string]any)
+		res := make(map[string]any, v.Len())
 		for _, item := range v.Items() {
 			k := item.Index(0).String()
 			if s, ok := item.Index(0).(starlark.String); ok {
@@ -121,8 +118,8 @@ func StarlarkToGoValue(val starlark.Value) any {
 	case *starlarkstruct.Struct:
 		res := make(map[string]any)
 		for _, name := range v.AttrNames() {
-			val, _ := v.Attr(name)
-			res[name] = StarlarkToGoValue(val)
+			attrVal, _ := v.Attr(name)
+			res[name] = StarlarkToGoValue(attrVal)
 		}
 		return res
 	default:

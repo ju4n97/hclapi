@@ -1,7 +1,10 @@
+// Package eval translates runtime core.Context data into HCL EvalContext structures
+// and dynamically evaluates HCL AST expressions back into Go primitives.
 package eval
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/ju4n97/hclapi/internal/core"
@@ -9,17 +12,17 @@ import (
 )
 
 // EvalBool evaluates an HCL expression to a boolean value.
-func EvalBool(expr *hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
+func EvalBool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
 
-	val, diags := (*expr).Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(ctx))
 	if diags.HasErrors() {
 		return false, fmt.Errorf("evaluating boolean expression: %s", diags.Error())
 	}
 
-	if val.IsNull() || !val.IsKnown() || val.Type() != cty.Bool {
+	if !val.IsKnown() || val.IsNull() || val.Type() != cty.Bool {
 		return defaultVal, nil
 	}
 
@@ -27,17 +30,17 @@ func EvalBool(expr *hcl.Expression, ctx *core.Context, defaultVal bool) (bool, e
 }
 
 // EvalInt evaluates an HCL expression to an integer.
-func EvalInt(expr *hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
+func EvalInt(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
 
-	val, diags := (*expr).Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(ctx))
 	if diags.HasErrors() {
 		return defaultVal, fmt.Errorf("evaluating integer expression: %s", diags.Error())
 	}
 
-	if val.IsNull() || !val.IsKnown() || val.Type() != cty.Number {
+	if !val.IsKnown() || val.IsNull() || val.Type() != cty.Number {
 		return defaultVal, nil
 	}
 
@@ -47,12 +50,12 @@ func EvalInt(expr *hcl.Expression, ctx *core.Context, defaultVal int) (int, erro
 }
 
 // EvalMap evaluates an HCL expression into a string-keyed dictionary.
-func EvalMap(expr *hcl.Expression, ctx *core.Context) (map[string]any, error) {
+func EvalMap(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
 	if expr == nil {
 		return nil, nil
 	}
 
-	val, diags := (*expr).Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(ctx))
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("evaluating map expression: %s", diags.Error())
 	}
@@ -66,12 +69,12 @@ func EvalMap(expr *hcl.Expression, ctx *core.Context) (map[string]any, error) {
 }
 
 // EvalAny evaluates an arbitrary HCL expression into corresponding Go types.
-func EvalAny(expr *hcl.Expression, ctx *core.Context) (any, error) {
+func EvalAny(expr hcl.Expression, ctx *core.Context) (any, error) {
 	if expr == nil {
 		return nil, nil
 	}
 
-	val, diags := (*expr).Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(ctx))
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("evaluating expression: %s", diags.Error())
 	}
@@ -91,7 +94,8 @@ func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
 	stepsDict := make(map[string]cty.Value, len(ctx.Steps))
 	for name, res := range ctx.Steps {
 		stepsDict[name] = cty.ObjectVal(map[string]cty.Value{
-			"result": anyToCty(res.Result),
+			"result":        anyToCty(res.Result),
+			"rows_affected": cty.NumberIntVal(res.RowsAffected),
 		})
 	}
 
@@ -123,26 +127,56 @@ func mapToCty(m map[string]string) cty.Value {
 
 func anyToCty(val any) cty.Value {
 	if val == nil {
-		return cty.NilVal
+		return cty.NullVal(cty.DynamicPseudoType)
 	}
+
 	switch v := val.(type) {
+	case cty.Value:
+		return v
 	case string:
 		return cty.StringVal(v)
+	case bool:
+		return cty.BoolVal(v)
 	case int:
+		return cty.NumberIntVal(int64(v))
+	case int8:
+		return cty.NumberIntVal(int64(v))
+	case int16:
+		return cty.NumberIntVal(int64(v))
+	case int32:
 		return cty.NumberIntVal(int64(v))
 	case int64:
 		return cty.NumberIntVal(v)
+	case uint:
+		return cty.NumberIntVal(int64(v))
+	case uint8:
+		return cty.NumberIntVal(int64(v))
+	case uint16:
+		return cty.NumberIntVal(int64(v))
+	case uint32:
+		return cty.NumberIntVal(int64(v))
+	case uint64:
+		return cty.NumberIntVal(int64(v))
+	case float32:
+		return cty.NumberFloatVal(float64(v))
 	case float64:
 		return cty.NumberFloatVal(v)
-	case bool:
-		return cty.BoolVal(v)
 	case map[string]any:
+		if len(v) == 0 {
+			return cty.EmptyObjectVal
+		}
 		dict := make(map[string]cty.Value, len(v))
 		for key, sub := range v {
 			dict[key] = anyToCty(sub)
 		}
-		if len(dict) == 0 {
+		return cty.ObjectVal(dict)
+	case map[string]string:
+		if len(v) == 0 {
 			return cty.EmptyObjectVal
+		}
+		dict := make(map[string]cty.Value, len(v))
+		for key, sub := range v {
+			dict[key] = cty.StringVal(sub)
 		}
 		return cty.ObjectVal(dict)
 	case []any:
@@ -164,7 +198,7 @@ func anyToCty(val any) cty.Value {
 		}
 		return cty.TupleVal(list)
 	default:
-		return cty.NilVal
+		return cty.StringVal(fmt.Sprintf("%v", v))
 	}
 }
 
@@ -172,12 +206,17 @@ func ctyToAny(val cty.Value) any {
 	if !val.IsKnown() || val.IsNull() {
 		return nil
 	}
+
 	ty := val.Type()
 	switch {
 	case ty.Equals(cty.String):
 		return val.AsString()
 	case ty.Equals(cty.Number):
-		f, _ := val.AsBigFloat().Float64()
+		bf := val.AsBigFloat()
+		if i, acc := bf.Int64(); acc == big.Exact {
+			return i
+		}
+		f, _ := bf.Float64()
 		return f
 	case ty.Equals(cty.Bool):
 		return val.True()

@@ -79,7 +79,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		if err != nil {
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetails{
-				Type:     "https://github.com/ekisa-team/hclapi/errors/bad-request",
+				Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -91,7 +91,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetails{
-				Type:     "https://github.com/ekisa-team/hclapi/errors/pipeline-execution-failed",
+				Type:     "https://github.com/ju4n97/hclapi/errors/pipeline-execution-failed",
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,
 				Detail:   err.Error(),

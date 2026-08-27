@@ -2,14 +2,14 @@
 layout: home
 
 hero:
-  name: hclapi
-  text: Declarative HTTP API runtime
-  tagline: Turn HCL manifests into structured HTTP services with SQL, Starlark, and Redis. Run standalone or embed in Go.
+  name: "Hclapi"
+  text: "Declarative HTTP API Runtime"
+  tagline: "Turn HCL manifests, SQL queries, and Starlark scripts into high-performance Go HTTP microservices."
   actions:
     - theme: brand
-      text: Get started
+      text: Get Started
       link: /guide/introduction
     - theme: alt
-      text: Explore manifest syntax
-      link: /manifest/configuration
+      text: View Examples ↗
+      link: https://github.com/ju4n97/hclapi/tree/main/examples
 ---

@@ -1,55 +1,75 @@
 package parser
 
-import "github.com/hashicorp/hcl/v2"
+import (
+	"github.com/hashicorp/hcl/v2"
+	"github.com/ju4n97/hclapi/internal/core"
+)
 
 // Manifest represents the root collection of merged HCL route definitions.
 type Manifest struct {
-	Server      *Server      `hcl:"server,block"`
-	Connections []Connection `hcl:"connection,block"`
-	Schemas     []Schema     `hcl:"schema,block"`
-	Endpoints   []Endpoint   `hcl:"endpoint,block"`
-	Remain      hcl.Body     `hcl:",remain"`
+	Server      *ServerBlock      `hcl:"server,block"`
+	Connections []ConnectionBlock `hcl:"connection,block"`
+	Schemas     []SchemaBlock     `hcl:"schema,block"`
+	Endpoints   []EndpointBlock   `hcl:"endpoint,block"`
+	Remain      hcl.Body          `hcl:",remain"`
 }
 
-// Server represents the global server configuration.
-type Server struct {
-	Host         *string  `hcl:"host,attr"`
-	Port         *int     `hcl:"port,attr"`
-	ReadTimeout  *string  `hcl:"read_timeout,attr"`
-	WriteTimeout *string  `hcl:"write_timeout,attr"`
-	Remain       hcl.Body `hcl:",remain"`
+// ServerBlock represents the raw HCL server syntax block.
+type ServerBlock struct {
+	Host         string        `hcl:"host,optional"`
+	Port         int           `hcl:"port,optional"`
+	ReadTimeout  core.Duration `hcl:"read_timeout,optional"`
+	WriteTimeout core.Duration `hcl:"write_timeout,optional"`
+	IdleTimeout  core.Duration `hcl:"idle_timeout,optional"`
+	MaxBodySize  core.ByteSize `hcl:"max_body_size,optional"`
+	Remain       hcl.Body      `hcl:",remain"`
 }
 
-// Connection represents a connection pool configuration.
-type Connection struct {
+// ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
+func (s *ServerBlock) ToServer() core.Server {
+	if s == nil {
+		return core.DefaultServer()
+	}
+	return core.Server{
+		Host:         s.Host,
+		Port:         s.Port,
+		ReadTimeout:  s.ReadTimeout,
+		WriteTimeout: s.WriteTimeout,
+		IdleTimeout:  s.IdleTimeout,
+		MaxBodySize:  s.MaxBodySize,
+	}.WithDefaults()
+}
+
+// ConnectionBlock represents a connection pool configuration block.
+type ConnectionBlock struct {
 	Type   string   `hcl:"type,attr"`
 	Name   string   `hcl:"name,label"`
 	URL    string   `hcl:"url,attr"`
 	Remain hcl.Body `hcl:",remain"`
 }
 
-// Schema represents a request body schema definition.
-type Schema struct {
+// SchemaBlock represents a request body schema definition block.
+type SchemaBlock struct {
 	Name   string   `hcl:"name,label"`
 	Remain hcl.Body `hcl:",remain"`
 }
 
-// Endpoint represents a single HTTP route declaration and its execution pipeline.
-type Endpoint struct {
-	MethodAndPath string   `hcl:"name,label"`
-	Description   *string  `hcl:"description,attr"`
-	Request       *Request `hcl:"request,block"`
-	Pipeline      Pipeline `hcl:"pipeline,block"`
-	Remain        hcl.Body `hcl:",remain"`
+// EndpointBlock represents a single HTTP route declaration block.
+type EndpointBlock struct {
+	MethodAndPath string        `hcl:"name,label"`
+	Description   *string       `hcl:"description,attr"`
+	Request       *RequestBlock `hcl:"request,block"`
+	Pipeline      PipelineBlock `hcl:"pipeline,block"`
+	Remain        hcl.Body      `hcl:",remain"`
 }
 
-// Request represents the request body schema and validation.
-type Request struct {
+// RequestBlock represents the request validation block.
+type RequestBlock struct {
 	Remain hcl.Body `hcl:",remain"`
 }
 
-// Pipeline encapsulates the raw HCL body of pipeline steps to preserve definition order.
-type Pipeline struct {
+// PipelineBlock encapsulates the raw HCL body of pipeline steps to preserve definition order.
+type PipelineBlock struct {
 	Body hcl.Body `hcl:",remain"`
 }
 
@@ -66,24 +86,24 @@ const (
 type ParsedStep struct {
 	Type     StepType
 	Name     string
-	Go       *GoStepConfig
-	Starlark *StarlarkStepConfig
-	Respond  *RespondStepConfig
+	Go       *GoStepBlock
+	Starlark *StarlarkStepBlock
+	Respond  *RespondStepBlock
 }
 
-// GoStepConfig defines invocation settings for a custom Go handler.
-type GoStepConfig struct {
+// GoStepBlock defines invocation settings for a custom Go handler step.
+type GoStepBlock struct {
 	Use  string         `hcl:"use,attr"`
 	Args hcl.Expression `hcl:"args,optional"`
 }
 
-// StarlarkStepConfig defines the script source for a Starlark step.
-type StarlarkStepConfig struct {
+// StarlarkStepBlock defines the script source for a Starlark step.
+type StarlarkStepBlock struct {
 	Source string `hcl:"source,attr"`
 }
 
-// RespondStepConfig defines the parameters for terminating and serializing an HTTP response.
-type RespondStepConfig struct {
+// RespondStepBlock defines the parameters for serializing an HTTP response.
+type RespondStepBlock struct {
 	Condition hcl.Expression `hcl:"condition,optional"`
 	Status    hcl.Expression `hcl:"status,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`

@@ -8,7 +8,7 @@ Configures the standalone HTTP socket listener:
 
 ```hcl
 server {
-  host = "0.0.0.0"
+  host = "127.0.0.1"
   port = 8080
 
   read_timeout  = "15s"

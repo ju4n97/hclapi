@@ -89,6 +89,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 	if step.Name != "" {
 		ctx.Steps[step.Name] = core.StepResult{Result: res}
 	}
+
 	return res, nil
 }
 
@@ -124,6 +125,7 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	if step.Name != "" {
 		ctx.Steps[step.Name] = core.StepResult{Result: res}
 	}
+
 	return res, nil
 }
 

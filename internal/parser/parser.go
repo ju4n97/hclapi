@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-// isHclapiManifest returns true if the filename matches Hclapifile, .hcl, or .hclapi.
 func isHclapiManifest(filename string) bool {
 	lower := strings.ToLower(filename)
 	if lower == "hclapifile" {
@@ -50,7 +49,11 @@ func Parse(path string) (*Manifest, error) {
 			if err != nil {
 				return err
 			}
+
 			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
+			if fileManifest.Server != nil {
+				mergedManifest.Server = fileManifest.Server
+			}
 		}
 
 		return nil
@@ -78,7 +81,7 @@ func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
 }
 
 // DecodePipelineSteps decodes steps from a pipeline block preserving declaration order.
-func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
+func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 	schema := &hcl.BodySchema{
 		Blocks: []hcl.BlockHeaderSchema{
 			{Type: string(StepTypeGo), LabelNames: []string{"name"}},
@@ -96,7 +99,7 @@ func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
 	for _, block := range content.Blocks {
 		switch block.Type {
 		case string(StepTypeGo):
-			var cfg GoStepConfig
+			var cfg GoStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("failed to decode go step %q: %s", block.Labels[0], diags.Error())
 			}
@@ -107,7 +110,7 @@ func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
 			})
 
 		case string(StepTypeStarlark):
-			var cfg StarlarkStepConfig
+			var cfg StarlarkStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("failed to decode starlark step %q: %s", block.Labels[0], diags.Error())
 			}
@@ -118,7 +121,7 @@ func DecodePipelineSteps(pipeline *Pipeline) ([]ParsedStep, error) {
 			})
 
 		case string(StepTypeRespond):
-			var cfg RespondStepConfig
+			var cfg RespondStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("failed to decode respond step: %s", diags.Error())
 			}

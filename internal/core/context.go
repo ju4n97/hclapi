@@ -74,8 +74,8 @@ func NewContext(req *http.Request, pathParamNames []string) *Context {
 			Headers: headers,
 			Body:    bodyData,
 		},
-		Steps:          make(map[string]StepResult),
-		Args:           make(map[string]any),
+		Steps:          map[string]StepResult{},
+		Args:           map[string]any{},
 		TimestampEpoch: time.Now().Unix(),
 		RawRequest:     req,
 	}

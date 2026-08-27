@@ -23,7 +23,8 @@ type StepHandler func(ctx *Context) (any, error)
 
 // StepResult wraps the computed outcome of a previously executed pipeline step.
 type StepResult struct {
-	Result any `json:"result"`
+	Result       any   `json:"result"`
+	RowsAffected int64 `json:"rows_affected,omitempty"`
 }
 
 // Context encapsulates the runtime execution state for a single HTTP request lifecycle.

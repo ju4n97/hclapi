@@ -32,6 +32,18 @@ type ByteSize = core.ByteSize
 // Server defines the resolved HTTP server configuration.
 type Server = core.Server
 
+// ProblemDetails represents an RFC 9457 compliant error object.
+type ProblemDetails = core.ProblemDetails
+
+// InvalidParam represents a single field validation failure.
+type InvalidParam = core.InvalidParam
+
+// ErrorHandler defines the contract for customizing API error serialization.
+type ErrorHandler = core.ErrorHandler
+
+// DefaultErrorHandler returns a ProblemDetails with default values.
+var DefaultErrorHandler = core.DefaultErrorHandler
+
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
 	inner *engine.Engine

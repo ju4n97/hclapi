@@ -1,6 +1,6 @@
 server {
   host = "127.0.0.1"
-  port = 5721
+  port = 8080
 }
 
 endpoint "GET /api/v1/health" {

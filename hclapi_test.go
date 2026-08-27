@@ -1,62 +1,67 @@
 package hclapi_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ju4n97/hclapi"
 )
 
-func TestEngineFacade(t *testing.T) {
+func TestCustomErrorHandler(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
 	manifestContent := `
-endpoint "GET /api/v1/ping" {
+endpoint "POST /api/v1/data" {
   pipeline {
-    go "enrich" {
-      use = "test.ping"
-    }
     respond {
       status = 200
-      body   = steps.enrich.result
+      body   = { ok = true }
     }
   }
 }
 `
-	manifestPath := filepath.Join(tmpDir, "Hclapifile")
-	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0600); err != nil {
-		t.Fatalf("failed to write manifest fixture: %v", err)
+	if err := os.WriteFile(filepath.Join(tmpDir, "Hclapifile"), []byte(manifestContent), 0600); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	customHandlerCalled := false
+	customHandler := func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetails) {
+		customHandlerCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(problem.Status)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"custom_error": problem.Detail,
+		})
 	}
 
 	engine, err := hclapi.NewEngine(hclapi.Options{
-		ManifestDir: tmpDir,
+		ManifestDir:  tmpDir,
+		ErrorHandler: customHandler,
 	})
 	if err != nil {
 		t.Fatalf("failed to initialize engine: %v", err)
 	}
 
-	err = engine.RegisterStep("test.ping", func(ctx *hclapi.Context) (any, error) {
-		return map[string]string{"status": "pong"}, nil
-	})
-	if err != nil {
-		t.Fatalf("failed to register step: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/ping", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/data", strings.NewReader(`{"bad": json`)) // malformed JSON payload
 	rec := httptest.NewRecorder()
 
 	engine.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
 	}
 
-	expectedJSON := `{"status":"pong"}` + "\n"
-	if rec.Body.String() != expectedJSON {
-		t.Errorf("expected body %q, got %q", expectedJSON, rec.Body.String())
+	if !customHandlerCalled {
+		t.Errorf("expected custom error handler to be invoked")
+	}
+
+	if !strings.Contains(rec.Body.String(), "custom_error") {
+		t.Errorf("expected custom error response, got: %s", rec.Body.String())
 	}
 }

@@ -1,0 +1,42 @@
+package core
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+// InvalidParam represents a single field validation failure.
+type InvalidParam struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
+}
+
+// ProblemDetails represents an RFC 9457 compliant error object.
+type ProblemDetails struct {
+	Type          string         `json:"type,omitempty"`
+	Title         string         `json:"title"`
+	Status        int            `json:"status"`
+	Detail        string         `json:"detail,omitempty"`
+	Instance      string         `json:"instance,omitempty"`
+	Step          string         `json:"step,omitempty"`
+	InvalidParams []InvalidParam `json:"invalid_params,omitempty"`
+	Extensions    map[string]any `json:"extensions,omitempty"`
+}
+
+// Error implements the standard error interface.
+func (p ProblemDetails) Error() string {
+	if p.Detail != "" {
+		return p.Title + ": " + p.Detail
+	}
+	return p.Title
+}
+
+// ErrorHandler defines the contract for customizing API error serialization.
+type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem ProblemDetails)
+
+// DefaultErrorHandler returns a ProblemDetails with default values.
+func DefaultErrorHandler(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(problem.Status)
+	_ = json.NewEncoder(w).Encode(problem)
+}

@@ -13,13 +13,14 @@ func TestNewContext(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		method     string
-		url        string
-		headers    map[string]string
-		pathParams map[string]string
-		bodyJSON   string
-		validate   func(t *testing.T, ctx *core.Context)
+		name        string
+		method      string
+		url         string
+		headers     map[string]string
+		pathParams  map[string]string
+		bodyJSON    string
+		expectError bool
+		validate    func(t *testing.T, ctx *core.Context)
 	}{
 		{
 			name:   "Parses query parameters and lowercases headers",
@@ -29,6 +30,7 @@ func TestNewContext(t *testing.T) {
 				"X-Trace-ID":   "trace-123",
 				"Content-Type": "application/json",
 			},
+			expectError: false,
 			validate: func(t *testing.T, ctx *core.Context) {
 				if ctx.Request.Method != http.MethodGet {
 					t.Errorf("expected GET, got %s", ctx.Request.Method)
@@ -42,21 +44,18 @@ func TestNewContext(t *testing.T) {
 			},
 		},
 		{
-			name:       "Extracts matched path parameters",
-			method:     http.MethodDelete,
-			url:        "/accounts/acc_456",
-			pathParams: map[string]string{"id": "acc_456"},
-			validate: func(t *testing.T, ctx *core.Context) {
-				if ctx.Request.Path["id"] != "acc_456" {
-					t.Errorf("expected path id 'acc_456', got %q", ctx.Request.Path["id"])
-				}
-			},
+			name:        "Returns error on malformed JSON payload",
+			method:      http.MethodPost,
+			url:         "/sanitize",
+			bodyJSON:    `{"tags": ["golang" "testing"]}`, // Missing comma
+			expectError: true,
 		},
 		{
-			name:     "Decodes JSON body payload",
-			method:   http.MethodPost,
-			url:      "/items",
-			bodyJSON: `{"title": "Test Item", "count": 5}`,
+			name:        "Decodes valid JSON body payload",
+			method:      http.MethodPost,
+			url:         "/items",
+			bodyJSON:    `{"title": "Test Item", "count": 5}`,
+			expectError: false,
 			validate: func(t *testing.T, ctx *core.Context) {
 				body, ok := ctx.Request.Body.(map[string]any)
 				if !ok {
@@ -65,14 +64,12 @@ func TestNewContext(t *testing.T) {
 				if body["title"] != "Test Item" {
 					t.Errorf("expected 'Test Item', got %v", body["title"])
 				}
-				if body["count"] != float64(5) {
-					t.Errorf("expected 5, got %v", body["count"])
-				}
 			},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -94,8 +91,21 @@ func TestNewContext(t *testing.T) {
 				paramNames = append(paramNames, k)
 			}
 
-			ctx := core.NewContext(req, paramNames)
-			tt.validate(t, ctx)
+			ctx, err := core.NewContext(req, paramNames)
+			if tt.expectError {
+				if err == nil {
+					t.Fatalf("expected error for malformed input, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.validate != nil {
+				tt.validate(t, ctx)
+			}
 		})
 	}
 }

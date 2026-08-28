@@ -15,7 +15,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func serveCommand() *cli.Command {
+func newServeCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "serve",
 		Usage: "Starts the Hclapi HTTP server.",

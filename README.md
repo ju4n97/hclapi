@@ -1,29 +1,13 @@
-```text
-██╗  ██╗██╗   ██╗███╗   ███╗██╗
-██║ ██╔╝██║   ██║████╗ ████║██║
-█████╔╝ ██║   ██║██╔████╔██║██║
-██╔═██╗ ██║   ██║██║╚██╔╝██║██║
-██║  ██╗╚██████╔╝██║ ╚═╝ ██║██║
-╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝
-```
+# Hclapi
 
-Declarative HTTP API engine that compiles HCL manifests into standalone, production-ready services with parameterized SQL, sandboxed Starlark, and Redis caching.
+Declarative HTTP API engine. Hclapi compiles HCL manifests into standalone
+services backed by parameterized SQL, sandboxed Starlark, and Redis caching.
 
-[Documentation](https://ju4n97.github.io/hclapi/) · [Examples](./examples) · [Manifest syntax](https://ju4n97.github.io/hclapi/manifest/configuration.md)
+[Documentation](https://ju4n97.github.io/hclapi/) ·
+[Why Hclapi](https://ju4n97.github.io/hclapi/why.html) ·
+[Examples](./examples)
 
-## Overview
-
-Hclapi is a language-agnostic API engine. It allows building and exposing structured HTTP endpoints directly over databases and data workflows without needing a full backend framework.
-
-- Configured entirely via HCL, Starlark, and SQL. Distributed as a single, zero-dependency cross-platform binary or Docker image.
-- Deterministic execution order with strictly typed variable references.
-- Sandboxed Starlark transformations with zero host side effects.
-- Compile-time SQL safety via parameterized query enforcement (\`@param\`) with zero dynamic string interpolation.
-- Optional Go embedding: Implements the standard library \`http.Handler\` interface for people that want to embed the engine in existing Go codebases.
-
-## Quick example
-
-A complete standalone API endpoint handling input validation, Starlark normalization, parameterized PostgreSQL persistence, constraint error mapping and OpenAPI generation in 3 steps:
+## Example
 
 ```hcl
 connection "postgres" "main" {
@@ -36,14 +20,11 @@ schema "user_create" {
 }
 
 endpoint "POST /api/v1/users" {
-  description = "Registers a new user account."
-
   request {
     body = schema.user_create
   }
 
   pipeline {
-    # 1. Normalize input in sandboxed Starlark
     starlark "normalize" {
       source = <<-STARLARK
         def execute(ctx):
@@ -54,7 +35,6 @@ endpoint "POST /api/v1/users" {
       STARLARK
     }
 
-    # 2. Parameterized SQL persistence
     sql "insert_user" {
       connection = connection.postgres.main
       query      = <<-SQL
@@ -73,7 +53,6 @@ endpoint "POST /api/v1/users" {
       }
     }
 
-    # 3. Terminal response
     respond {
       status = 201
       body   = steps.insert_user.result
@@ -82,68 +61,46 @@ endpoint "POST /api/v1/users" {
 }
 ```
 
-## Running standalone
-
-Hclapi runs as a zero-dependency binary across Linux, macOS, and Windows:
-
-Install the binary:
+## Install
 
 ```sh
 go install github.com/ju4n97/hclapi/cmd/hclapi@latest
 ```
 
-Usage:
-
 ```sh
-# Start daemon from manifest
-hclapi serve --config ./Hclapifile
-
-# Validate syntax and references
-hclapi validate ./api
-
-# Compile OpenAPI v3 specification
-hclapi openapi ./api > openapi.yaml
+hclapi serve -c ./api
 ```
 
-## Embedding in Go
+See [Installation](https://ju4n97.github.io/hclapi/installation.html) for
+precompiled binaries, and [Quickstart](https://ju4n97.github.io/hclapi/quickstart.html)
+for a full walkthrough.
 
-Hclapi mounts directly onto standard Go multiplexers and supports custom Go step functions for tasks requiring native SDKs, cryptography, or external service calls:
+## Embedding
+
+Hclapi implements the standard library `http.Handler` interface and mounts
+onto any Go multiplexer.
 
 ```go
-package main
-
-import (
- "log"
- "net/http"
-
- "github.com/ju4n97/hclapi"
-)
-
-func main() {
-  engine, err := hclapi.NewEngine(hclapi.Options{
+engine, err := hclapi.NewEngine(hclapi.Options{
     ManifestDir:  "./api",
     StrictTyping: true,
-  })
-  if err != nil {
-    log.Fatalf("engine initialization failed: %v", err)
-  }
-
-  mux := http.NewServeMux()
-  mux.Handle("/api/v1/", engine.Handler())
-
-  log.Fatal(http.ListenAndServe(":8080", mux))
+})
+if err != nil {
+    log.Fatal(err)
 }
+
+mux := http.NewServeMux()
+mux.Handle("/api/v1/", engine.Handler())
+http.ListenAndServe(":8080", mux)
 ```
+
+See [Go integration](https://ju4n97.github.io/hclapi/go/README.html) for
+error handling, logging, and registering native Go steps.
 
 ## Documentation
 
-Full architectural guides, manifest references, and step manuals are available on the [documentation site](https://ju4n97.github.io/hclapi/).
-
-- [Getting started](https://ju4n97.github.io/hclapi/guide/getting-started)
-- [Pipeline state machine](https://ju4n97.github.io/hclapi/guide/state-machine)
-- [Manifest syntax](https://ju4n97.github.io/hclapi/manifest/configuration)
-- [Pipeline steps](https://ju4n97.github.io/hclapi/steps/starlark)
-- [Examples catalog](https://ju4n97.github.io/hclapi/examples/overview)
+Full reference: request lifecycle, manifest syntax, pipeline steps, and
+patterns, at <https://ju4n97.github.io/hclapi/>.
 
 ## License
 

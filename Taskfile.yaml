@@ -1,6 +1,17 @@
 version: '3'
 
+env:
+  CGO_ENABLED: 0
+
 tasks:
   default:
     desc: List available tasks
     cmd: task --list
+
+  cli-docs:
+    desc: Generate CLI reference
+    cmd: go run -tags docs ./cmd/hclapi/docs.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go
+
+  cli-man:
+    desc: Generate man pages
+    cmd: go run -tags man ./cmd/hclapi/man.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go

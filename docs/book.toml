@@ -1,0 +1,17 @@
+[book]
+title = "Hclapi"
+description = "A declarative backend engine that turns HCL manifests, SQL, and Starlark into HTTP APIs."
+src = "src"
+
+[output.html]
+default-theme = "rust"
+git-repository-url = "https://github.com/ju4n97/hclapi"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+sidebar-header-nav = false
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html.fold]
+enable = true
+level = 1

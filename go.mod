@@ -4,6 +4,7 @@ go 1.26.6
 
 require (
 	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/urfave/cli-docs/v3 v3.1.0
 	github.com/urfave/cli/v3 v3.11.0
 	github.com/zclconf/go-cty v1.16.3
 	go.starlark.net v0.0.0-20260708150628-5395d018f003
@@ -12,8 +13,10 @@ require (
 require (
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	golang.org/x/mod v0.17.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect

@@ -25,6 +25,27 @@ schema "onboard_request" {
   }
 }
 
+endpoint "GET /api/v1/patients" {
+  pipeline {
+    sql "fetch_patients" {
+      connection = connection.postgres.main
+      query      = <<-SQL
+        SELECT id, name, email
+        FROM users
+        WHERE email LIKE @email
+      SQL
+      args = {
+        email = "%patients.com"
+      }
+    }
+
+    respond {
+      status = 200
+      body   = steps.fetch_patients.result
+    }
+  }
+}
+
 endpoint "POST /api/v1/onboard" {
   description = "Atomically registers a user and provisions their personal workspace."
 

@@ -7,8 +7,8 @@ onto any `http.ServeMux`, middleware chain, or third-party router.
 flowchart TD
     Req["Incoming HTTP request"] --> Mux["http.ServeMux"]
     Mux -- "/healthz" --> GoProbe["Go handler: liveness probe"]
-    Mux -- "/api/v1/" --> Hclapi["Hclapi Engine"]
-    Hclapi --> Routes["Route dispatcher"]
+    Mux -- "/api/v1/" --> hclapi["hclapi Engine"]
+    hclapi --> Routes["Route dispatcher"]
     Routes --> Pipeline["Pipeline state machine"]
 ```
 
@@ -34,7 +34,7 @@ func main() {
     logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
     engine, err := hclapi.NewEngine(hclapi.Options{
-        ManifestDir:  "./manifests",
+        ConfigPath:  "./manifests",
         StrictTyping: true,
         Logger:       logger,
     })

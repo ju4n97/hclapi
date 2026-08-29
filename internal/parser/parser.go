@@ -12,13 +12,10 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-func isHclapiManifest(filename string) bool {
+func ishclapiManifest(filename string) bool {
 	lower := strings.ToLower(filename)
-	if lower == "hclapifile" {
-		return true
-	}
 	ext := filepath.Ext(lower)
-	return ext == ".hcl" || ext == ".hclapi"
+	return ext == ".hcl"
 }
 
 // Parse reads a file or directory tree and returns the merged Manifest AST.
@@ -44,7 +41,7 @@ func Parse(path string) (*Manifest, error) {
 			return filepath.SkipDir
 		}
 
-		if !d.IsDir() && isHclapiManifest(d.Name()) {
+		if !d.IsDir() && ishclapiManifest(d.Name()) {
 			fileManifest, err := parseFile(currentPath, p)
 			if err != nil {
 				return err

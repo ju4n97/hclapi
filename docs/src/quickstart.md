@@ -6,7 +6,7 @@ This section creates a manifest, starts the server, and calls two endpoints.
 
 ```sh
 mkdir hclapi-quickstart && cd hclapi-quickstart
-touch Hclapifile
+touch main.hcl
 ```
 
 ```hcl
@@ -112,4 +112,4 @@ Content-Type: application/problem+json
 }
 ```
 
-This is Hclapi's standard error format. See [Errors](./concepts/errors.md).
+This is hclapi's standard error format. See [Errors](./concepts/errors.md).

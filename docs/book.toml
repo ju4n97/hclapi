@@ -1,5 +1,5 @@
 [book]
-title = "Hclapi"
+title = "hclapi"
 description = "A declarative backend engine that turns HCL manifests, SQL, and Starlark into HTTP APIs."
 src = "src"
 

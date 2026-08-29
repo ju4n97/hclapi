@@ -1,6 +1,6 @@
 # 06_go_embedded
 
-Demonstrates how to embed Hclapi and use the `go` step to perform outbound network requests to external third-party APIs.
+Demonstrates how to embed hclapi and use the `go` step to perform outbound network requests to external third-party APIs.
 
 ## Scenario
 

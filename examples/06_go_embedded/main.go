@@ -33,9 +33,9 @@ type openMeteoResponse struct {
 }
 
 func main() {
-	// Initialize Hclapi engine
+	// Initialize hclapi engine
 	engine, err := hclapi.NewEngine(hclapi.Options{
-		ManifestDir:  ".",
+		ConfigPath:   ".",
 		StrictTyping: true,
 	})
 	if err != nil {

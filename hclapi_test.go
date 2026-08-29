@@ -26,7 +26,7 @@ endpoint "POST /api/v1/data" {
   }
 }
 `
-	if err := os.WriteFile(filepath.Join(tmpDir, "Hclapifile"), []byte(manifestContent), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.hcl"), []byte(manifestContent), 0600); err != nil {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
@@ -41,7 +41,7 @@ endpoint "POST /api/v1/data" {
 	}
 
 	engine, err := hclapi.NewEngine(hclapi.Options{
-		ManifestDir:  tmpDir,
+		ConfigPath:   tmpDir,
 		ErrorHandler: customHandler,
 	})
 	if err != nil {

@@ -25,7 +25,7 @@ services:
     environment:
       DATABASE_URL: "postgres://hclapi:hclapi_password@postgres:5432/hclapi_db?sslmode=disable"
     volumes:
-      - ./Hclapifile:/etc/hclapi/Hclapifile:ro
+      - ./main.hcl:/etc/hclapi/main.hcl:ro
     ports:
       - "8080:8080"
     restart: unless-stopped

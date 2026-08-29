@@ -1,6 +1,6 @@
 # Request lifecycle
 
-Hclapi has two phases. Manifests are validated once, at boot. Every request
+hclapi has two phases. Manifests are validated once, at boot. Every request
 after that runs the same fixed pipeline.
 
 | Phase   | Trigger                 | Result                                                  | On failure                                                                 |

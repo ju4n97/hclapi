@@ -1,6 +1,6 @@
 # Errors
 
-Hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem
+hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem
 Details for every error, whether raised at ingress, during validation, or
 during pipeline execution.
 
@@ -88,6 +88,6 @@ Content-Type: application/problem+json
 
 ## Custom formats
 
-When Hclapi is embedded in a platform with an existing error schema, the
+When hclapi is embedded in a platform with an existing error schema, the
 default format can be replaced with a custom `ErrorHandler`. See
 [Custom error handlers](../go/error-handlers.md).

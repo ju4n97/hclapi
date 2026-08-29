@@ -1,15 +1,13 @@
 # Files and merging
 
-Hclapi builds its runtime tree from a single file, or by walking a directory
+hclapi builds its runtime tree from a single file, or by walking a directory
 and merging every manifest it finds into one service definition.
 
 ## Recognized files
 
-| Pattern    | Example                          |
-| :--------- | :------------------------------- |
-| `Hclapifile` | `Hclapifile`, `routes/v1/Hclapifile` |
-| `*.hcl`    | `main.hcl`, `connections.hcl`    |
-| `*.hclapi`   | `api.hclapi`, `orders.hclapi`        |
+| Pattern | Example                       |
+| :------ | :---------------------------- |
+| `*.hcl` | `main.hcl`, `connections.hcl` |
 
 Non-manifest files (`README.md`, `init.sql`, `.gitignore`, static assets)
 are ignored during discovery.
@@ -40,7 +38,7 @@ A flat layout suits a single-file service.
 
 ```text
 my-service/
-├── Hclapifile
+├── main.hcl
 └── docker-compose.yaml
 ```
 
@@ -82,7 +80,7 @@ A versioned layout separates routes by API release.
 
 ```text
 gateway/
-├── Hclapifile
+├── server.hcl
 ├── schemas/
 │   ├── v1.hcl
 │   └── v2.hcl

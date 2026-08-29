@@ -1,10 +1,9 @@
-# Hclapi
+# hclapi
 
-Declarative HTTP API engine. Hclapi compiles HCL manifests into standalone
-services backed by parameterized SQL, sandboxed Starlark, and Redis caching.
+hclapi is a backend engine distributed as a single binary. It turns HashiCorp Configuration Language (HCL) manifests into HTTP APIs, combining data access, business logic, validation, and API definitions in a single declarative configuration, with built-in OpenAPI generation.
 
 [Documentation](https://ju4n97.github.io/hclapi/) ·
-[Why Hclapi](https://ju4n97.github.io/hclapi/why.html) ·
+[Why hclapi](https://ju4n97.github.io/hclapi/why.html) ·
 [Examples](./examples)
 
 ## Example
@@ -77,12 +76,12 @@ for a full walkthrough.
 
 ## Embedding
 
-Hclapi implements the standard library `http.Handler` interface and mounts
+hclapi implements the standard library `http.Handler` interface and mounts
 onto any Go multiplexer.
 
 ```go
 engine, err := hclapi.NewEngine(hclapi.Options{
-    ManifestDir:  "./api",
+    ConfigPath:  "./api",
     StrictTyping: true,
 })
 if err != nil {

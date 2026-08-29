@@ -16,6 +16,16 @@ tasks:
     desc: Generate man pages
     cmd: go run -tags man ./cmd/hclapi/man.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go
 
+  docs-serve:
+    desc: Serve documentation
+    dir: docs
+    cmd: mdbook serve
+
+  docs-build:
+    desc: Build documentation
+    dir: docs
+    cmd: mdbook build
+
   test:
     desc: Run tests
     cmd: go test ./...

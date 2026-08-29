@@ -15,3 +15,13 @@ tasks:
   cli-man:
     desc: Generate man pages
     cmd: go run -tags man ./cmd/hclapi/man.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go
+
+  test:
+    desc: Run tests
+    cmd: go test ./...
+
+  test-race:
+    desc: Run tests with race detector
+    env:
+      CGO_ENABLED: 1
+    cmd: go test -race -count=1 -timeout=30s ./...

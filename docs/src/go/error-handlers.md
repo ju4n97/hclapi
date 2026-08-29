@@ -1,6 +1,6 @@
 # Custom error handlers
 
-Overrides the default RFC 9457 error format when embedding Hclapi into a
+Overrides the default RFC 9457 error format when embedding hclapi into a
 platform with an existing error schema.
 
 ## Signature
@@ -24,8 +24,7 @@ type ProblemDetails struct {
 
 ```go
 engine, err := hclapi.NewEngine(hclapi.Options{
-    ManifestDir: "./config",
-
+    ConfigPath: "./config",
     ErrorHandler: func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetails) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(problem.Status)

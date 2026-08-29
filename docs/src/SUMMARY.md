@@ -1,6 +1,6 @@
-[Hclapi](./index.md)
+[hclapi](./index.md)
 
-- [Why Hclapi](./why.md)
+- [Why hclapi](./why.md)
 - [Comparisons](./comparisons.md)
 - [Installation](./installation.md)
 - [Quickstart](./quickstart.md)

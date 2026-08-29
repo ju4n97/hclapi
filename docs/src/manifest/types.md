@@ -1,6 +1,6 @@
 # Scalar types
 
-Hclapi defines two scalar types that deserialize human-readable strings into
+hclapi defines two scalar types that deserialize human-readable strings into
 typed values at compile time. Invalid input halts compilation with a file,
 line, and column diagnostic.
 

@@ -66,4 +66,4 @@ endpoint "GET /api/v1/users/{id}" {
 ```
 
 This shape, query a resource, branch on `rows_affected`, respond, recurs
-throughout Hclapi manifests. See [Patterns](../patterns.md#404-on-a-missing-record).
+throughout hclapi manifests. See [Patterns](../patterns.md#404-on-a-missing-record).

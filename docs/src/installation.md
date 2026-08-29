@@ -1,6 +1,6 @@
 # Installation
 
-Hclapi is distributed as a single, cross-platform binary.
+hclapi is distributed as a single, cross-platform binary.
 
 ## Precompiled binaries
 

@@ -4,19 +4,19 @@
 
 ```go
 type Options struct {
-    ManifestDir  string
+    ConfigPath   string
     StrictTyping bool
-    Logger       *slog.Logger
     ErrorHandler ErrorHandler
+    Logger       *slog.Logger
 }
 ```
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `ManifestDir` | `string` | `"."` | file or directory containing manifests |
-| `StrictTyping` | `bool` | `false` | enforces strict schema and expression type checking |
-| `Logger` | `*slog.Logger` | discard | standard `log/slog` logger |
+| Field          | Type           | Default          | Description                                                                     |
+| :------------- | :------------- | :--------------- | :------------------------------------------------------------------------------ |
+| `ConfigPath`   | `string`       | `"."`            | file or directory containing manifests                                          |
+| `StrictTyping` | `bool`         | `false`          | enforces strict schema and expression type checking                             |
 | `ErrorHandler` | `ErrorHandler` | RFC 9457 handler | overrides error serialization; see [Custom error handlers](./error-handlers.md) |
+| `Logger`       | `*slog.Logger` | discard          | standard `log/slog` logger                                                      |
 
 ## Structured logging
 
@@ -26,7 +26,7 @@ logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 }))
 
 engine, err := hclapi.NewEngine(hclapi.Options{
-    ManifestDir:  "./manifests",
+    ConfigPath:   "./manifests",
     StrictTyping: true,
     Logger:       logger,
 })

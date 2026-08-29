@@ -37,7 +37,7 @@ func New(options core.Options) (*Engine, error) {
 		errorHandler = core.DefaultErrorHandler
 	}
 
-	manifest, err := parser.Parse(options.ManifestDir)
+	manifest, err := parser.Parse(options.ConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifests: %w", err)
 	}

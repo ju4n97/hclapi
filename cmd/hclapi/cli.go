@@ -8,7 +8,7 @@ import (
 func newRootCommand() *cli.Command {
 	return &cli.Command{
 		Name:                  "hclapi",
-		Usage:                 "Declarative API runtime that turns Hclapi manifests into structured HTTP services.",
+		Usage:                 "Declarative API runtime that turns HCL manifests into structured HTTP services.",
 		Version:               version.GetVersion(),
 		Suggest:               true,
 		EnableShellCompletion: true,

@@ -20,7 +20,7 @@ type StepResult = core.StepResult
 // StepHandler is the type of a function that executes a single step.
 type StepHandler = core.StepHandler
 
-// Options defines the configuration options for the Hclapi engine.
+// Options defines the configuration options for the hclapi engine.
 type Options = core.Options
 
 // Duration wraps a time.Duration with universal text deserialization.

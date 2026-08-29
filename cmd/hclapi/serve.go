@@ -18,12 +18,12 @@ import (
 func newServeCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "serve",
-		Usage: "Starts the Hclapi HTTP server.",
+		Usage: "Starts the hclapi HTTP server.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
 				Aliases: []string{"c", "manifests", "m"},
-				Usage:   "Path to a Hclapifile, .hcl file, or directory containing manifests.",
+				Usage:   "Path to .hcl file, or directory containing manifests.",
 				Value:   ".",
 				Sources: cli.EnvVars("HCLAPI_CONFIG", "HCLAPI_MANIFESTS"),
 				Config: cli.StringConfig{
@@ -60,10 +60,10 @@ func newServeCommand() *cli.Command {
 				Level: logLevel,
 			}))
 
-			logger.Info("booting Hclapi API engine...")
+			logger.Info("booting hclapi API engine...")
 
 			engine, err := hclapi.NewEngine(hclapi.Options{
-				ManifestDir:  cmd.String("config"),
+				ConfigPath:   cmd.String("config"),
 				StrictTyping: true,
 				Logger:       logger,
 			})

@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,44 +38,80 @@ type Context struct {
 	RawRequest     *http.Request         `json:"-"`
 }
 
-// NewContext parses the HTTP request and returns an error if body decoding fails.
-func NewContext(req *http.Request, pathParamNames []string) (*Context, error) {
-	queryParams := make(map[string]string, len(req.URL.Query()))
-	for k, v := range req.URL.Query() {
+type contextConfig struct {
+	pathParams  []string
+	maxBodySize int64
+}
+
+// ContextOption configures optional behavior during Context creation.
+type ContextOption func(*contextConfig)
+
+// WithPathParams configures route parameter names to extract from the request.
+func WithPathParams(paramNames []string) ContextOption {
+	return func(c *contextConfig) {
+		c.pathParams = paramNames
+	}
+}
+
+// WithMaxBodySize sets the maximum allowed request body size in bytes.
+func WithMaxBodySize(limit int64) ContextOption {
+	return func(c *contextConfig) {
+		c.maxBodySize = limit
+	}
+}
+
+// NewContext parses the HTTP request, enforcing max body size and decoding JSON payloads.
+func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (*Context, error) {
+	var cfg contextConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	queryParams := make(map[string]string, len(r.URL.Query()))
+	for k, v := range r.URL.Query() {
 		if len(v) > 0 {
 			queryParams[k] = v[0]
 		}
 	}
 
-	headers := make(map[string]string, len(req.Header))
-	for k, v := range req.Header {
+	headers := make(map[string]string, len(r.Header))
+	for k, v := range r.Header {
 		if len(v) > 0 {
 			headers[strings.ToLower(k)] = v[0]
 		}
 	}
 
-	pathParams := make(map[string]string, len(pathParamNames))
-	for _, name := range pathParamNames {
-		pathParams[name] = req.PathValue(name)
+	pathParams := make(map[string]string, len(cfg.pathParams))
+	for _, name := range cfg.pathParams {
+		pathParams[name] = r.PathValue(name)
 	}
 
 	var bodyData any
-	if req.Body != nil {
-		bodyBytes, err := io.ReadAll(req.Body)
+	if r.Body != nil {
+		bodyReader := r.Body
+		if cfg.maxBodySize > 0 {
+			bodyReader = http.MaxBytesReader(w, r.Body, cfg.maxBodySize)
+		}
+
+		bodyBytes, err := io.ReadAll(bodyReader)
 		if err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				return nil, err // Preserved for engine status 413 mapping
+			}
 			return nil, fmt.Errorf("failed to read request body: %w", err)
 		}
+
 		if len(bodyBytes) > 0 {
 			if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
 				return nil, fmt.Errorf("invalid JSON payload: %w", err)
 			}
-			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 	}
 
 	return &Context{
 		Request: &RequestState{
-			Method:  req.Method,
+			Method:  r.Method,
 			Path:    pathParams,
 			Query:   queryParams,
 			Headers: headers,
@@ -83,6 +120,6 @@ func NewContext(req *http.Request, pathParamNames []string) (*Context, error) {
 		Steps:          make(map[string]StepResult),
 		Args:           make(map[string]any),
 		TimestampEpoch: time.Now().Unix(),
-		RawRequest:     req,
+		RawRequest:     r,
 	}, nil
 }

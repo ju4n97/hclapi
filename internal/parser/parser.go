@@ -19,7 +19,7 @@ func ishclapiManifest(filename string) bool {
 }
 
 // Parse reads a file or directory tree and returns the merged Manifest AST.
-func Parse(path string) (*Manifest, error) {
+func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to access path %q: %w", path, err)
@@ -28,7 +28,7 @@ func Parse(path string) (*Manifest, error) {
 	p := hclparse.NewParser()
 
 	if !info.IsDir() {
-		return parseFile(path, p)
+		return parseFile(path, p, evalCtx)
 	}
 
 	var mergedManifest Manifest
@@ -42,7 +42,7 @@ func Parse(path string) (*Manifest, error) {
 		}
 
 		if !d.IsDir() && ishclapiManifest(d.Name()) {
-			fileManifest, err := parseFile(currentPath, p)
+			fileManifest, err := parseFile(currentPath, p, evalCtx)
 			if err != nil {
 				return err
 			}
@@ -62,14 +62,14 @@ func Parse(path string) (*Manifest, error) {
 	return &mergedManifest, nil
 }
 
-func parseFile(path string, p *hclparse.Parser) (*Manifest, error) {
+func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	file, diags := p.ParseHCLFile(path)
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("failed to parse HCL file %s: %s", path, diags.Error())
 	}
 
 	var manifest Manifest
-	diags = gohcl.DecodeBody(file.Body, nil, &manifest)
+	diags = gohcl.DecodeBody(file.Body, evalCtx, &manifest)
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("failed to decode HCL file %s: %s", path, diags.Error())
 	}

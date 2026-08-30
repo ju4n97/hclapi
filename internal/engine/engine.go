@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
@@ -36,7 +37,7 @@ func New(options core.Options) (*Engine, error) {
 		errorHandler = core.DefaultErrorHandler
 	}
 
-	manifest, err := parser.Parse(options.ConfigPath)
+	manifest, err := parser.Parse(options.ConfigPath, eval.BaseContext())
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse manifests: %w", err)
 	}

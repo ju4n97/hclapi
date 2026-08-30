@@ -11,6 +11,16 @@ import (
 	"github.com/ju4n97/hclapi/internal/core"
 )
 
+// baseEvalContext is allocated once at package load and reused across all requests and parsing.
+var baseEvalContext = &hcl.EvalContext{
+	Functions: StandardFunctions(),
+}
+
+// BaseContext returns the singleton root EvalContext containing all standard functions.
+func BaseContext() *hcl.EvalContext {
+	return baseEvalContext
+}
+
 // Bool evaluates an HCL expression to a boolean value.
 func Bool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
 	if expr == nil {
@@ -83,15 +93,21 @@ func Any(expr hcl.Expression, ctx *core.Context) (any, error) {
 }
 
 func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
-	var reqDict map[string]cty.Value
+	if ctx == nil {
+		return baseEvalContext
+	}
+
+	var reqVal cty.Value
 	if ctx.Request != nil {
-		reqDict = map[string]cty.Value{
+		reqVal = cty.ObjectVal(map[string]cty.Value{
 			"method":  cty.StringVal(ctx.Request.Method),
 			"path":    mapToCty(ctx.Request.Path),
 			"query":   mapToCty(ctx.Request.Query),
 			"headers": mapToCty(ctx.Request.Headers),
 			"body":    anyToCty(ctx.Request.Body),
-		}
+		})
+	} else {
+		reqVal = cty.EmptyObjectVal
 	}
 
 	stepsDict := make(map[string]cty.Value, len(ctx.Steps))
@@ -102,16 +118,15 @@ func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
 		})
 	}
 
-	ctxDict := map[string]cty.Value{
-		"request":         cty.ObjectVal(reqDict),
-		"timestamp_epoch": cty.NumberIntVal(ctx.TimestampEpoch),
+	childCtx := baseEvalContext.NewChild()
+
+	childCtx.Variables = map[string]cty.Value{
+		"ctx": cty.ObjectVal(map[string]cty.Value{
+			"request":         reqVal,
+			"timestamp_epoch": cty.NumberIntVal(ctx.TimestampEpoch),
+		}),
+		"steps": cty.ObjectVal(stepsDict),
 	}
 
-	return &hcl.EvalContext{
-		Variables: map[string]cty.Value{
-			"ctx":   cty.ObjectVal(ctxDict),
-			"steps": cty.ObjectVal(stepsDict),
-		},
-		Functions: standardFunctions(),
-	}
+	return childCtx
 }

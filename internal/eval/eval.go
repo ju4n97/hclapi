@@ -6,12 +6,13 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/zclconf/go-cty/cty"
+
+	"github.com/ju4n97/hclapi/internal/core"
 )
 
-// EvalBool evaluates an HCL expression to a boolean value.
-func EvalBool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
+// Bool evaluates an HCL expression to a boolean value.
+func Bool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
@@ -28,8 +29,8 @@ func EvalBool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, er
 	return val.True(), nil
 }
 
-// EvalInt evaluates an HCL expression to an integer.
-func EvalInt(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
+// Int evaluates an HCL expression to an integer.
+func Int(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
@@ -48,8 +49,8 @@ func EvalInt(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error
 	return int(i), nil
 }
 
-// EvalMap evaluates an HCL expression into a string-keyed dictionary.
-func EvalMap(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
+// Map evaluates an HCL expression into a string-keyed dictionary.
+func Map(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
 	if expr == nil {
 		return nil, nil
 	}
@@ -67,8 +68,8 @@ func EvalMap(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
 	return nil, nil
 }
 
-// EvalAny evaluates an arbitrary HCL expression into corresponding Go types.
-func EvalAny(expr hcl.Expression, ctx *core.Context) (any, error) {
+// Any evaluates an arbitrary HCL expression into corresponding Go types.
+func Any(expr hcl.Expression, ctx *core.Context) (any, error) {
 	if expr == nil {
 		return nil, nil
 	}

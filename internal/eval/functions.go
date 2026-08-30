@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -204,7 +205,7 @@ var coalesceFunc = function.New(&function.Spec{
 	Type: function.StaticReturnType(cty.DynamicPseudoType),
 	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 		if len(args) == 0 {
-			return cty.NilVal, fmt.Errorf("at least one argument is required")
+			return cty.NilVal, errors.New("at least one argument is required")
 		}
 		for _, arg := range args {
 			if !arg.IsKnown() || arg.IsNull() {

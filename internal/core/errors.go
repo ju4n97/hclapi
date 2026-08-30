@@ -11,8 +11,8 @@ type InvalidParam struct {
 	Reason string `json:"reason"`
 }
 
-// ProblemDetails represents an RFC 9457 compliant error object.
-type ProblemDetails struct {
+// ProblemDetailsError represents an RFC 9457 compliant error object.
+type ProblemDetailsError struct {
 	Type          string         `json:"type,omitempty"`
 	Title         string         `json:"title"`
 	Status        int            `json:"status"`
@@ -24,7 +24,7 @@ type ProblemDetails struct {
 }
 
 // Error implements the standard error interface.
-func (p ProblemDetails) Error() string {
+func (p ProblemDetailsError) Error() string {
 	if p.Detail != "" {
 		return p.Title + ": " + p.Detail
 	}
@@ -32,11 +32,13 @@ func (p ProblemDetails) Error() string {
 }
 
 // ErrorHandler defines the contract for customizing API error serialization.
-type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem ProblemDetails)
+type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem ProblemDetailsError)
 
 // DefaultErrorHandler returns a ProblemDetails with default values.
-func DefaultErrorHandler(w http.ResponseWriter, r *http.Request, problem ProblemDetails) {
+func DefaultErrorHandler(w http.ResponseWriter, r *http.Request, problem ProblemDetailsError) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(problem.Status)
-	_ = json.NewEncoder(w).Encode(problem)
+	if err := json.NewEncoder(w).Encode(problem); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }

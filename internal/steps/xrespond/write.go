@@ -8,7 +8,7 @@ import (
 
 // Write writes the HTTP status code, sets Content-Type to JSON, and serializes
 // either the evaluated body or the fallback result from the previous pipeline step.
-func Write(w http.ResponseWriter, status int, evaluatedBody any, lastResult any) error {
+func Write(w http.ResponseWriter, status int, evaluatedBody, lastResult any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -83,7 +84,7 @@ def execute(ctx):
 		executor := engine.NewPipelineExecutor(steps, goSteps)
 
 		// 1. Test authorized request
-		reqAuth := httptest.NewRequest(http.MethodGet, "/test", nil)
+		reqAuth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqAuth.Header.Set("Authorization", "secret-token")
 
 		ctxAuth, err := core.NewContext(reqAuth, nil)
@@ -107,7 +108,7 @@ def execute(ctx):
 		}
 
 		// 2. Test unauthorized request (hits 401 condition)
-		reqUnauth := httptest.NewRequest(http.MethodGet, "/test", nil)
+		reqUnauth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqUnauth.Header.Set("Authorization", "wrong-token")
 
 		ctxUnauth, err := core.NewContext(reqUnauth, nil)

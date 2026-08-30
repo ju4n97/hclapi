@@ -3,7 +3,6 @@ package engine
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -29,7 +28,7 @@ type Engine struct {
 func New(options core.Options) (*Engine, error) {
 	logger := options.Logger
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	errorHandler := options.ErrorHandler
@@ -78,7 +77,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		hclapiCtx, err := core.NewContext(r, paramNames)
 		if err != nil {
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, core.ProblemDetails{
+			e.errorHandler(w, r, core.ProblemDetailsError{
 				Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
@@ -90,7 +89,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, core.ProblemDetails{
+			e.errorHandler(w, r, core.ProblemDetailsError{
 				Type:     "https://github.com/ju4n97/hclapi/errors/pipeline-execution-failed",
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,

@@ -4,8 +4,6 @@ import (
 	"testing"
 	"time"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 )

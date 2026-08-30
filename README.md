@@ -4,7 +4,9 @@
 [![Release](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml)
 [![CI](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
 
-hclapi is a declarative backend engine distributed as a single cross-platform binary. It turns HashiCorp Configuration Language (HCL) manifests, SQL queries, and Starlark scripts into production HTTP APIs with built-in connection pooling, validation, and OpenAPI documentation.
+hclapi is a backend engine distributed as a single binary. It turns HashiCorp Configuration Language (HCL) manifests into HTTP APIs,
+combining data access, business logic, validation, and API definitions in a single declarative configuration, with built-in OpenAPI
+generation.
 
 [Documentation](https://ju4n97.github.io/hclapi/) ·
 [Why hclapi](https://ju4n97.github.io/hclapi/why.html) ·

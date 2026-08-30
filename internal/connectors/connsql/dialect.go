@@ -4,6 +4,11 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgconn"
+	mssql "github.com/microsoft/go-mssqldb"
+	"modernc.org/sqlite"
 )
 
 // Dialect provides database-specific SQL parameter placeholder formatting and error code extraction.
@@ -39,18 +44,6 @@ func (d Dialect) ExtractErrorCode(err error) string {
 	return defaultExtractSQLErrorCode(err)
 }
 
-func defaultExtractSQLErrorCode(err error) string {
-	if coder, ok := errors.AsType[sqlStateCoder](err); ok {
-		return coder.SQLState()
-	}
-
-	if getter, ok := errors.AsType[codeGetter](err); ok {
-		return getter.Code()
-	}
-
-	return ""
-}
-
 // MatchErrorCode checks if an extracted database error matches the target catch code.
 func (d Dialect) MatchErrorCode(actualCode, targetCode string) bool {
 	if actualCode == "" || targetCode == "" {
@@ -79,36 +72,6 @@ func (d Dialect) MatchErrorCode(actualCode, targetCode string) bool {
 	return false
 }
 
-type pgErrorCoder interface {
-	error
-	SQLState() string
-}
-
-type mySQLError interface {
-	error
-	Number() uint16
-}
-
-type sqliteCoder interface {
-	error
-	Code() int
-}
-
-type mssqlError interface {
-	error
-	Number() int32
-}
-
-type sqlStateCoder interface {
-	error
-	SQLState() string
-}
-
-type codeGetter interface {
-	error
-	Code() string
-}
-
 // Canonical dialect definitions.
 var (
 	PostgresDialect = Dialect{
@@ -117,8 +80,8 @@ var (
 			return "$" + strconv.Itoa(index+1)
 		},
 		errExtractor: func(err error) string {
-			if e, ok := errors.AsType[pgErrorCoder](err); ok {
-				return e.SQLState()
+			if e, ok := errors.AsType[*pgconn.PgError](err); ok {
+				return e.Code
 			}
 			return ""
 		},
@@ -136,8 +99,8 @@ var (
 			return "?"
 		},
 		errExtractor: func(err error) string {
-			if e, ok := errors.AsType[mySQLError](err); ok {
-				return strconv.FormatUint(uint64(e.Number()), 10)
+			if e, ok := errors.AsType[*mysql.MySQLError](err); ok {
+				return strconv.FormatUint(uint64(e.Number), 10)
 			}
 			return ""
 		},
@@ -149,7 +112,7 @@ var (
 			return "?"
 		},
 		errExtractor: func(err error) string {
-			if e, ok := errors.AsType[sqliteCoder](err); ok {
+			if e, ok := errors.AsType[*sqlite.Error](err); ok {
 				return strconv.Itoa(e.Code())
 			}
 			return ""
@@ -162,8 +125,8 @@ var (
 			return "@p" + strconv.Itoa(index+1)
 		},
 		errExtractor: func(err error) string {
-			if e, ok := errors.AsType[mssqlError](err); ok {
-				return strconv.FormatInt(int64(e.Number()), 10)
+			if e, ok := errors.AsType[mssql.Error](err); ok {
+				return strconv.FormatInt(int64(e.Number), 10)
 			}
 			return ""
 		},
@@ -213,4 +176,26 @@ func ResolveDialect(driver string) Dialect {
 	default:
 		return SQLiteDialect
 	}
+}
+
+type sqlStateCoder interface {
+	error
+	SQLState() string
+}
+
+type codeGetter interface {
+	error
+	Code() string
+}
+
+func defaultExtractSQLErrorCode(err error) string {
+	if coder, ok := errors.AsType[sqlStateCoder](err); ok {
+		return coder.SQLState()
+	}
+
+	if getter, ok := errors.AsType[codeGetter](err); ok {
+		return getter.Code()
+	}
+
+	return ""
 }

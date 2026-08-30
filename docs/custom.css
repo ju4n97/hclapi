@@ -1,0 +1,42 @@
+:root {
+  --sourcey-primary: 0 173 216;
+  --sourcey-primary-light: 93 201 226;
+  --sourcey-primary-dark: 0 117 141;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  letter-spacing: -0.01em;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+}
+
+code,
+pre,
+kbd {
+  font-family: "JetBrains Mono", monospace;
+}
+
+pre {
+  border-radius: 12px;
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+blockquote {
+  border-left-width: 3px;
+}

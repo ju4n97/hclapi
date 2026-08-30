@@ -79,7 +79,7 @@ func TestNewContext(t *testing.T) {
 				bodyReader = bytes.NewReader(nil)
 			}
 
-			req := httptest.NewRequest(tt.method, tt.url, bodyReader)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.url, bodyReader)
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}

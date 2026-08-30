@@ -16,7 +16,7 @@ func TestProblemDetails(t *testing.T) {
 	t.Run("DefaultErrorHandler writes application/problem+json", func(t *testing.T) {
 		t.Parallel()
 
-		problem := core.ProblemDetails{
+		problem := core.ProblemDetailsError{
 			Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
 			Title:    "Invalid JSON Payload",
 			Status:   http.StatusBadRequest,
@@ -27,7 +27,7 @@ func TestProblemDetails(t *testing.T) {
 			},
 		}
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/sanitize", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/sanitize", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		core.DefaultErrorHandler(rec, req, problem)
@@ -40,7 +40,7 @@ func TestProblemDetails(t *testing.T) {
 			t.Errorf("expected Content-Type application/problem+json, got %q", ct)
 		}
 
-		var parsed core.ProblemDetails
+		var parsed core.ProblemDetailsError
 		if err := json.NewDecoder(rec.Body).Decode(&parsed); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
@@ -53,7 +53,7 @@ func TestProblemDetails(t *testing.T) {
 	t.Run("Error formatting", func(t *testing.T) {
 		t.Parallel()
 
-		prob := core.ProblemDetails{
+		prob := core.ProblemDetailsError{
 			Title:  "Bad Request",
 			Detail: "missing param",
 		}

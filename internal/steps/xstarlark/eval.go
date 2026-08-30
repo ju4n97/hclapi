@@ -57,13 +57,17 @@ func GoToStarlarkValue(val any) starlark.Value {
 	case map[string]any:
 		dict := starlark.NewDict(len(v))
 		for key, subVal := range v {
-			_ = dict.SetKey(starlark.String(key), GoToStarlarkValue(subVal))
+			if err := dict.SetKey(starlark.String(key), GoToStarlarkValue(subVal)); err != nil {
+				panic(fmt.Errorf("xstarlark: unexpected SetKey error: %w", err))
+			}
 		}
 		return dict
 	case map[string]string:
 		dict := starlark.NewDict(len(v))
 		for key, subVal := range v {
-			_ = dict.SetKey(starlark.String(key), starlark.String(subVal))
+			if err := dict.SetKey(starlark.String(key), starlark.String(subVal)); err != nil {
+				panic(fmt.Errorf("xstarlark: unexpected SetKey error: %w", err))
+			}
 		}
 		return dict
 	case []any:
@@ -118,7 +122,10 @@ func StarlarkToGoValue(val starlark.Value) any {
 	case *starlarkstruct.Struct:
 		res := make(map[string]any)
 		for _, name := range v.AttrNames() {
-			attrVal, _ := v.Attr(name)
+			attrVal, err := v.Attr(name)
+			if err != nil {
+				panic(fmt.Errorf("xstarlark: unexpected Attr error for %q: %w", name, err))
+			}
 			res[name] = StarlarkToGoValue(attrVal)
 		}
 		return res

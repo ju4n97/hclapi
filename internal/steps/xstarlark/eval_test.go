@@ -4,9 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
 )
 
 func TestEval(t *testing.T) {

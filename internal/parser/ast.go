@@ -2,6 +2,7 @@ package parser
 
 import (
 	"github.com/hashicorp/hcl/v2"
+
 	"github.com/ju4n97/hclapi/internal/core"
 )
 

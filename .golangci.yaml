@@ -1,18 +1,189 @@
 version: "2"
 
+run:
+  timeout: 5m
+  tests: true
+
 linters:
-  default: standard
+  default: none
+  enable:
+    # Core correctness
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Error handling
+    - errorlint
+    - errname
+    - wrapcheck
+
+    # Style & clarity
+    - revive
+    - gocritic
+    - misspell
+    - unconvert
+    - unparam
+    - whitespace
+    - nolintlint
+
+    # Safety / common bugs
+    - asasalint
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - forcetypeassert
+    - nilerr
+    - noctx
+
+    # Modern Go
+    - modernize
+    - exptostd
+    - usestdlibvars
+    - perfsprint
+
+    # Tests
+    - testifylint
+
+    # Extra
+    - exhaustive
+    - prealloc
+    - rowserrcheck
+    - sloglint
+    - gocheckcompilerdirectives
+    - gochecknoinits
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+
+    misspell:
+      locale: US
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
+    staticcheck:
+      checks:
+        - all
+        - "-ST1000"   # package comments (optional)
+        - "-ST1003"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+        - (*encoding/json.Encoder).Encode
+        - path/filepath.WalkDir
+        - io/fs.WalkDir
+        - os.Remove
+        - os.RemoveAll
+        - os.Rename
+        - (*os.File).Close
+        - (*os.File).Sync
+        - (*bufio.Writer).Flush
+        - (*gzip.Writer).Close
+        - (*zip.Writer).Close
+        - net/http.Server.Serve
+        - net/http.Server.ListenAndServe
+        - net/http.Server.ListenAndServeTLS
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - dupl
+          - funlen
+          - gocyclo
+          - wrapcheck
+          - errcheck
+          - forcetypeassert
 
 formatters:
   enable:
-    - gci
-    - gofmt
     - gofumpt
-    - goimports
+    - gci
     - golines
+
   settings:
-    goimports:
-      local-prefixes: 
-        - github.com/ju4n97/hclapi
+    gofumpt:
+      module-path: github.com/ju4n97/hclapi
+      extra:
+        group-params: true
+
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/ju4n97/hclapi)
+      custom-order: true
+
     golines:
       max-len: 120
+      tab-len: 4
+      shorten-comments: false
+      reformat-tags: true
+      chain-split-dots: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

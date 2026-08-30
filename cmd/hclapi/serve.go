@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ju4n97/hclapi"
 	"github.com/urfave/cli/v3"
+
+	"github.com/ju4n97/hclapi"
 )
 
 func newServeCommand() *cli.Command {
@@ -69,7 +70,7 @@ func newServeCommand() *cli.Command {
 			})
 			if err != nil {
 				logger.Error("engine initialization failed", "error", err)
-				return err
+				return fmt.Errorf("engine initialization failed: %w", err)
 			}
 
 			srv := engine.Server()
@@ -79,7 +80,7 @@ func newServeCommand() *cli.Command {
 				host = cmd.String("host")
 			}
 			if cmd.IsSet("port") {
-				port = int(cmd.Int("port"))
+				port = cmd.Int("port")
 			}
 
 			server := &http.Server{

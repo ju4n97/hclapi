@@ -69,8 +69,7 @@ func newServeCommand() *cli.Command {
 				Logger:       logger,
 			})
 			if err != nil {
-				logger.Error("engine initialization failed", "error", err)
-				return fmt.Errorf("engine initialization failed: %w", err)
+				return err
 			}
 
 			srv := engine.Server()

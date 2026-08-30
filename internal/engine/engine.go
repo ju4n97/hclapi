@@ -43,7 +43,7 @@ func New(options core.Options) (*Engine, error) {
 
 	manifest, err := parser.Parse(options.ConfigPath, eval.BaseContext())
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse manifests: %w", err)
+		return nil, fmt.Errorf("parse manifests: %w", err)
 	}
 
 	bootCtx := context.Background()
@@ -53,13 +53,13 @@ func New(options core.Options) (*Engine, error) {
 	for _, connBlock := range manifest.Connections {
 		conn, err := connBlock.ToConnection()
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse connection configuration: %w", err)
+			return nil, fmt.Errorf("connection config %q: %w", connBlock.Name, err)
 		}
 
 		if xsql.IsSupportedDriver(conn.Driver) {
 			if err := sqlManager.Open(bootCtx, conn); err != nil {
 				_ = sqlManager.Close()
-				return nil, fmt.Errorf("failed to initialize connection %q: %w", conn.Reference(), err)
+				return nil, fmt.Errorf("init connection %q: %w", conn.Reference(), err)
 			}
 			logger.Info("initialized database connection pool", "connection", conn.Reference(), "driver", conn.Driver)
 		}
@@ -78,7 +78,7 @@ func New(options core.Options) (*Engine, error) {
 	for _, ep := range manifest.Endpoints {
 		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode pipeline steps: %w", err)
+			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
 		}
 
 		e.bindRoute(ep.MethodAndPath, steps)
@@ -151,7 +151,7 @@ func (e *Engine) Close() error {
 // RegisterStep registers a named custom Go function for the pipeline runtime.
 func (e *Engine) RegisterStep(name string, handler core.StepHandler) error {
 	if _, exists := e.goSteps[name]; exists {
-		return fmt.Errorf("step %q is already registered", name)
+		return fmt.Errorf("step %q already registered", name)
 	}
 
 	e.goSteps[name] = handler

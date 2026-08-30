@@ -2,8 +2,6 @@
 package hclapi
 
 import (
-	"fmt"
-
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
 )
@@ -52,10 +50,5 @@ var DefaultErrorHandler = core.DefaultErrorHandler
 
 // NewEngine initializes an Engine by parsing manifests and registering route endpoints.
 func NewEngine(options Options) (*Engine, error) {
-	eng, err := engine.New(options)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize hclapi engine: %w", err)
-	}
-
-	return eng, nil
+	return engine.New(options)
 }

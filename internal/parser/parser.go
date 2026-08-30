@@ -22,7 +22,7 @@ func ishclapiManifest(filename string) bool {
 func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to access path %q: %w", path, err)
+		return nil, fmt.Errorf("access path %q: %w", path, err)
 	}
 
 	p := hclparse.NewParser()
@@ -76,13 +76,13 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	file, diags := p.ParseHCLFile(path)
 	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to parse HCL file %s: %s", path, diags.Error())
+		return nil, fmt.Errorf("parse %s: %s", path, diags.Error())
 	}
 
 	var manifest Manifest
 	diags = gohcl.DecodeBody(file.Body, evalCtx, &manifest)
 	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to decode HCL file %s: %s", path, diags.Error())
+		return nil, fmt.Errorf("decode %s: %s", path, diags.Error())
 	}
 
 	return &manifest, nil
@@ -100,7 +100,7 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 
 	content, diags := pipeline.Body.Content(schema)
 	if diags.HasErrors() {
-		return nil, fmt.Errorf("failed to decode pipeline steps: %s", diags.Error())
+		return nil, fmt.Errorf("decode pipeline: %s", diags.Error())
 	}
 
 	var steps []ParsedStep
@@ -109,7 +109,7 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 		case string(StepTypeGo):
 			var cfg GoStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
-				return nil, fmt.Errorf("failed to decode go step %q: %s", block.Labels[0], diags.Error())
+				return nil, fmt.Errorf("go step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type: StepTypeGo,
@@ -120,7 +120,7 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 		case string(StepTypeStarlark):
 			var cfg StarlarkStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
-				return nil, fmt.Errorf("failed to decode starlark step %q: %s", block.Labels[0], diags.Error())
+				return nil, fmt.Errorf("starlark step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type:     StepTypeStarlark,
@@ -131,7 +131,7 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 		case string(StepTypeRespond):
 			var cfg RespondStepBlock
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
-				return nil, fmt.Errorf("failed to decode respond step: %s", diags.Error())
+				return nil, fmt.Errorf("respond step: %s", diags.Error())
 			}
 			steps = append(steps, ParsedStep{
 				Type:    StepTypeRespond,

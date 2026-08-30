@@ -8,10 +8,12 @@ import (
 // Duration wraps a time.Duration with universal text deserialization.
 type Duration time.Duration
 
+// Duration returns the duration as a time.Duration.
 func (d Duration) Duration() time.Duration {
 	return time.Duration(d)
 }
 
+// String returns the duration as a human-readable string.
 func (d Duration) String() string {
 	return time.Duration(d).String()
 }

@@ -8,25 +8,33 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/steps/xgo"
 	"github.com/ju4n97/hclapi/internal/steps/xrespond"
+	"github.com/ju4n97/hclapi/internal/steps/xsql"
 	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
 )
 
 // PipelineExecutor coordinates sequential pipeline step dispatching.
 type PipelineExecutor struct {
-	steps   []parser.ParsedStep
-	goSteps map[string]core.StepHandler
+	steps      []parser.ParsedStep
+	goSteps    map[string]core.StepHandler
+	sqlManager *connsql.Manager
 }
 
 // NewPipelineExecutor creates a new instance of the pipeline runner.
-func NewPipelineExecutor(steps []parser.ParsedStep, goSteps map[string]core.StepHandler) *PipelineExecutor {
+func NewPipelineExecutor(
+	steps []parser.ParsedStep,
+	goSteps map[string]core.StepHandler,
+	sqlManager *connsql.Manager,
+) *PipelineExecutor {
 	return &PipelineExecutor{
-		steps:   steps,
-		goSteps: goSteps,
+		steps:      steps,
+		goSteps:    goSteps,
+		sqlManager: sqlManager,
 	}
 }
 
@@ -39,12 +47,17 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 
 		switch step.Type {
 		case parser.StepTypeGo:
-			if _, err := p.execGoStep(step, ctx); err != nil {
+			if err := p.execGoStep(step, ctx); err != nil {
 				return err
 			}
 
 		case parser.StepTypeStarlark:
-			if _, err := p.execStarlarkStep(step, ctx); err != nil {
+			if err := p.execStarlarkStep(step, ctx); err != nil {
+				return err
+			}
+
+		case parser.StepTypeSQL:
+			if err := p.execSQLStep(step, ctx); err != nil {
 				return err
 			}
 
@@ -65,37 +78,38 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 	return nil
 }
 
-func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
+func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) error {
 	if step.Go == nil {
-		return nil, fmt.Errorf("step %q: missing go configuration", step.Name)
+		return fmt.Errorf("step %q: missing go configuration", step.Name)
 	}
 
 	args, err := eval.Map(step.Go.Args, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q args: %w", step.Name, err)
+		return fmt.Errorf("step %q args: %w", step.Name, err)
 	}
 
 	handler, exists := p.goSteps[step.Go.Use]
 	if !exists {
-		return nil, fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
+		return fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
 	}
 
 	res, err := xgo.Execute(handler, ctx, args)
 	if err != nil {
-		return nil, fmt.Errorf("step %q: %w", step.Name, err)
+		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
-	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = exports
+		ctx.Steps[step.Name] = map[string]any{
+			"result": res,
+		}
 	}
 
-	return exports, nil
+	return nil
 }
 
-func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
+func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) error {
 	if step.Starlark == nil {
-		return nil, fmt.Errorf("step %q: missing starlark configuration", step.Name)
+		return fmt.Errorf("step %q: missing starlark configuration", step.Name)
 	}
 
 	reqFields := starlark.StringDict{
@@ -119,15 +133,52 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 
 	res, err := xstarlark.Eval(step.Starlark.Source, starlarkCtx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q: %w", step.Name, err)
+		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
-	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = exports
+		ctx.Steps[step.Name] = map[string]any{
+			"result": res,
+		}
 	}
 
-	return exports, nil
+	return nil
+}
+
+func (p *PipelineExecutor) execSQLStep(step parser.ParsedStep, ctx *core.Context) error {
+	if step.SQL == nil {
+		return fmt.Errorf("step %q: missing sql configuration", step.Name)
+	}
+
+	connRef, err := parser.ResolveConnectionRef(step.SQL.Connection)
+	if err != nil {
+		return fmt.Errorf("step %q connection: %w", step.Name, err)
+	}
+
+	pool, exists := p.sqlManager.Get(connRef)
+	if !exists {
+		return fmt.Errorf("step %q: unknown connection %q", step.Name, connRef)
+	}
+
+	args, err := eval.Map(step.SQL.Args, ctx)
+	if err != nil {
+		return fmt.Errorf("step %q args: %w", step.Name, err)
+	}
+
+	res, err := xsql.Execute(ctx.Context(), pool, step.SQL.Query, args)
+	if err != nil {
+		return fmt.Errorf("step %q: %w", step.Name, err)
+	}
+
+	if step.Name != "" {
+		ctx.Steps[step.Name] = map[string]any{
+			"rows":          res.Rows,
+			"row":           res.Row,
+			"rows_affected": res.RowsAffected,
+		}
+	}
+
+	return nil
 }
 
 func (p *PipelineExecutor) execRespondStep(

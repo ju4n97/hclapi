@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/ju4n97/hclapi/internal/connections/xsql"
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -23,7 +23,7 @@ type Engine struct {
 	options      core.Options
 	server       core.Server
 	mux          *http.ServeMux
-	sqlManager   *xsql.Manager
+	sqlManager   *connsql.Manager
 	goSteps      map[string]core.StepHandler
 	errorHandler core.ErrorHandler
 	logger       *slog.Logger
@@ -48,7 +48,7 @@ func New(options core.Options) (*Engine, error) {
 
 	bootCtx := context.Background()
 
-	sqlManager := xsql.NewManager()
+	sqlManager := connsql.NewManager()
 
 	for _, connBlock := range manifest.Connections {
 		conn, err := connBlock.ToConnection()
@@ -56,7 +56,7 @@ func New(options core.Options) (*Engine, error) {
 			return nil, fmt.Errorf("connection config %q: %w", connBlock.Name, err)
 		}
 
-		if xsql.IsSupportedDriver(conn.Driver) {
+		if connsql.IsSupportedDriver(conn.Driver) {
 			if err := sqlManager.Open(bootCtx, conn); err != nil {
 				_ = sqlManager.Close()
 				return nil, fmt.Errorf("init connection %q: %w", conn.Reference(), err)
@@ -102,7 +102,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		}
 	}
 
-	executor := NewPipelineExecutor(steps, e.goSteps)
+	executor := NewPipelineExecutor(steps, e.goSteps, e.sqlManager)
 
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
 		hclapiCtx, err := core.NewContext(w, r,

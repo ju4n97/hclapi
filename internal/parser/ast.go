@@ -1,9 +1,12 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/ju4n97/hclapi/internal/core"
 )
@@ -213,4 +216,35 @@ type RespondStepBlock struct {
 	Status    hcl.Expression `hcl:"status,optional"`
 	Headers   hcl.Expression `hcl:"headers,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`
+}
+
+// ResolveConnectionRef extracts the connection identifier string from an HCL expression.
+// It handles unquoted traversals (connection.postgres.main) and string literals (connection: "postgres.main").
+func ResolveConnectionRef(expr hcl.Expression) (string, error) {
+	if expr == nil {
+		return "", errors.New("missing connection reference")
+	}
+
+	// If it's a traversal
+	vars := expr.Variables()
+	if len(vars) > 0 {
+		var parts []string
+		for _, split := range vars[0] {
+			switch step := split.(type) {
+			case hcl.TraverseRoot:
+				parts = append(parts, step.Name)
+			case hcl.TraverseAttr:
+				parts = append(parts, step.Name)
+			}
+		}
+		return strings.Join(parts, "."), nil
+	}
+
+	// If it's a string literal or evaluated expression
+	val, diags := expr.Value(nil)
+	if !diags.HasErrors() && val.Type().Equals(cty.String) {
+		return val.AsString(), nil
+	}
+
+	return "", errors.New("invalid connection reference expression")
 }

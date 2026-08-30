@@ -71,10 +71,59 @@ func (s *ServerBlock) ToServer() core.Server {
 
 // ConnectionBlock represents a connection pool configuration block.
 type ConnectionBlock struct {
-	Type   string   `hcl:"type,attr"`
-	Name   string   `hcl:"name,label"`
-	URL    string   `hcl:"url,attr"`
-	Remain hcl.Body `hcl:",remain"`
+	Driver string               `hcl:"driver,label"`
+	Name   string               `hcl:"name,label"`
+	URL    string               `hcl:"url,attr"`
+	Pool   *ConnectionPoolBlock `hcl:"pool,block"`
+	Remain hcl.Body             `hcl:",remain"`
+}
+
+// ConnectionPoolBlock represents connection pool tuning parameters.
+type ConnectionPoolBlock struct {
+	MaxOpenConns    *int     `hcl:"max_open_conns,optional"`
+	MaxIdleConns    *int     `hcl:"max_idle_conns,optional"`
+	ConnMaxLifetime *string  `hcl:"conn_max_lifetime,optional"`
+	IdleTimeout     *string  `hcl:"idle_timeout,optional"`
+	Size            *int     `hcl:"size,optional"`
+	Remain          hcl.Body `hcl:",remain"`
+}
+
+// ToConnection maps the AST ConnectionBlock into a pure domain core.Connection with defaults applied.
+func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
+	conn := core.Connection{
+		Driver: c.Driver,
+		Name:   c.Name,
+		URL:    c.URL,
+		Pool:   core.DefaultPoolConfig(),
+	}
+
+	if c.Pool != nil {
+		if c.Pool.MaxOpenConns != nil {
+			conn.Pool.MaxOpenConns = *c.Pool.MaxOpenConns
+		}
+		if c.Pool.MaxIdleConns != nil {
+			conn.Pool.MaxIdleConns = *c.Pool.MaxIdleConns
+		}
+		if c.Pool.Size != nil {
+			conn.Pool.Size = *c.Pool.Size
+		}
+		if c.Pool.ConnMaxLifetime != nil {
+			var d core.Duration
+			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err == nil {
+				conn.Pool.ConnMaxLifetime = d
+			}
+			conn.Pool.ConnMaxLifetime = d
+		}
+		if c.Pool.IdleTimeout != nil {
+			var d core.Duration
+			if err := d.UnmarshalText([]byte(*c.Pool.IdleTimeout)); err == nil {
+				conn.Pool.IdleTimeout = d
+			}
+			conn.Pool.IdleTimeout = d
+		}
+	}
+
+	return conn, nil
 }
 
 // SchemaBlock represents a request body schema definition block.

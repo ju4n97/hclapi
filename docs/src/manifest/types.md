@@ -8,14 +8,14 @@ line, and column diagnostic.
 
 Backed by Go's `time.Duration`.
 
-| Suffix | Unit |
-| :--- | :--- |
-| `ns` | nanoseconds |
+| Suffix     | Unit         |
+| :--------- | :----------- |
+| `ns`       | nanoseconds  |
 | `us`, `µs` | microseconds |
-| `ms` | milliseconds |
-| `s` | seconds |
-| `m` | minutes |
-| `h` | hours |
+| `ms`       | milliseconds |
+| `s`        | seconds      |
+| `m`        | minutes      |
+| `h`        | hours        |
 
 Units may be combined.
 
@@ -29,17 +29,17 @@ idle_timeout = "2m45s"
 Backed by a 64-bit signed integer. Binary (1024-based) and decimal
 (1000-based) units are both accepted; matching is case-insensitive.
 
-| Suffix | Standard | Bytes |
-| :--- | :--- | :--- |
-| `B` | byte | `1` |
-| `KB`, `K` | kilobyte | `1,000` |
-| `KiB` | kibibyte | `1,024` |
-| `MB`, `M` | megabyte | `1,000,000` |
-| `MiB` | mebibyte | `1,048,576` |
-| `GB`, `G` | gigabyte | `1,000,000,000` |
-| `GiB` | gibibyte | `1,073,741,824` |
+| Suffix    | Standard | Bytes               |
+| :-------- | :------- | :------------------ |
+| `B`       | byte     | `1`                 |
+| `KB`, `K` | kilobyte | `1,000`             |
+| `KiB`     | kibibyte | `1,024`             |
+| `MB`, `M` | megabyte | `1,000,000`         |
+| `MiB`     | mebibyte | `1,048,576`         |
+| `GB`, `G` | gigabyte | `1,000,000,000`     |
+| `GiB`     | gibibyte | `1,073,741,824`     |
 | `TB`, `T` | terabyte | `1,000,000,000,000` |
-| `TiB` | tebibyte | `1,099,511,627,776` |
+| `TiB`     | tebibyte | `1,099,511,627,776` |
 
 Fractional prefixes and raw byte counts are both accepted.
 

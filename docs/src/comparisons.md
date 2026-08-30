@@ -37,7 +37,7 @@ For problems with substantial business logic, writing a backend service may stil
 
 ## Summary
 
-|                | hclapi                               | PostgREST                | Hasura / PostGraphile               | Supabase              | n8n-like                             |
+|                | hclapi                             | PostgREST                | Hasura / PostGraphile               | Supabase              | n8n-like                             |
 | :------------- | :--------------------------------- | :----------------------- | :---------------------------------- | :-------------------- | :----------------------------------- |
 | API surface    | explicit, hand-written             | derived from schema      | derived from schema                 | derived from schema   | visual workflow                      |
 | Query language | SQL, written by hand               | none needed              | GraphQL, generated                  | mixed                 | none                                 |

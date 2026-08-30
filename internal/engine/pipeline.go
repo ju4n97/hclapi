@@ -158,12 +158,32 @@ func (p *PipelineExecutor) execRespondStep(
 		return false, fmt.Errorf("respond status evaluation failed: %w", err)
 	}
 
-	body, err := eval.Any(step.Respond.Body, ctx)
-	if err != nil {
-		return false, fmt.Errorf("respond body evaluation failed: %w", err)
+	var headers map[string]string
+	if step.Respond.Headers != nil {
+		evaluatedHeaders, err := eval.Map(step.Respond.Headers, ctx)
+		if err != nil {
+			return false, fmt.Errorf("respond headers evaluation failed: %w", err)
+		}
+		if len(evaluatedHeaders) > 0 {
+			headers = make(map[string]string, len(evaluatedHeaders))
+			for k, v := range evaluatedHeaders {
+				headers[k] = fmt.Sprintf("%v", v)
+			}
+		}
 	}
 
-	if err := xrespond.Write(w, status, body, lastResult); err != nil {
+	var body any
+	if step.Respond.Body != nil {
+		evaluatedBody, err := eval.Any(step.Respond.Body, ctx)
+		if err != nil {
+			return false, fmt.Errorf("respond body evaluation failed: %w", err)
+		}
+		body = evaluatedBody
+	} else {
+		body = lastResult
+	}
+
+	if err := xrespond.Write(w, status, headers, body); err != nil {
 		return false, fmt.Errorf("failed to write response: %w", err)
 	}
 

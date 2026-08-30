@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,8 +37,12 @@ func (c *mockConn) Ping(ctx context.Context) error {
 	return nil
 }
 
-func init() {
-	sql.Register("mock_sql", &mockDriver{})
+var registerMockDriverOnce sync.Once
+
+func ensureMockDriver() {
+	registerMockDriverOnce.Do(func() {
+		sql.Register("mock_sql", &mockDriver{})
+	})
 }
 
 func TestDialects(t *testing.T) {
@@ -72,6 +77,8 @@ func TestDialects(t *testing.T) {
 
 func TestManager(t *testing.T) {
 	t.Parallel()
+
+	ensureMockDriver()
 
 	t.Run("Registers and retrieves database pool", func(t *testing.T) {
 		t.Parallel()

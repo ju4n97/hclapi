@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -66,22 +67,22 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 
 func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
 	if step.Go == nil {
-		return nil, fmt.Errorf("step %q is missing go configuration", step.Name)
+		return nil, fmt.Errorf("step %q: missing go configuration", step.Name)
 	}
 
 	args, err := eval.Map(step.Go.Args, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q args evaluation failed: %w", step.Name, err)
+		return nil, fmt.Errorf("step %q args: %w", step.Name, err)
 	}
 
 	handler, exists := p.goSteps[step.Go.Use]
 	if !exists {
-		return nil, fmt.Errorf("unregistered go function %q", step.Go.Use)
+		return nil, fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
 	}
 
 	res, err := xgo.Execute(handler, ctx, args)
 	if err != nil {
-		return nil, fmt.Errorf("step %q execution failed: %w", step.Name, err)
+		return nil, fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
 	exports := map[string]any{"result": res}
@@ -94,7 +95,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 
 func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
 	if step.Starlark == nil {
-		return nil, fmt.Errorf("step %q is missing starlark configuration", step.Name)
+		return nil, fmt.Errorf("step %q: missing starlark configuration", step.Name)
 	}
 
 	reqFields := starlark.StringDict{
@@ -118,7 +119,7 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 
 	res, err := xstarlark.Eval(step.Starlark.Source, starlarkCtx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q starlark execution failed: %w", step.Name, err)
+		return nil, fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
 	exports := map[string]any{"result": res}
@@ -135,7 +136,7 @@ func (p *PipelineExecutor) execRespondStep(
 	ctx *core.Context,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, fmt.Errorf("step is missing respond configuration")
+		return false, errors.New("step is missing respond configuration")
 	}
 
 	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)

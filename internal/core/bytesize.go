@@ -22,10 +22,12 @@ const (
 	TiB ByteSize = 1024 * GiB
 )
 
+// Bytes returns the byte size as an integer.
 func (b ByteSize) Bytes() int64 {
 	return int64(b)
 }
 
+// String returns the byte size as a human-readable string.
 func (b ByteSize) String() string {
 	switch {
 	case b >= GiB && b%GiB == 0:

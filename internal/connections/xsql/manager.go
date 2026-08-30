@@ -73,7 +73,7 @@ func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
 	driverName := mapDriverName(conn.Driver)
 	db, err := sql.Open(driverName, conn.URL)
 	if err != nil {
-		return fmt.Errorf("failed to open database handle for %q: %w", conn.Reference(), err)
+		return fmt.Errorf("open %s driver: %w", driverName, err)
 	}
 
 	db.SetMaxOpenConns(conn.Pool.MaxOpenConns)
@@ -86,7 +86,7 @@ func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
 
 	if err := db.PingContext(pingCtx); err != nil {
 		_ = db.Close()
-		return fmt.Errorf("failed to connect to database %q: %w", conn.Reference(), err)
+		return fmt.Errorf("ping database: %w", err)
 	}
 
 	pool := &Pool{

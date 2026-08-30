@@ -93,7 +93,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 	}
 
 	if step.Name != "" {
-		ctx.Steps[step.Name] = core.StepResult{Result: res}
+		ctx.Steps[step.Name] = map[string]any{"result": res}
 	}
 
 	return res, nil
@@ -113,8 +113,8 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	}
 
 	stepFields := make(starlark.StringDict, len(ctx.Steps))
-	for name, stepRes := range ctx.Steps {
-		stepFields[name] = xstarlark.GoToStarlarkValue(stepRes.Result)
+	for name, stepExports := range ctx.Steps {
+		stepFields[name] = xstarlark.GoToStarlarkValue(stepExports)
 	}
 
 	starlarkCtx := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
@@ -129,7 +129,7 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	}
 
 	if step.Name != "" {
-		ctx.Steps[step.Name] = core.StepResult{Result: res}
+		ctx.Steps[step.Name] = core.StepResult{"result": res}
 	}
 
 	return res, nil

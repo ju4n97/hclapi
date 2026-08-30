@@ -118,6 +118,19 @@ def execute(ctx):
 			expectError: true,
 			errorMsg:    "runtime error",
 		},
+		{
+			name: "Infinite while loop is aborted by step execution limit",
+			source: `
+def execute(ctx):
+    x = 0
+    while True:
+        x += 1
+    return x
+`,
+			ctx:         starlark.None,
+			expectError: true,
+			errorMsg:    "too many steps",
+		},
 	}
 
 	for _, tt := range tests {

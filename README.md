@@ -23,7 +23,6 @@ hclapi connects to any data source using native connection pooling and zero-CGO 
 |                       | `"oracle"`      | Oracle Database 11g – 23ai                    |
 |                       | `"cockroachdb"` | CockroachDB                                   |
 | **Analytical SQL**    | `"clickhouse"`  | ClickHouse Cloud & Self-Hosted                |
-|                       | `"snowflake"`   | Snowflake Cloud Data Platform                 |
 |                       | `"duckdb"`      | DuckDB Embedded Columnar                      |
 | **Key-Value / Cache** | `"redis"`       | Redis, Valkey, AWS ElastiCache                |
 | **Blob Storage**      | `"s3"`          | Amazon S3, Cloudflare R2, MinIO, GCS          |

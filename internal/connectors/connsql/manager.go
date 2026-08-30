@@ -19,9 +19,9 @@ type Pool struct {
 	Config  core.Connection
 }
 
-// Manager manages the lifecycle, pooling, and retrieval of active database connections.
+// Manager manages the lifecycle, pooling, and retrieval of active database connection pools.
 type Manager struct {
-	mu    sync.Mutex
+	mu    sync.RWMutex
 	pools map[string]*Pool
 }
 
@@ -36,13 +36,12 @@ func NewManager() *Manager {
 func IsSupportedDriver(driver string) bool {
 	switch strings.ToLower(driver) {
 	case "postgres",
+		"cockroachdb",
 		"sqlite",
 		"mysql",
 		"sqlserver",
 		"oracle",
-		"cockroachdb",
 		"clickhouse",
-		"snowflake",
 		"duckdb":
 		return true
 	default:
@@ -56,6 +55,8 @@ func mapDriverName(driver string) string {
 	case "postgres", "cockroachdb":
 		return "pgx"
 	default:
+		// "sqlite", "mysql", "sqlserver", "oracle", "clickhouse", "duckdb"
+		// match their registered driver names directly in database/sql
 		return strings.ToLower(driver)
 	}
 }
@@ -76,11 +77,13 @@ func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
 		return fmt.Errorf("open %s driver: %w", driverName, err)
 	}
 
+	// Apply connection pool settings
 	db.SetMaxOpenConns(conn.Pool.MaxOpenConns)
 	db.SetMaxIdleConns(conn.Pool.MaxIdleConns)
 	db.SetConnMaxLifetime(conn.Pool.ConnMaxLifetime.Duration())
 	db.SetConnMaxIdleTime(conn.Pool.IdleTimeout.Duration())
 
+	// Verify connectivity with timeout
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
@@ -91,7 +94,7 @@ func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
 
 	pool := &Pool{
 		DB:      db,
-		Dialect: ResolveDialect(driverName),
+		Dialect: ResolveDialect(conn.Driver),
 		Config:  conn,
 	}
 
@@ -101,8 +104,8 @@ func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
 
 // Get retrieves an active connection pool by key ("postgres.main") or reference ("connection.postgres.main").
 func (m *Manager) Get(keyOrRef string) (*Pool, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	cleanKey := strings.TrimPrefix(keyOrRef, "connection.")
 	pool, exists := m.pools[cleanKey]

@@ -19,12 +19,11 @@ func TestDialects(t *testing.T) {
 		placeholder string
 	}{
 		{"postgres", "postgres", "$1"},
-		{"cockroachdb", "postgres", "$1"},
+		{"cockroachdb", "cockroachdb", "$1"},
 		{"sqlite", "sqlite", "?"},
 		{"mysql", "mysql", "?"},
-		{"clickhouse", "mysql", "?"},
-		{"snowflake", "mysql", "?"},
-		{"duckdb", "mysql", "?"},
+		{"clickhouse", "clickhouse", "?"},
+		{"duckdb", "duckdb", "?"},
 		{"sqlserver", "sqlserver", "@p1"},
 		{"oracle", "oracle", ":1"},
 	}

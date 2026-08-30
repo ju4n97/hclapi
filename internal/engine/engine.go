@@ -16,7 +16,7 @@ import (
 // pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
 var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.\.\.)?\}`)
 
-// Engine is the central HTTP coordinator.
+// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
 	options      core.Options
 	server       core.Server

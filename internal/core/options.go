@@ -2,7 +2,7 @@ package core
 
 import "log/slog"
 
-// Options configures runtime parameters for the hclapi engine.
+// Options defines the configuration options for the hclapi engine.
 type Options struct {
 	// ConfigPath is a file or directory of .hcl definitions.
 	ConfigPath string

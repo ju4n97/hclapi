@@ -20,10 +20,10 @@ Starlark's dict access instead of dotted attributes.
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| label | `string` | yes | step identifier |
-| `source` | `string` | yes | Starlark source defining `execute(ctx)` |
+| Attribute | Type     | Required | Description                             |
+| :-------- | :------- | :------- | :-------------------------------------- |
+| label     | `string` | yes      | step identifier                         |
+| `source`  | `string` | yes      | Starlark source defining `execute(ctx)` |
 
 ## Examples
 

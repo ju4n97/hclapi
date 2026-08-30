@@ -5,7 +5,7 @@ after that runs the same fixed pipeline.
 
 | Phase   | Trigger                 | Result                                                  | On failure                                                                 |
 | :------ | :---------------------- | :------------------------------------------------------ | :------------------------------------------------------------------------- |
-| Boot    | `hclapi serve` starts     | Manifests parsed, connections opened, routes registered | Process exits with a file and line diagnostic                              |
+| Boot    | `hclapi serve` starts   | Manifests parsed, connections opened, routes registered | Process exits with a file and line diagnostic                              |
 | Request | An HTTP request arrives | Route matched, pipeline runs, response serialized       | Request returns an [RFC 9457](./errors.md) error; server continues running |
 
 A manifest error, invalid HCL, an unresolved `connection` reference, a

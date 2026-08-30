@@ -34,34 +34,34 @@ The schema is referenced elsewhere as `schema.<name>`.
 
 ## Field attributes
 
-| Attribute | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `type` | `type` | required | expected data type |
-| `required` | `bool` | `false` | rejects the request with 422 if absent |
-| `default` | `any` | `null` | fallback value if the field is absent |
-| `format` | `string` | `null` | built-in format constraint |
+| Attribute  | Type     | Default  | Description                            |
+| :--------- | :------- | :------- | :------------------------------------- |
+| `type`     | `type`   | required | expected data type                     |
+| `required` | `bool`   | `false`  | rejects the request with 422 if absent |
+| `default`  | `any`    | `null`   | fallback value if the field is absent  |
+| `format`   | `string` | `null`   | built-in format constraint             |
 
 ### Types
 
-| Signature | JSON representation |
-| :--- | :--- |
-| `string` | `"hello"` |
-| `int` | `42` |
-| `float` | `3.14159` |
-| `bool` | `true`, `false` |
-| `any` | any primitive, array, or object |
-| `list(<type>)` | `["admin", "member"]` |
-| `map(<type>)` | `{"k1": "v1"}` |
+| Signature      | JSON representation             |
+| :------------- | :------------------------------ |
+| `string`       | `"hello"`                       |
+| `int`          | `42`                            |
+| `float`        | `3.14159`                       |
+| `bool`         | `true`, `false`                 |
+| `any`          | any primitive, array, or object |
+| `list(<type>)` | `["admin", "member"]`           |
+| `map(<type>)`  | `{"k1": "v1"}`                  |
 
 ### Formats
 
-| Format | Constraint |
-| :--- | :--- |
-| `"email"` | RFC 5322 email address |
-| `"uuid"` | UUID v4 |
-| `"uri"` | RFC 3986 absolute URI |
-| `"date-time"` | RFC 3339 timestamp |
-| `"ipv4"` | dotted-decimal IPv4 address |
+| Format        | Constraint                  |
+| :------------ | :-------------------------- |
+| `"email"`     | RFC 5322 email address      |
+| `"uuid"`      | UUID v4                     |
+| `"uri"`       | RFC 3986 absolute URI       |
+| `"date-time"` | RFC 3339 timestamp          |
+| `"ipv4"`      | dotted-decimal IPv4 address |
 
 ## Binding
 

@@ -12,21 +12,19 @@ during pipeline execution.
   "detail": "invalid JSON payload: invalid character '\"' after array element",
   "instance": "/api/v1/transform",
   "step": "ingress",
-  "invalid_params": [
-    { "name": "tags", "reason": "must be a valid JSON array" }
-  ]
+  "invalid_params": [{ "name": "tags", "reason": "must be a valid JSON array" }]
 }
 ```
 
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `type` | `string` | URI identifying the problem category |
-| `title` | `string` | short summary of the problem type |
-| `status` | `int` | HTTP status code |
-| `detail` | `string` | explanation specific to this occurrence |
-| `instance` | `string` | request path that produced the error |
-| `step` | `string` | pipeline step where the failure occurred, if applicable |
-| `invalid_params` | `list` | field-level validation errors |
+| Field            | Type     | Description                                             |
+| :--------------- | :------- | :------------------------------------------------------ |
+| `type`           | `string` | URI identifying the problem category                    |
+| `title`          | `string` | short summary of the problem type                       |
+| `status`         | `int`    | HTTP status code                                        |
+| `detail`         | `string` | explanation specific to this occurrence                 |
+| `instance`       | `string` | request path that produced the error                    |
+| `step`           | `string` | pipeline step where the failure occurred, if applicable |
+| `invalid_params` | `list`   | field-level validation errors                           |
 
 ## Ingress errors
 

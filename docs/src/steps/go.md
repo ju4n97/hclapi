@@ -17,11 +17,11 @@ go "<name>" {
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| label | `string` | yes | step identifier |
-| `use` | `string` | yes | function name registered on the `Engine` |
-| `args` | `map` | no | evaluated and passed into `ctx.Args` |
+| Attribute | Type     | Required | Description                              |
+| :-------- | :------- | :------- | :--------------------------------------- |
+| label     | `string` | yes      | step identifier                          |
+| `use`     | `string` | yes      | function name registered on the `Engine` |
+| `args`    | `map`    | no       | evaluated and passed into `ctx.Args`     |
 
 ## Registration
 

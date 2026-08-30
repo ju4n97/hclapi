@@ -2,6 +2,7 @@
 package hclapi
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/ju4n97/hclapi/internal/core"
@@ -32,8 +33,8 @@ type ByteSize = core.ByteSize
 // Server defines the resolved HTTP server configuration.
 type Server = core.Server
 
-// ProblemDetails represents an RFC 9457 compliant error object.
-type ProblemDetails = core.ProblemDetails
+// ProblemDetailsError represents an RFC 9457 compliant error object.
+type ProblemDetailsError = core.ProblemDetailsError
 
 // InvalidParam represents a single field validation failure.
 type InvalidParam = core.InvalidParam
@@ -53,7 +54,7 @@ type Engine struct {
 func NewEngine(options Options) (*Engine, error) {
 	eng, err := engine.New(options)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize hclapi engine: %w", err)
 	}
 
 	return &Engine{inner: eng}, nil
@@ -61,7 +62,7 @@ func NewEngine(options Options) (*Engine, error) {
 
 // RegisterStep registers a named custom Go function for the pipeline runtime.
 func (e *Engine) RegisterStep(name string, handler func(*Context) (any, error)) error {
-	return e.inner.RegisterStep(name, core.StepHandler(handler))
+	return e.inner.RegisterStep(name, core.StepHandler(handler)) //nolint:wrapcheck // this is a facade
 }
 
 // Handler returns the underlying http.Handler multiplexer.

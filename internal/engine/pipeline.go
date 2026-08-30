@@ -1,8 +1,12 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
+
+	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
@@ -10,8 +14,6 @@ import (
 	"github.com/ju4n97/hclapi/internal/steps/xgo"
 	"github.com/ju4n97/hclapi/internal/steps/xrespond"
 	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
-	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 )
 
 // PipelineExecutor coordinates sequential pipeline step dispatching.
@@ -70,7 +72,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 		return nil, fmt.Errorf("step %q is missing go configuration", step.Name)
 	}
 
-	args, err := eval.EvalMap(step.Go.Args, ctx)
+	args, err := eval.Map(step.Go.Args, ctx)
 	if err != nil {
 		return nil, fmt.Errorf("step %q args evaluation failed: %w", step.Name, err)
 	}
@@ -136,10 +138,10 @@ func (p *PipelineExecutor) execRespondStep(
 	lastResult any,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, fmt.Errorf("step is missing respond configuration")
+		return false, errors.New("step is missing respond configuration")
 	}
 
-	shouldRun, err := eval.EvalBool(step.Respond.Condition, ctx, true)
+	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)
 	if err != nil {
 		return false, fmt.Errorf("respond condition evaluation failed: %w", err)
 	}
@@ -147,12 +149,12 @@ func (p *PipelineExecutor) execRespondStep(
 		return false, nil // Condition was false; skip responding and continue pipeline
 	}
 
-	status, err := eval.EvalInt(step.Respond.Status, ctx, http.StatusOK)
+	status, err := eval.Int(step.Respond.Status, ctx, http.StatusOK)
 	if err != nil {
 		return false, fmt.Errorf("respond status evaluation failed: %w", err)
 	}
 
-	body, err := eval.EvalAny(step.Respond.Body, ctx)
+	body, err := eval.Any(step.Respond.Body, ctx)
 	if err != nil {
 		return false, fmt.Errorf("respond body evaluation failed: %w", err)
 	}

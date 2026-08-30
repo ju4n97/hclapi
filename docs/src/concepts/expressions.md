@@ -6,13 +6,13 @@ interpolate strings, and construct response bodies.
 
 ## Operators
 
-| Operator | Meaning | Example |
-| :--- | :--- | :--- |
-| `==`, `!=` | equality | `steps.lookup.rows_affected == 0` |
-| `>`, `>=`, `<`, `<=` | numeric comparison | `steps.inventory.result.count < 5` |
-| `&&` | logical AND | `steps.auth.result.valid == true && ctx.request.body.admin == true` |
-| `\|\|` | logical OR | `ctx.request.query.format == "csv" \|\| ctx.request.query.format == "xlsx"` |
-| `!` | logical NOT | `!steps.user.result.is_active` |
+| Operator             | Meaning            | Example                                                                     |
+| :------------------- | :----------------- | :-------------------------------------------------------------------------- |
+| `==`, `!=`           | equality           | `steps.lookup.rows_affected == 0`                                           |
+| `>`, `>=`, `<`, `<=` | numeric comparison | `steps.inventory.result.count < 5`                                          |
+| `&&`                 | logical AND        | `steps.auth.result.valid == true && ctx.request.body.admin == true`         |
+| `\|\|`               | logical OR         | `ctx.request.query.format == "csv" \|\| ctx.request.query.format == "xlsx"` |
+| `!`                  | logical NOT        | `!steps.user.result.is_active`                                              |
 
 A field that may be absent is compared against `null`:
 
@@ -75,27 +75,5 @@ respond {
       tags         = ["api", "v1", ctx.request.query.environment]
     }
   }
-}
-```
-
-## Built-in functions
-
-| Function | Description |
-| :--- | :--- |
-| `env(name)` | Reads an environment variable. Used primarily in `connection` blocks. |
-| `json_encode(value)` | Serializes a value to a JSON string. |
-| `json_decode(string)` | Parses a JSON string into a value. |
-
-```hcl
-connection "postgres" "primary" {
-  url = env("DATABASE_URL")
-}
-
-redis "cache_product" {
-  connection = connection.redis.cache
-  command    = "SET"
-  key        = "product:${ctx.request.path.id}"
-  value      = json_encode(steps.fetch_product.result)
-  ttl        = "30m"
 }
 ```

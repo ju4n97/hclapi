@@ -6,9 +6,9 @@ platform with an existing error schema.
 ## Signature
 
 ```go
-type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetails)
+type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetailsError)
 
-type ProblemDetails struct {
+type ProblemDetailsError struct {
     Type          string
     Title         string
     Status        int
@@ -25,7 +25,7 @@ type ProblemDetails struct {
 ```go
 engine, err := hclapi.NewEngine(hclapi.Options{
     ConfigPath: "./config",
-    ErrorHandler: func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetails) {
+    ErrorHandler: func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetailsError) {
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(problem.Status)
 

@@ -20,14 +20,14 @@ server {
 
 All attributes are optional. Omitted attributes take the default listed.
 
-| Attribute | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `host` | `string` | `"127.0.0.1"` | interface to bind; `"0.0.0.0"` binds all interfaces |
-| `port` | `int` | `8080` | TCP port |
-| `read_timeout` | `Duration` | `"15s"` | maximum time to read the full request |
-| `write_timeout` | `Duration` | `"15s"` | maximum time to write the response |
-| `idle_timeout` | `Duration` | `"60s"` | maximum idle time on a keep-alive connection |
-| `max_body_size` | `ByteSize` | `"10MB"` | requests larger than this are rejected at ingress |
+| Attribute       | Type       | Default       | Description                                         |
+| :-------------- | :--------- | :------------ | :-------------------------------------------------- |
+| `host`          | `string`   | `"127.0.0.1"` | interface to bind; `"0.0.0.0"` binds all interfaces |
+| `port`          | `int`      | `8080`        | TCP port                                            |
+| `read_timeout`  | `Duration` | `"15s"`       | maximum time to read the full request               |
+| `write_timeout` | `Duration` | `"15s"`       | maximum time to write the response                  |
+| `idle_timeout`  | `Duration` | `"60s"`       | maximum idle time on a keep-alive connection        |
+| `max_body_size` | `ByteSize` | `"10MB"`      | requests larger than this are rejected at ingress   |
 
 `Duration` and `ByteSize` are defined in [Scalar types](./types.md).
 

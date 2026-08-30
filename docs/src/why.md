@@ -8,10 +8,10 @@ hclapi is intentionally narrow. It works best when the API is mostly a thin laye
 
 ## What it provides
 
-* **Readable endpoints.** A manifest should be understandable without knowing a framework or data access layer.
-* **Cheap changes.** Query and endpoint changes are file changes rather than application code changes.
-* **Safe defaults.** SQL parameters are bound instead of interpolated, and Starlark cannot access the filesystem or network.
-* **Small surface area.** The system is designed to stay simple enough to understand and maintain.
+- **Readable endpoints.** A manifest should be understandable without knowing a framework or data access layer.
+- **Cheap changes.** Query and endpoint changes are file changes rather than application code changes.
+- **Safe defaults.** SQL parameters are bound instead of interpolated, and Starlark cannot access the filesystem or network.
+- **Small surface area.** The system is designed to stay simple enough to understand and maintain.
 
 ## Where it does not fit
 

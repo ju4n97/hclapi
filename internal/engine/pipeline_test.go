@@ -183,4 +183,51 @@ def execute(ctx):
 			t.Errorf("expected step two to be skipped after context cancellation")
 		}
 	})
+
+	t.Run("Omitted body produces an empty response (no implicit fallback)", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "do_work",
+				Go:   &parser.GoStepBlock{Use: "mock.step"},
+			},
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `200`),
+					// Body is intentionally omitted
+				},
+			},
+		}
+
+		goSteps := map[string]core.StepHandler{
+			"mock.step": func(ctx *core.Context) (any, error) {
+				return "should_be_ignored", nil
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+
+		// Because body was omitted, response must be empty
+		if rec.Body.Len() != 0 {
+			t.Errorf("expected empty body, got %q", rec.Body.String())
+		}
+	})
 }

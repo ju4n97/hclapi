@@ -1,4 +1,4 @@
-package xsql
+package connsql
 
 import (
 	"strconv"

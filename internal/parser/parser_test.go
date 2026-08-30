@@ -151,7 +151,8 @@ func TestDecodePipelineSteps(t *testing.T) {
 			expectedSteps: 3,
 			validate: func(t *testing.T, steps []parser.ParsedStep) {
 				// Step 0: Go with Args
-				if steps[0].Type != parser.StepTypeGo || steps[0].Name != "step_one" || steps[0].Go.Use != "crypto.hash" {
+				if steps[0].Type != parser.StepTypeGo || steps[0].Name != "step_one" ||
+					steps[0].Go.Use != "crypto.hash" {
 					t.Errorf("step 0 mismatch: %+v", steps[0])
 				}
 				val0, _ := steps[0].Go.Args.Value(nil)
@@ -160,7 +161,8 @@ func TestDecodePipelineSteps(t *testing.T) {
 				}
 
 				// Step 1: Go without Args
-				if steps[1].Type != parser.StepTypeGo || steps[1].Name != "step_two" || steps[1].Go.Use != "auth.verify" {
+				if steps[1].Type != parser.StepTypeGo || steps[1].Name != "step_two" ||
+					steps[1].Go.Use != "auth.verify" {
 					t.Errorf("step 1 mismatch: %+v", steps[1])
 				}
 				if steps[1].Go.Args != nil {

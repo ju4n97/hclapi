@@ -129,7 +129,12 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	return res, nil
 }
 
-func (p *PipelineExecutor) execRespondStep(w http.ResponseWriter, step parser.ParsedStep, ctx *core.Context, lastResult any) (bool, error) {
+func (p *PipelineExecutor) execRespondStep(
+	w http.ResponseWriter,
+	step parser.ParsedStep,
+	ctx *core.Context,
+	lastResult any,
+) (bool, error) {
 	if step.Respond == nil {
 		return false, fmt.Errorf("step is missing respond configuration")
 	}

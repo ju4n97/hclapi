@@ -26,7 +26,7 @@ endpoint "POST /api/v1/data" {
   }
 }
 `
-	if err := os.WriteFile(filepath.Join(tmpDir, "main.hcl"), []byte(manifestContent), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.hcl"), []byte(manifestContent), 0o600); err != nil {
 		t.Fatalf("failed to write manifest: %v", err)
 	}
 
@@ -48,7 +48,11 @@ endpoint "POST /api/v1/data" {
 		t.Fatalf("failed to initialize engine: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/data", strings.NewReader(`{"bad": json`)) // malformed JSON payload
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/data",
+		strings.NewReader(`{"bad": json`),
+	) // malformed JSON payload
 	rec := httptest.NewRecorder()
 
 	engine.Handler().ServeHTTP(rec, req)

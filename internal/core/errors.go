@@ -34,7 +34,7 @@ func (p ProblemDetailsError) Error() string {
 // ErrorHandler defines the contract for customizing API error serialization.
 type ErrorHandler func(w http.ResponseWriter, r *http.Request, problem ProblemDetailsError)
 
-// DefaultErrorHandler returns a ProblemDetails with default values.
+// DefaultErrorHandler returns a ProblemDetailsError with default values.
 func DefaultErrorHandler(w http.ResponseWriter, r *http.Request, problem ProblemDetailsError) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(problem.Status)

@@ -23,6 +23,7 @@ type ServerBlock struct {
 	WriteTimeout *string  `hcl:"write_timeout,optional"`
 	IdleTimeout  *string  `hcl:"idle_timeout,optional"`
 	MaxBodySize  *string  `hcl:"max_body_size,optional"`
+	ErrorBaseURL *string  `hcl:"error_base_url,optional"`
 	Remain       hcl.Body `hcl:",remain"`
 }
 
@@ -60,6 +61,9 @@ func (s *ServerBlock) ToServer() core.Server {
 		if b, err := core.ParseByteSize(*s.MaxBodySize); err == nil {
 			srv.MaxBodySize = b
 		}
+	}
+	if s.ErrorBaseURL != nil {
+		srv.ErrorBaseURL = *s.ErrorBaseURL
 	}
 
 	return srv.WithDefaults()

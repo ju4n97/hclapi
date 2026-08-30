@@ -5,10 +5,12 @@ import (
 	"net/http"
 )
 
-// InvalidParam represents a single field validation failure.
-type InvalidParam struct {
-	Name   string `json:"name"`
-	Reason string `json:"reason"`
+// DefaultErrorTypePrefix is the standard URN namespace prefix for built-in error types.
+const DefaultErrorTypePrefix = "urn:hclapi:error:"
+
+// ProblemType returns a standard URN identifier for a given error slug.
+func ProblemType(slug string) string {
+	return DefaultErrorTypePrefix + slug
 }
 
 // ProblemDetailsError represents an RFC 9457 compliant error object.
@@ -29,6 +31,12 @@ func (p ProblemDetailsError) Error() string {
 		return p.Title + ": " + p.Detail
 	}
 	return p.Title
+}
+
+// InvalidParam represents a single field validation failure.
+type InvalidParam struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
 // ErrorHandler defines the contract for customizing API error serialization.

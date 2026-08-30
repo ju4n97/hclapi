@@ -10,6 +10,7 @@ type Server struct {
 	WriteTimeout Duration
 	IdleTimeout  Duration
 	MaxBodySize  ByteSize
+	ErrorBaseURL string
 }
 
 // DefaultServer returns baseline production configuration values.
@@ -46,4 +47,12 @@ func (s Server) WithDefaults() Server {
 		s.MaxBodySize = def.MaxBodySize
 	}
 	return s
+}
+
+// ProblemType returns the error URI using ErrorBaseURL or the default URN prefix.
+func (s Server) ProblemType(slug string) string {
+	if s.ErrorBaseURL != "" {
+		return s.ErrorBaseURL + "/" + slug
+	}
+	return ProblemType(slug)
 }

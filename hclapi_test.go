@@ -31,7 +31,7 @@ endpoint "POST /api/v1/data" {
 	}
 
 	customHandlerCalled := false
-	customHandler := func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetails) {
+	customHandler := func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetailsError) {
 		customHandlerCalled = true
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(problem.Status)
@@ -48,7 +48,8 @@ endpoint "POST /api/v1/data" {
 		t.Fatalf("failed to initialize engine: %v", err)
 	}
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/api/v1/data",
 		strings.NewReader(`{"bad": json`),

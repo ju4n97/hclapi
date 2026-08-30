@@ -20,12 +20,12 @@ respond {
 
 ## Attributes
 
-| Attribute | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `condition` | `Expression` | `true` | step is skipped if `false` |
-| `status` | `int` or `Expression` | `200` | HTTP status code |
-| `headers` | `map[string]string` | `{}` | response headers |
-| `body` | `any` or `Expression` | previous step's result | payload to serialize |
+| Attribute   | Type                  | Default                | Description                |
+| :---------- | :-------------------- | :--------------------- | :------------------------- |
+| `condition` | `Expression`          | `true`                 | step is skipped if `false` |
+| `status`    | `int` or `Expression` | `200`                  | HTTP status code           |
+| `headers`   | `map[string]string`   | `{}`                   | response headers           |
+| `body`      | `any` or `Expression` | previous step's result | payload to serialize       |
 
 ## Behavior
 

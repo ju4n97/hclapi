@@ -23,20 +23,20 @@ The connection is referenced elsewhere as `connection.<driver>.<name>`.
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `url` | `string` | yes | connection DSN or URI |
-| `pool` | `block` | no | pool configuration, see below |
+| Attribute | Type     | Required | Description                   |
+| :-------- | :------- | :------- | :---------------------------- |
+| `url`     | `string` | yes      | connection DSN or URI         |
+| `pool`    | `block`  | no       | pool configuration, see below |
 
 ### pool
 
-| Attribute | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `max_open_conns` | `int` | `25` | maximum open connections |
-| `max_idle_conns` | `int` | `5` | maximum idle connections retained |
+| Attribute           | Type       | Default | Description                                                |
+| :------------------ | :--------- | :------ | :--------------------------------------------------------- |
+| `max_open_conns`    | `int`      | `25`    | maximum open connections                                   |
+| `max_idle_conns`    | `int`      | `5`     | maximum idle connections retained                          |
 | `conn_max_lifetime` | `Duration` | `"30m"` | maximum time a connection is reused before being recreated |
-| `idle_timeout` | `Duration` | `"5m"` | maximum idle time before eviction |
-| `size` | `int` | `20` | total pool capacity, used by cache drivers |
+| `idle_timeout`      | `Duration` | `"5m"`  | maximum idle time before eviction                          |
+| `size`              | `int`      | `20`    | total pool capacity, used by cache drivers                 |
 
 ## Drivers
 

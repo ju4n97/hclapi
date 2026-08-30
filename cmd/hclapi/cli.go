@@ -1,8 +1,9 @@
 package main
 
 import (
-	"github.com/ju4n97/hclapi/internal/version"
 	"github.com/urfave/cli/v3"
+
+	"github.com/ju4n97/hclapi/internal/version"
 )
 
 func newRootCommand() *cli.Command {

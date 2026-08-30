@@ -44,6 +44,10 @@ tasks:
     desc: Format code
     cmd: golangci-lint fmt
 
+  fmt-docs:
+    desc: Format docs
+    cmd: bunx prettier@latest --write docs/src
+
   update:
     desc: Update dependencies
     cmds: 

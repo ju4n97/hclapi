@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 )
@@ -19,6 +20,17 @@ func parseExpr(t *testing.T, src string) hcl.Expression {
 
 	hclExpr := expr.(hcl.Expression)
 	return hclExpr
+}
+
+func evalExpr(t *testing.T, src string) (any, error) {
+	t.Helper()
+
+	ctx := &core.Context{
+		Request: &core.RequestState{},
+		Steps:   make(map[string]core.StepResult),
+	}
+
+	return eval.Any(parseExpr(t, src), ctx)
 }
 
 func TestEval(t *testing.T) {
@@ -78,7 +90,7 @@ func TestEval(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				res, err := eval.EvalBool(tt.expr, sampleCtx, tt.defaultVal)
+				res, err := eval.Bool(tt.expr, sampleCtx, tt.defaultVal)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -121,7 +133,7 @@ func TestEval(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				res, err := eval.EvalInt(tt.expr, sampleCtx, tt.defaultVal)
+				res, err := eval.Int(tt.expr, sampleCtx, tt.defaultVal)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -136,7 +148,7 @@ func TestEval(t *testing.T) {
 		t.Parallel()
 
 		expr := parseExpr(t, `{ user_id = ctx.request.path.id, user_tier = steps.lookup.result.tier }`)
-		res, err := eval.EvalMap(expr, sampleCtx)
+		res, err := eval.Map(expr, sampleCtx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

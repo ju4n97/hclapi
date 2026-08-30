@@ -40,13 +40,13 @@ endpoint "GET /api/v1/accounts/{id}" {
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| route label (`"METHOD /path"`) | `string` | yes | HTTP method and path pattern |
-| `description` | `string` | no | used in logs and generated OpenAPI documentation |
-| `auth` | `list` | no | route-level authentication guards; `[]` marks the route public |
-| `request` | `block` | no | validation for path, query, headers, and body |
-| `pipeline` | `block` | yes | the steps that handle the request |
+| Attribute                      | Type     | Required | Description                                                    |
+| :----------------------------- | :------- | :------- | :------------------------------------------------------------- |
+| route label (`"METHOD /path"`) | `string` | yes      | HTTP method and path pattern                                   |
+| `description`                  | `string` | no       | used in logs and generated OpenAPI documentation               |
+| `auth`                         | `list`   | no       | route-level authentication guards; `[]` marks the route public |
+| `request`                      | `block`  | no       | validation for path, query, headers, and body                  |
+| `pipeline`                     | `block`  | yes      | the steps that handle the request                              |
 
 Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
 
@@ -110,12 +110,12 @@ endpoint "GET /api/v1/search" {
 }
 ```
 
-| Sub-block | Target | Validates |
-| :--- | :--- | :--- |
-| `path` | `ctx.request.path` | route parameter types |
-| `query` | `ctx.request.query` | query string, applies defaults |
-| `headers` | `ctx.request.headers` | required headers and formats |
-| `body` | `ctx.request.body` | JSON body against a schema |
+| Sub-block | Target                | Validates                      |
+| :-------- | :-------------------- | :----------------------------- |
+| `path`    | `ctx.request.path`    | route parameter types          |
+| `query`   | `ctx.request.query`   | query string, applies defaults |
+| `headers` | `ctx.request.headers` | required headers and formats   |
+| `body`    | `ctx.request.body`    | JSON body against a schema     |
 
 ## Authentication overrides
 

@@ -21,11 +21,11 @@ transaction "<name>" {
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| label | `string` | yes | transaction identifier |
-| `connection` | `connection` | yes | pool to acquire the transaction handle from |
-| `sql` blocks | `block` | at least one | executed sequentially inside the transaction |
+| Attribute    | Type         | Required     | Description                                  |
+| :----------- | :----------- | :----------- | :------------------------------------------- |
+| label        | `string`     | yes          | transaction identifier                       |
+| `connection` | `connection` | yes          | pool to acquire the transaction handle from  |
+| `sql` blocks | `block`      | at least one | executed sequentially inside the transaction |
 
 Steps within the block may reference each other's results in the normal
 way.

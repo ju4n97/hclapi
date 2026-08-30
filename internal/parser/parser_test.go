@@ -1,12 +1,16 @@
 package parser_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 
+	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
@@ -271,4 +275,82 @@ func TestDecodePipelineSteps(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConnectionBlockParsing(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Parses driver, labels, evaluated url, and pool settings with durations", func(t *testing.T) {
+		t.Parallel()
+
+		snippet := `
+connection "postgres" "primary" {
+  url = "postgres://user:pass@localhost:5432/db"
+
+  pool {
+    max_open_conns    = 50
+    max_idle_conns    = 10
+    conn_max_lifetime = "1h"
+    idle_timeout      = "10m"
+    size              = 30
+  }
+}
+`
+		tmpDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(tmpDir, "conn.hcl"), []byte(snippet), 0o600); err != nil {
+			t.Fatalf("failed to write test snippet: %v", err)
+		}
+
+		manifest, err := parser.Parse(tmpDir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		if len(manifest.Connections) != 1 {
+			t.Fatalf("expected 1 connection block, got %d", len(manifest.Connections))
+		}
+
+		conn, err := manifest.Connections[0].ToConnection()
+		if err != nil {
+			t.Fatalf("failed to map to connection: %v", err)
+		}
+
+		if conn.Driver != "postgres" || conn.Name != "primary" {
+			t.Errorf("unexpected driver/name: %s.%s", conn.Driver, conn.Name)
+		}
+		if conn.Pool.MaxOpenConns != 50 || conn.Pool.MaxIdleConns != 10 {
+			t.Errorf("unexpected open/idle conns: %+v", conn.Pool)
+		}
+		if conn.Pool.ConnMaxLifetime.Duration() != time.Hour {
+			t.Errorf("expected 1h lifetime, got %v", conn.Pool.ConnMaxLifetime)
+		}
+		if conn.Pool.IdleTimeout.Duration() != 10*time.Minute {
+			t.Errorf("expected 10m idle timeout, got %v", conn.Pool.IdleTimeout)
+		}
+	})
+
+	t.Run("Rejects duplicate connection keys", func(t *testing.T) {
+		t.Parallel()
+
+		snippet := `
+connection "postgres" "main" {
+  url = "postgres://localhost/db1"
+}
+connection "postgres" "main" {
+  url = "postgres://localhost/db2"
+}
+`
+		tmpDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(tmpDir, "duplicate.hcl"), []byte(snippet), 0o600); err != nil {
+			t.Fatalf("failed to write test snippet: %v", err)
+		}
+
+		_, err := parser.Parse(tmpDir, eval.BaseContext())
+		if err == nil {
+			t.Fatal("expected duplicate connection error, got nil")
+		}
+		if !strings.Contains(err.Error(), `duplicate connection declaration "connection.postgres.main"`) {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
 }

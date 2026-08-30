@@ -48,6 +48,7 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 			}
 
 			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
+			mergedManifest.Connections = append(mergedManifest.Connections, fileManifest.Connections...)
 			if fileManifest.Server != nil {
 				mergedManifest.Server = fileManifest.Server
 			}
@@ -57,6 +58,16 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate unique connection keys (<driver>.<name>)
+	seenConnections := make(map[string]bool, len(mergedManifest.Connections))
+	for _, conn := range mergedManifest.Connections {
+		key := fmt.Sprintf("%s.%s", conn.Driver, conn.Name)
+		if seenConnections[key] {
+			return nil, fmt.Errorf("duplicate connection declaration %q", "connection."+key)
+		}
+		seenConnections[key] = true
 	}
 
 	return &mergedManifest, nil

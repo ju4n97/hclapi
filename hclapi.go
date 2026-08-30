@@ -3,14 +3,19 @@ package hclapi
 
 import (
 	"fmt"
-	"net/http"
 
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
 )
 
+// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
+type Engine = engine.Engine
+
 // Context represents the state passed sequentially across a pipeline execution.
 type Context = core.Context
+
+// ContextOption configures optional behavior during Context creation.
+type ContextOption = core.ContextOption
 
 // RequestState holds structured data extracted from the HTTP request.
 type RequestState = core.RequestState
@@ -33,7 +38,7 @@ type ByteSize = core.ByteSize
 // Server defines the resolved HTTP server configuration.
 type Server = core.Server
 
-// ProblemDetailsError represents an RFC 9457 compliant error object.
+// ProblemDetails represents an RFC 9457 compliant error object.
 type ProblemDetailsError = core.ProblemDetailsError
 
 // InvalidParam represents a single field validation failure.
@@ -45,11 +50,6 @@ type ErrorHandler = core.ErrorHandler
 // DefaultErrorHandler returns a ProblemDetails with default values.
 var DefaultErrorHandler = core.DefaultErrorHandler
 
-// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
-type Engine struct {
-	inner *engine.Engine
-}
-
 // NewEngine initializes an Engine by parsing manifests and registering route endpoints.
 func NewEngine(options Options) (*Engine, error) {
 	eng, err := engine.New(options)
@@ -57,20 +57,5 @@ func NewEngine(options Options) (*Engine, error) {
 		return nil, fmt.Errorf("failed to initialize hclapi engine: %w", err)
 	}
 
-	return &Engine{inner: eng}, nil
-}
-
-// RegisterStep registers a named custom Go function for the pipeline runtime.
-func (e *Engine) RegisterStep(name string, handler func(*Context) (any, error)) error {
-	return e.inner.RegisterStep(name, core.StepHandler(handler)) //nolint:wrapcheck // this is a facade
-}
-
-// Handler returns the underlying http.Handler multiplexer.
-func (e *Engine) Handler() http.Handler {
-	return e.inner.Handler()
-}
-
-// Server returns the server configuration with defaults applied.
-func (e *Engine) Server() Server {
-	return e.inner.Server()
+	return eng, nil
 }

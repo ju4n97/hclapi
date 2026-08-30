@@ -127,7 +127,7 @@ HTTP/1.1 422 Unprocessable Entity
 Content-Type: application/problem+json
 
 {
-  "type": "https://github.com/ju4n97/hclapi/errors/validation-error",
+  "type": "urn:hclapi:error:validation-error",
   "title": "Unprocessable Entity",
   "status": 422,
   "detail": "Request payload failed schema validation constraints",

@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,10 +13,10 @@ import (
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-// pathParamRegex matches standard Go 1.22+ and OpenAPI URI templates like {id} or {city}.
-var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+// pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
+var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
-// Engine is the central HTTP coordinator.
+// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
 	options      core.Options
 	server       core.Server
@@ -75,11 +76,26 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	executor := NewPipelineExecutor(steps, e.goSteps)
 
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
-		hclapiCtx, err := core.NewContext(r, paramNames)
+		hclapiCtx, err := core.NewContext(w, r,
+			core.WithPathParams(paramNames),
+			core.WithMaxBodySize(e.server.MaxBodySize.Bytes()),
+		)
 		if err != nil {
+			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
+				e.errorHandler(w, r, core.ProblemDetailsError{
+					Type:     e.server.ProblemType("payload-too-large"),
+					Title:    "Request Entity Too Large",
+					Status:   http.StatusRequestEntityTooLarge,
+					Detail:   "request body exceeded maximum size limit of " + e.server.MaxBodySize.String(),
+					Instance: r.URL.Path,
+				})
+				return
+			}
+
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
-				Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
+				Type:     e.server.ProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -91,7 +107,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
-				Type:     "https://github.com/ju4n97/hclapi/errors/pipeline-execution-failed",
+				Type:     e.server.ProblemType("pipeline-execution-failed"),
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,
 				Detail:   err.Error(),

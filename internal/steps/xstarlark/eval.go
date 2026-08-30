@@ -9,10 +9,26 @@ import (
 	"go.starlark.net/syntax"
 )
 
-// Eval compiles and executes a Starlark script against a context value.
+// DefaultMaxExecutionSteps is the default CPU instruction budget for a single Starlark step (100k steps).
+const DefaultMaxExecutionSteps = 100_000
+
+// Eval compiles and executes a Starlark script against a context value using default execution bounds.
 func Eval(source string, ctxValue starlark.Value) (any, error) {
+	return EvalWithLimit(source, ctxValue, DefaultMaxExecutionSteps)
+}
+
+// EvalWithLimit compiles and executes a Starlark script with a custom max execution step limit.
+func EvalWithLimit(source string, ctxValue starlark.Value, maxSteps uint64) (any, error) {
 	thread := &starlark.Thread{Name: "hclapi-starlark-vm"}
-	opts := &syntax.FileOptions{}
+	if maxSteps > 0 {
+		thread.SetMaxExecutionSteps(maxSteps)
+	}
+
+	opts := &syntax.FileOptions{
+		Set:       true,
+		While:     true,
+		Recursion: true,
+	}
 
 	globals, err := starlark.ExecFileOptions(opts, thread, "manifest.star", source, nil)
 	if err != nil {

@@ -1,18 +1,18 @@
 # server
 
-Declares transport-level settings: listener interface and port, connection
-timeouts, and the maximum request body size.
+Declares transport-level settings: listener interface and port, connection timeouts, maximum request body size, and error documentation URIs.
 
 ## Declaration
 
 ```hcl
 server {
-  host          = "0.0.0.0"
-  port          = 8080
-  read_timeout  = "15s"
-  write_timeout = "30s"
-  idle_timeout  = "60s"
-  max_body_size = "25MB"
+  host           = "0.0.0.0"
+  port           = 8080
+  read_timeout   = "15s"
+  write_timeout  = "30s"
+  idle_timeout   = "60s"
+  max_body_size  = "25MB"
+  error_base_url = "https://docs.mycompany.com/errors/"
 }
 ```
 
@@ -20,59 +20,35 @@ server {
 
 All attributes are optional. Omitted attributes take the default listed.
 
-| Attribute       | Type       | Default       | Description                                         |
-| :-------------- | :--------- | :------------ | :-------------------------------------------------- |
-| `host`          | `string`   | `"127.0.0.1"` | interface to bind; `"0.0.0.0"` binds all interfaces |
-| `port`          | `int`      | `8080`        | TCP port                                            |
-| `read_timeout`  | `Duration` | `"15s"`       | maximum time to read the full request               |
-| `write_timeout` | `Duration` | `"15s"`       | maximum time to write the response                  |
-| `idle_timeout`  | `Duration` | `"60s"`       | maximum idle time on a keep-alive connection        |
-| `max_body_size` | `ByteSize` | `"10MB"`      | requests larger than this are rejected at ingress   |
+| Attribute        | Type       | Default       | Description                                          |
+| :--------------- | :--------- | :------------ | :--------------------------------------------------- |
+| `host`           | `string`   | `"127.0.0.1"` | Interface to bind; `"0.0.0.0"` binds all interfaces  |
+| `port`           | `int`      | `8080`        | TCP port                                             |
+| `read_timeout`   | `Duration` | `"15s"`       | Maximum time to read the full request                |
+| `write_timeout`  | `Duration` | `"15s"`       | Maximum time to write the response                   |
+| `idle_timeout`   | `Duration` | `"60s"`       | Maximum idle time on a keep-alive connection         |
+| `max_body_size`  | `ByteSize` | `"10MB"`      | Requests larger than this are rejected with HTTP 413 |
+| `error_base_url` | `string`   | `""`          | Base URI prefix for RFC 9457 error problem types     |
 
-`Duration` and `ByteSize` are defined in [Scalar types](./types.md).
+## Error documentation URI resolution
+
+When returning RFC 9457 Problem Details error responses:
+
+- If `error_base_url` is omitted: The engine uses standard URN identifiers (e.g. `"urn:hclapi:error:bad-request"`).
+- If `error_base_url` is set: The engine prefixes the error slug (e.g. `"https://docs.mycompany.com/errors/bad-request"`).
 
 ## Examples
 
-A minimal local server.
-
-```hcl
-server {}
-
-endpoint "GET /ping" {
-  pipeline {
-    respond {
-      status = 200
-      body   = { status = "pong" }
-    }
-  }
-}
-```
-
-A production container configuration.
+### Production container configuration
 
 ```hcl
 server {
-  host          = "0.0.0.0"
-  port          = 8080
-  read_timeout  = "30s"
-  write_timeout = "60s"
-  idle_timeout  = "120s"
-  max_body_size = "50MB"
+  host           = "0.0.0.0"
+  port           = 8080
+  read_timeout   = "30s"
+  write_timeout  = "60s"
+  idle_timeout   = "120s"
+  max_body_size  = "50MB"
+  error_base_url = "https://developer.example.com/api/errors/"
 }
-```
-
-## Precedence
-
-Runtime values override the manifest without requiring a rebuild:
-
-```text
-1. CLI flags              (--port 9000 --host 0.0.0.0)
-2. Environment variables  (HCLAPI_PORT, PORT, HCLAPI_HOST, HOST)
-3. Manifest (server { })
-4. Built-in defaults
-```
-
-```sh
-PORT=3000 HOST=0.0.0.0 hclapi serve -c ./config
-hclapi serve -c . --port 9000
 ```

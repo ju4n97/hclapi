@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -32,8 +31,6 @@ func NewPipelineExecutor(steps []parser.ParsedStep, goSteps map[string]core.Step
 
 // Execute walks through configured steps sequentially, updating context state.
 func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) error {
-	var lastResult any
-
 	for _, step := range p.steps {
 		if err := ctx.Context().Err(); err != nil {
 			return fmt.Errorf("pipeline execution aborted: %w", err)
@@ -41,21 +38,17 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 
 		switch step.Type {
 		case parser.StepTypeGo:
-			res, err := p.execGoStep(step, ctx)
-			if err != nil {
+			if _, err := p.execGoStep(step, ctx); err != nil {
 				return err
 			}
-			lastResult = res
 
 		case parser.StepTypeStarlark:
-			res, err := p.execStarlarkStep(step, ctx)
-			if err != nil {
+			if _, err := p.execStarlarkStep(step, ctx); err != nil {
 				return err
 			}
-			lastResult = res
 
 		case parser.StepTypeRespond:
-			responded, err := p.execRespondStep(w, step, ctx, lastResult)
+			responded, err := p.execRespondStep(w, step, ctx)
 			if err != nil {
 				return err
 			}
@@ -92,11 +85,12 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 		return nil, fmt.Errorf("step %q execution failed: %w", step.Name, err)
 	}
 
+	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = map[string]any{"result": res}
+		ctx.Steps[step.Name] = exports
 	}
 
-	return res, nil
+	return exports, nil
 }
 
 func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
@@ -128,21 +122,21 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 		return nil, fmt.Errorf("step %q starlark execution failed: %w", step.Name, err)
 	}
 
+	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = core.StepResult{"result": res}
+		ctx.Steps[step.Name] = exports
 	}
 
-	return res, nil
+	return exports, nil
 }
 
 func (p *PipelineExecutor) execRespondStep(
 	w http.ResponseWriter,
 	step parser.ParsedStep,
 	ctx *core.Context,
-	lastResult any,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, errors.New("step is missing respond configuration")
+		return false, fmt.Errorf("step is missing respond configuration")
 	}
 
 	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)
@@ -158,6 +152,7 @@ func (p *PipelineExecutor) execRespondStep(
 		return false, fmt.Errorf("respond status evaluation failed: %w", err)
 	}
 
+	// Evaluate headers if defined
 	var headers map[string]string
 	if step.Respond.Headers != nil {
 		evaluatedHeaders, err := eval.Map(step.Respond.Headers, ctx)
@@ -172,6 +167,7 @@ func (p *PipelineExecutor) execRespondStep(
 		}
 	}
 
+	// Evaluate body if defined
 	var body any
 	if step.Respond.Body != nil {
 		evaluatedBody, err := eval.Any(step.Respond.Body, ctx)
@@ -179,8 +175,6 @@ func (p *PipelineExecutor) execRespondStep(
 			return false, fmt.Errorf("respond body evaluation failed: %w", err)
 		}
 		body = evaluatedBody
-	} else {
-		body = lastResult
 	}
 
 	if err := xrespond.Write(w, status, headers, body); err != nil {

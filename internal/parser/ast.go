@@ -131,5 +131,6 @@ type StarlarkStepBlock struct {
 type RespondStepBlock struct {
 	Condition hcl.Expression `hcl:"condition,optional"`
 	Status    hcl.Expression `hcl:"status,optional"`
+	Headers   hcl.Expression `hcl:"headers,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`
 }

@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  default: standard
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    goimports:
+      local-prefixes: 
+        - github.com/ju4n97/hclapi
+    golines:
+      max-len: 120
+      shorten-comments: true

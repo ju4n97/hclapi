@@ -57,7 +57,11 @@ func main() {
 			return nil, fmt.Errorf("invalid city '%s'", cityParam)
 		}
 
-		url := fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current_weather=true", coords.lat, coords.lon)
+		url := fmt.Sprintf(
+			"https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current_weather=true",
+			coords.lat,
+			coords.lon,
+		)
 		resp, err := httpClient.Get(url)
 		if err != nil {
 			return nil, fmt.Errorf("external weather API request failed: %w", err)

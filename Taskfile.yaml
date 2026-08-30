@@ -35,3 +35,19 @@ tasks:
     env:
       CGO_ENABLED: 1
     cmd: go test -race -count=1 -timeout=30s ./...
+
+  lint:
+    desc: Lint code
+    cmd: golangci-lint run
+
+  fmt:
+    desc: Format code
+    cmd: golangci-lint fmt
+
+  update:
+    desc: Update dependencies
+    cmds: 
+      - go get -u ./...
+      - go mod tidy
+
+    

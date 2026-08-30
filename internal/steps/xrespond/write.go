@@ -54,13 +54,19 @@ func Write(w http.ResponseWriter, status int, headers map[string]string, body an
 	// Write raw bytes/strings for non-JSON content types (e.g. text/plain, text/html, application/xml)
 	switch b := body.(type) {
 	case string:
-		_, err := w.Write([]byte(b))
-		return err
+		if _, err := w.Write([]byte(b)); err != nil {
+			return fmt.Errorf("failed to write response string: %w", err)
+		}
+		return nil
 	case []byte:
-		_, err := w.Write(b)
-		return err
+		if _, err := w.Write(b); err != nil {
+			return fmt.Errorf("failed to write response bytes: %w", err)
+		}
+		return nil
 	default:
-		_, err := fmt.Fprint(w, b)
-		return err
+		if _, err := fmt.Fprint(w, b); err != nil {
+			return fmt.Errorf("failed to write response body: %w", err)
+		}
+		return nil
 	}
 }

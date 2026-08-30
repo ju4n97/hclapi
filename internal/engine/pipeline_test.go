@@ -161,12 +161,10 @@ def execute(ctx):
 
 		executor := engine.NewPipelineExecutor(steps, goSteps)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		reqCtx, cancel := context.WithCancel(req.Context())
-		req = req.WithContext(reqCtx)
+		reqCtx, cancel := context.WithCancel(t.Context())
+		cancel() // Cancel before execution
 
-		// Cancel context before pipeline runs
-		cancel()
+		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/test", http.NoBody)
 
 		hclapiCtx, err := core.NewContext(nil, req)
 		if err != nil {

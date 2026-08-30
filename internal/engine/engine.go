@@ -14,7 +14,7 @@ import (
 )
 
 // pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
-var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.\.\.)?\}`)
+var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
@@ -81,16 +81,13 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 			core.WithMaxBodySize(e.server.MaxBodySize.Bytes()),
 		)
 		if err != nil {
-			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-				e.logger.WarnContext(r.Context(), "request payload too large", "error", err, "path", r.URL.Path)
+			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
 				e.errorHandler(w, r, core.ProblemDetailsError{
-					Type:   "https://github.com/ju4n97/hclapi/errors/payload-too-large",
-					Title:  "Request Entity Too Large",
-					Status: http.StatusRequestEntityTooLarge,
-					Detail: fmt.Sprintf(
-						"request body exceeded maximum size limit of %s",
-						e.server.MaxBodySize.String(),
-					),
+					Type:     "https://github.com/ju4n97/hclapi/errors/payload-too-large",
+					Title:    "Request Entity Too Large",
+					Status:   http.StatusRequestEntityTooLarge,
+					Detail:   "request body exceeded maximum size limit of " + e.server.MaxBodySize.String(),
 					Instance: r.URL.Path,
 				})
 				return

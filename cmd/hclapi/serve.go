@@ -19,7 +19,7 @@ import (
 func newServeCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "serve",
-		Usage: "Starts the hclapi HTTP server.",
+		Usage: "Start the hclapi HTTP server.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "config",
@@ -36,6 +36,9 @@ func newServeCommand() *cli.Command {
 				Aliases: []string{"h"},
 				Usage:   "Host address to bind the server (overrides manifest).",
 				Sources: cli.EnvVars("HCLAPI_HOST", "HOST"),
+				Config: cli.StringConfig{
+					TrimSpace: true,
+				},
 			},
 			&cli.IntFlag{
 				Name:    "port",
@@ -47,7 +50,6 @@ func newServeCommand() *cli.Command {
 				Name:    "verbose",
 				Aliases: []string{"v"},
 				Usage:   "Enable verbose debug logging.",
-				Value:   false,
 				Sources: cli.EnvVars("HCLAPI_VERBOSE"),
 			},
 		},
@@ -73,11 +75,13 @@ func newServeCommand() *cli.Command {
 			}
 
 			srv := engine.Server()
+
 			host := srv.Host
-			port := srv.Port
 			if cmd.IsSet("host") {
 				host = cmd.String("host")
 			}
+
+			port := srv.Port
 			if cmd.IsSet("port") {
 				port = cmd.Int("port")
 			}
@@ -90,24 +94,39 @@ func newServeCommand() *cli.Command {
 				IdleTimeout:  srv.IdleTimeout.Duration(),
 			}
 
-			stop := make(chan os.Signal, 1)
-			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+			errCh := make(chan error, 1)
 
 			go func() {
 				logger.Info("server started", "addr", server.Addr)
-				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					logger.Error("server crashed", "error", err)
-					os.Exit(1)
+
+				if err := server.ListenAndServe(); err != nil &&
+					!errors.Is(err, http.ErrServerClosed) {
+					errCh <- err
 				}
 			}()
 
-			<-stop
-			logger.Info("shutting down server...")
+			stop := make(chan os.Signal, 1)
+			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+			defer signal.Stop(stop)
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			select {
+			case err := <-errCh:
+				logger.Error("server crashed", "error", err)
+				return err
+			case <-stop:
+				logger.Info("shutting down server...")
+			case <-ctx.Done():
+				logger.Info("context cancelled, shutting down server...")
+			}
+
+			shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
 
-			return server.Shutdown(shutdownCtx)
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("shutdown server: %w", err)
+			}
+
+			return nil
 		},
 	}
 }

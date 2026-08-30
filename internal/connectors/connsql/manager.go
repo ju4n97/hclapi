@@ -9,6 +9,11 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"  // MySQL & MariaDB
+	_ "github.com/jackc/pgx/v5/stdlib"  // PostgreSQL & CockroachDB
+	_ "github.com/microsoft/go-mssqldb" // SQL Server
+	_ "modernc.org/sqlite"              // SQLite
+
 	"github.com/ju4n97/hclapi/internal/core"
 )
 

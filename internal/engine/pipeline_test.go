@@ -33,9 +33,9 @@ func TestPipelineExecutor(t *testing.T) {
 		t.Parallel()
 
 		goSteps := map[string]core.StepHandler{
-			"auth.verify": func(ctx *core.Context) (any, error) {
+			"auth.verify": func(ctx *core.Context, args map[string]any) (any, error) {
 				return map[string]any{
-					"valid": ctx.Args["token"] == "secret-token",
+					"valid": args["token"] == "secret-token",
 					"uid":   42,
 				}, nil
 			},
@@ -138,10 +138,10 @@ def execute(ctx):
 
 		stepTwoExecuted := false
 		goSteps := map[string]core.StepHandler{
-			"step.one": func(ctx *core.Context) (any, error) {
+			"step.one": func(ctx *core.Context, args map[string]any) (any, error) {
 				return "done_one", nil
 			},
-			"step.two": func(ctx *core.Context) (any, error) {
+			"step.two": func(ctx *core.Context, args map[string]any) (any, error) {
 				stepTwoExecuted = true
 				return "done_two", nil
 			},
@@ -184,8 +184,14 @@ def execute(ctx):
 		}
 	})
 
-	t.Run("Omitted body produces an empty response (no implicit fallback)", func(t *testing.T) {
+	t.Run("Omitted body produces an empty response", func(t *testing.T) {
 		t.Parallel()
+
+		goSteps := map[string]core.StepHandler{
+			"mock.step": func(ctx *core.Context, args map[string]any) (any, error) {
+				return "should_be_ignored", nil
+			},
+		}
 
 		steps := []parser.ParsedStep{
 			{
@@ -196,15 +202,9 @@ def execute(ctx):
 			{
 				Type: parser.StepTypeRespond,
 				Respond: &parser.RespondStepBlock{
-					Status: parseExpr(t, `200`),
+					Status: parseExpr(t, `204`),
 					// Body is intentionally omitted
 				},
-			},
-		}
-
-		goSteps := map[string]core.StepHandler{
-			"mock.step": func(ctx *core.Context) (any, error) {
-				return "should_be_ignored", nil
 			},
 		}
 
@@ -221,13 +221,55 @@ def execute(ctx):
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("expected status 204, got %d", rec.Code)
+		}
+
+		if rec.Body.Len() != 0 {
+			t.Errorf("expected empty body, got %q", rec.Body.String())
+		}
+	})
+
+	t.Run("Evaluates custom headers in respond step", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `200`),
+					Headers: parseExpr(t, `{
+						"X-Custom-Header" = "custom_value"
+						"X-Echo-Method"   = ctx.request.method
+					}`),
+					Body: parseExpr(t, `{ ok = true }`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
 
-		// Because body was omitted, response must be empty
-		if rec.Body.Len() != 0 {
-			t.Errorf("expected empty body, got %q", rec.Body.String())
+		if h := rec.Header().Get("X-Custom-Header"); h != "custom_value" {
+			t.Errorf("expected header 'custom_value', got %q", h)
+		}
+
+		if h := rec.Header().Get("X-Echo-Method"); h != "GET" {
+			t.Errorf("expected header 'GET', got %q", h)
 		}
 	})
 }

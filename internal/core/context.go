@@ -25,15 +25,15 @@ type RequestState struct {
 type StepResult = map[string]any
 
 // StepHandler defines the signature for custom native Go step callbacks.
-type StepHandler func(ctx *Context) (any, error)
+type StepHandler func(ctx *Context, args map[string]any) (any, error)
 
-// Context represents the state passed sequentially across a pipeline execution.
+// Context encapsulates the runtime execution state for a single HTTP request lifecycle.
 type Context struct {
-	Request        *RequestState         `json:"request"`
-	Steps          map[string]StepResult `json:"steps"`
-	Args           map[string]any        `json:"args"`
-	TimestampEpoch int64                 `json:"timestamp_epoch"`
-	RawRequest     *http.Request         `json:"-"`
+	Request        *RequestState             `json:"request"`
+	Steps          map[string]map[string]any `json:"steps"`
+	TimestampEpoch int64                     `json:"timestamp_epoch"`
+	IngressTime    time.Time                 `json:"-"`
+	RawRequest     *http.Request             `json:"-"`
 }
 
 type contextConfig struct {
@@ -46,24 +46,22 @@ type ContextOption func(*contextConfig)
 
 // WithPathParams configures route parameter names to extract from the request.
 func WithPathParams(paramNames []string) ContextOption {
-	return func(c *contextConfig) {
-		c.pathParams = paramNames
-	}
+	return func(c *contextConfig) { c.pathParams = paramNames }
 }
 
 // WithMaxBodySize sets the maximum allowed request body size in bytes.
 func WithMaxBodySize(limit int64) ContextOption {
-	return func(c *contextConfig) {
-		c.maxBodySize = limit
-	}
+	return func(c *contextConfig) { c.maxBodySize = limit }
 }
 
-// NewContext parses the HTTP request, enforcing max body size and decoding JSON payloads.
+// NewContext parses the HTTP request, enforcing max body size and decoding payloads.
 func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (*Context, error) {
 	var cfg contextConfig
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+
+	ingressTime := time.Now().UTC()
 
 	queryParams := make(map[string]string, len(r.URL.Query()))
 	for k, v := range r.URL.Query() {
@@ -85,9 +83,9 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 	}
 
 	var bodyData any
-	if r.Body != nil {
+	if r.Body != nil && r.Body != http.NoBody {
 		bodyReader := r.Body
-		if cfg.maxBodySize > 0 {
+		if cfg.maxBodySize > 0 && w != nil {
 			bodyReader = http.MaxBytesReader(w, r.Body, cfg.maxBodySize)
 		}
 
@@ -100,9 +98,19 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 		}
 
 		if len(bodyBytes) > 0 {
-			if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
-				return nil, fmt.Errorf("invalid JSON payload: %w", err)
+			contentType := strings.ToLower(r.Header.Get("Content-Type"))
+
+			// If Content-Type is explicitly non-JSON (e.g. text/plain, form-urlencoded, xml)
+			if contentType != "" && !strings.Contains(contentType, "json") {
+				bodyData = string(bodyBytes)
+			} else {
+				// Default to JSON decoding for application/json, *+json, or omitted Content-Type
+				if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
+					return nil, fmt.Errorf("invalid JSON payload: %w", err)
+				}
 			}
+
+			// Restore r.Body so custom Go steps can re-read raw payload from ctx.RawRequest.Body
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 	}
@@ -116,8 +124,8 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 			Body:    bodyData,
 		},
 		Steps:          make(map[string]StepResult),
-		Args:           make(map[string]any),
-		TimestampEpoch: time.Now().Unix(),
+		TimestampEpoch: ingressTime.Unix(),
+		IngressTime:    ingressTime,
 		RawRequest:     r,
 	}, nil
 }
@@ -130,7 +138,7 @@ func (c *Context) Context() context.Context {
 	return context.Background()
 }
 
-// WithContext returns a shallow copy of the context with an updated underlying request context.
+// WithContext returns a shallow copy of Context with an updated underlying request context.
 func (c *Context) WithContext(ctx context.Context) *Context {
 	if c == nil {
 		return nil

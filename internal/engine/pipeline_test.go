@@ -358,4 +358,96 @@ def execute(ctx):
 			t.Errorf("expected user Jane with email, got %+v", resp["user"])
 		}
 	})
+
+	t.Run("SQL step intercepts constraint violation with catch block", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := connsql.NewManager()
+		conn := core.Connection{
+			Driver: "sqlite",
+			Name:   "main",
+			URL:    "file:pipeline_catch_mem?mode=memory&cache=shared",
+			Pool:   core.DefaultPoolConfig(),
+		}
+		if err := mgr.Open(t.Context(), conn); err != nil {
+			t.Fatalf("failed to open sqlite in-memory pool: %v", err)
+		}
+		t.Cleanup(func() { _ = mgr.Close() })
+
+		pool, _ := mgr.Get("sqlite.main")
+
+		// Create table with UNIQUE constraint
+		schema := `
+			CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT UNIQUE);
+			INSERT INTO accounts VALUES (1, 'existing@example.com');
+		`
+		if _, err := pool.DB.ExecContext(t.Context(), schema); err != nil {
+			t.Fatalf("failed to seed test table: %v", err)
+		}
+
+		// Pipeline trying to insert duplicate email, catching SQLite constraint code "19"
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeSQL,
+				Name: "insert_account",
+				SQL: &parser.SQLStepBlock{
+					Connection: parseExpr(t, `connection.sqlite.main`),
+					Query:      "INSERT INTO accounts (id, email) VALUES (2, @email)",
+					Args:       parseExpr(t, `{ email = ctx.request.body.email }`),
+					Catches: []parser.SQLCatchBlock{
+						{
+							Code:    "19",
+							Status:  parseExpr(t, `409`),
+							Headers: parseExpr(t, `{ "X-Error" = "Conflict" }`),
+							Body:    parseExpr(t, `{ error = "Account with this email already exists" }`),
+						},
+					},
+				},
+			},
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `201`),
+					Body:   parseExpr(t, `steps.insert_account.row`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, mgr)
+
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			"/accounts",
+			strings.NewReader(`{"email": "existing@example.com"}`),
+		)
+		req.Header.Set("Content-Type", "application/json")
+
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected pipeline execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusConflict {
+			t.Errorf("expected status 409 Conflict, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		if h := rec.Header().Get("X-Error"); h != "Conflict" {
+			t.Errorf("expected header X-Error 'Conflict', got %q", h)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response JSON: %v", err)
+		}
+
+		if resp["error"] != "Account with this email already exists" {
+			t.Errorf("unexpected error payload: %+v", resp)
+		}
+	})
 }

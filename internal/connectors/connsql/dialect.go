@@ -39,6 +39,46 @@ func (d Dialect) ExtractErrorCode(err error) string {
 	return defaultExtractSQLErrorCode(err)
 }
 
+func defaultExtractSQLErrorCode(err error) string {
+	if coder, ok := errors.AsType[sqlStateCoder](err); ok {
+		return coder.SQLState()
+	}
+
+	if getter, ok := errors.AsType[codeGetter](err); ok {
+		return getter.Code()
+	}
+
+	return ""
+}
+
+// MatchErrorCode checks if an extracted database error matches the target catch code.
+func (d Dialect) MatchErrorCode(actualCode, targetCode string) bool {
+	if actualCode == "" || targetCode == "" {
+		return false
+	}
+	if actualCode == targetCode {
+		return true
+	}
+
+	// SQLite: Support matching primary code (e.g. "19") against extended code (e.g. "2067")
+	if d.name == "sqlite" {
+		if num, err := strconv.Atoi(actualCode); err == nil {
+			if strconv.Itoa(num&0xFF) == targetCode {
+				return true
+			}
+		}
+	}
+
+	// PostgreSQL / CockroachDB: Support matching class prefix (e.g. catch "23" matches "23505")
+	if d.name == "postgres" || d.name == "cockroachdb" {
+		if strings.HasPrefix(actualCode, targetCode) {
+			return true
+		}
+	}
+
+	return false
+}
+
 type pgErrorCoder interface {
 	error
 	SQLState() string
@@ -173,16 +213,4 @@ func ResolveDialect(driver string) Dialect {
 	default:
 		return SQLiteDialect
 	}
-}
-
-func defaultExtractSQLErrorCode(err error) string {
-	if coder, ok := errors.AsType[sqlStateCoder](err); ok {
-		return coder.SQLState()
-	}
-
-	if getter, ok := errors.AsType[codeGetter](err); ok {
-		return getter.Code()
-	}
-
-	return ""
 }

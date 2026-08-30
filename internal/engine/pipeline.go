@@ -1,10 +1,10 @@
 package engine
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/hashicorp/hcl/v2"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
@@ -57,8 +57,12 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 			}
 
 		case parser.StepTypeSQL:
-			if err := p.execSQLStep(step, ctx); err != nil {
+			responded, err := p.execSQLStep(w, step, ctx)
+			if err != nil {
 				return err
+			}
+			if responded {
+				return nil // Terminal catch step reached and written
 			}
 
 		case parser.StepTypeRespond:
@@ -145,29 +149,49 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	return nil
 }
 
-func (p *PipelineExecutor) execSQLStep(step parser.ParsedStep, ctx *core.Context) error {
+func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.ParsedStep, ctx *core.Context) (bool, error) {
 	if step.SQL == nil {
-		return fmt.Errorf("step %q: missing sql configuration", step.Name)
+		return false, fmt.Errorf("step %q: missing sql configuration", step.Name)
 	}
 
 	connRef, err := parser.ResolveConnectionRef(step.SQL.Connection)
 	if err != nil {
-		return fmt.Errorf("step %q connection: %w", step.Name, err)
+		return false, fmt.Errorf("step %q connection: %w", step.Name, err)
 	}
 
 	pool, exists := p.sqlManager.Get(connRef)
 	if !exists {
-		return fmt.Errorf("step %q: unknown connection %q", step.Name, connRef)
+		return false, fmt.Errorf("step %q: unknown connection %q", step.Name, connRef)
 	}
 
 	args, err := eval.Map(step.SQL.Args, ctx)
 	if err != nil {
-		return fmt.Errorf("step %q args: %w", step.Name, err)
+		return false, fmt.Errorf("step %q args: %w", step.Name, err)
 	}
 
 	res, err := xsql.Execute(ctx.Context(), pool, step.SQL.Query, args)
 	if err != nil {
-		return fmt.Errorf("step %q: %w", step.Name, err)
+		// Attempt to intercept database constraint error codes with catch blocks
+		errCode := pool.Dialect.ExtractErrorCode(err)
+		if errCode != "" && len(step.SQL.Catches) > 0 {
+			for _, catchBlock := range step.SQL.Catches {
+				if pool.Dialect.MatchErrorCode(errCode, catchBlock.Code) {
+					if err := writeResponse(
+						w,
+						ctx,
+						catchBlock.Status,
+						catchBlock.Headers,
+						catchBlock.Body,
+						http.StatusBadRequest,
+					); err != nil {
+						return false, fmt.Errorf("step %q catch: %w", step.Name, err)
+					}
+					return true, nil
+				}
+			}
+		}
+
+		return false, fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
 	if step.Name != "" {
@@ -178,7 +202,7 @@ func (p *PipelineExecutor) execSQLStep(step parser.ParsedStep, ctx *core.Context
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func (p *PipelineExecutor) execRespondStep(
@@ -187,28 +211,41 @@ func (p *PipelineExecutor) execRespondStep(
 	ctx *core.Context,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, errors.New("step is missing respond configuration")
+		return false, fmt.Errorf("step is missing respond configuration")
 	}
 
 	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)
 	if err != nil {
-		return false, fmt.Errorf("respond condition evaluation failed: %w", err)
+		return false, fmt.Errorf("respond condition: %w", err)
 	}
 	if !shouldRun {
-		return false, nil // Condition was false; skip responding and continue pipeline
+		return false, nil
 	}
 
-	status, err := eval.Int(step.Respond.Status, ctx, http.StatusOK)
+	if err := writeResponse(w, ctx, step.Respond.Status, step.Respond.Headers, step.Respond.Body, http.StatusOK); err != nil {
+		return false, fmt.Errorf("step %q: %w", step.Name, err)
+	}
+
+	return true, nil // Terminal response successfully written
+}
+
+// writeResponse evaluates dynamic status, headers, and body expressions and writes the finalized HTTP response.
+func writeResponse(
+	w http.ResponseWriter,
+	ctx *core.Context,
+	statusExpr, headersExpr, bodyExpr hcl.Expression,
+	defaultStatus int,
+) error {
+	status, err := eval.Int(statusExpr, ctx, defaultStatus)
 	if err != nil {
-		return false, fmt.Errorf("respond status evaluation failed: %w", err)
+		return fmt.Errorf("eval status: %w", err)
 	}
 
-	// Evaluate headers if defined
 	var headers map[string]string
-	if step.Respond.Headers != nil {
-		evaluatedHeaders, err := eval.Map(step.Respond.Headers, ctx)
+	if headersExpr != nil {
+		evaluatedHeaders, err := eval.Map(headersExpr, ctx)
 		if err != nil {
-			return false, fmt.Errorf("respond headers evaluation failed: %w", err)
+			return fmt.Errorf("eval headers: %w", err)
 		}
 		if len(evaluatedHeaders) > 0 {
 			headers = make(map[string]string, len(evaluatedHeaders))
@@ -218,19 +255,18 @@ func (p *PipelineExecutor) execRespondStep(
 		}
 	}
 
-	// Evaluate body if defined
 	var body any
-	if step.Respond.Body != nil {
-		evaluatedBody, err := eval.Any(step.Respond.Body, ctx)
+	if bodyExpr != nil {
+		evaluatedBody, err := eval.Any(bodyExpr, ctx)
 		if err != nil {
-			return false, fmt.Errorf("respond body evaluation failed: %w", err)
+			return fmt.Errorf("eval body: %w", err)
 		}
 		body = evaluatedBody
 	}
 
 	if err := xrespond.Write(w, status, headers, body); err != nil {
-		return false, fmt.Errorf("failed to write response: %w", err)
+		return fmt.Errorf("write response: %w", err)
 	}
 
-	return true, nil // Terminal response successfully written
+	return nil
 }

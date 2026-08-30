@@ -94,6 +94,7 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 		Blocks: []hcl.BlockHeaderSchema{
 			{Type: string(StepTypeGo), LabelNames: []string{"name"}},
 			{Type: string(StepTypeStarlark), LabelNames: []string{"name"}},
+			{Type: string(StepTypeSQL), LabelNames: []string{"name"}},
 			{Type: string(StepTypeRespond)},
 		},
 	}
@@ -126,6 +127,17 @@ func DecodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 				Type:     StepTypeStarlark,
 				Name:     block.Labels[0],
 				Starlark: &cfg,
+			})
+
+		case string(StepTypeSQL):
+			var cfg SQLStepBlock
+			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
+				return nil, fmt.Errorf("sql step %q: %s", block.Labels[0], diags.Error())
+			}
+			steps = append(steps, ParsedStep{
+				Type: StepTypeSQL,
+				Name: block.Labels[0],
+				SQL:  &cfg,
 			})
 
 		case string(StepTypeRespond):

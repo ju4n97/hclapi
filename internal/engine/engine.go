@@ -65,9 +65,15 @@ func New(options core.Options) (*Engine, error) {
 		}
 	}
 
+	serverConfig, err := manifest.Server.ToServer()
+	if err != nil {
+		_ = sqlManager.Close()
+		return nil, fmt.Errorf("server config: %w", err)
+	}
+
 	e := &Engine{
 		options:      options,
-		server:       manifest.Server.ToServer(),
+		server:       serverConfig,
 		mux:          http.NewServeMux(),
 		sqlManager:   sqlManager,
 		goSteps:      make(map[string]core.StepHandler),

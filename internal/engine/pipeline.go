@@ -35,6 +35,10 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 	var lastResult any
 
 	for _, step := range p.steps {
+		if err := ctx.Context().Err(); err != nil {
+			return err
+		}
+
 		switch step.Type {
 		case parser.StepTypeGo:
 			res, err := p.execGoStep(step, ctx)

@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,8 @@ type Context struct {
 	Steps          map[string]StepResult `json:"steps"`
 	Args           map[string]any        `json:"args"`
 	TimestampEpoch int64                 `json:"timestamp_epoch"`
-	RawRequest     *http.Request         `json:"-"`
+
+	RawRequest *http.Request `json:"-"`
 }
 
 type contextConfig struct {
@@ -122,4 +124,24 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 		TimestampEpoch: time.Now().Unix(),
 		RawRequest:     r,
 	}, nil
+}
+
+// Context returns the underlying request context, or context.Background() if RawRequest is nil.
+func (c *Context) Context() context.Context {
+	if c != nil && c.RawRequest != nil {
+		return c.RawRequest.Context()
+	}
+	return context.Background()
+}
+
+// WithContext returns a shallow copy of the context with an updated underlying request context.
+func (c *Context) WithContext(ctx context.Context) *Context {
+	if c == nil {
+		return nil
+	}
+	clone := *c
+	if c.RawRequest != nil {
+		clone.RawRequest = c.RawRequest.WithContext(ctx)
+	}
+	return &clone
 }

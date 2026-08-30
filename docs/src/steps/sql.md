@@ -36,32 +36,6 @@ Unlike untyped query drivers, `sql` steps export deterministic attributes to pre
 | `steps.<name>.row`           | `map` or `null` | The first row returned by the query, or `null` if no rows match. |
 | `steps.<name>.rows_affected` | `int`           | Total count of rows matched, inserted, updated, or deleted.      |
 
-## Catching database constraint errors
-
-The `catch` block intercepts database error codes (such as PostgreSQL unique violation `23505` or MySQL duplicate entry `1062`), aborts any active transaction, and returns a formatted HTTP response:
-
-```hcl
-sql "insert_user" {
-  connection = connection.postgres.main
-  query      = <<-SQL
-    INSERT INTO users (email, full_name)
-    VALUES (@email, @full_name)
-    RETURNING id, email, full_name, created_at
-  SQL
-  args = {
-    email     = ctx.request.body.email
-    full_name = ctx.request.body.full_name
-  }
-
-  catch "23505" {
-    status = 409
-    body = {
-      error = "A user with this email address already exists."
-    }
-  }
-}
-```
-
 ## Examples
 
 ### Fetching a single record
@@ -106,3 +80,49 @@ endpoint "GET /api/v1/users" {
   }
 }
 ```
+
+## Catching database constraint errors
+
+The `catch` block intercepts database error codes (such as PostgreSQL unique violation `23505` or MySQL duplicate entry `1062`), aborts any active transaction, and returns a formatted HTTP response:
+
+```hcl
+sql "insert_user" {
+  connection = connection.postgres.main
+  query      = <<-SQL
+    INSERT INTO users (email, full_name)
+    VALUES (@email, @full_name)
+    RETURNING id, email, full_name, created_at
+  SQL
+  args = {
+    email     = ctx.request.body.email
+    full_name = ctx.request.body.full_name
+  }
+
+  catch "23505" {
+    status = 409
+    body = {
+      error = "A user with this email address already exists."
+    }
+  }
+}
+```
+
+## Common database error codes reference
+
+Below is a cheat sheet of common constraint violation error codes used in `catch "<code>"` blocks across supported database engines:
+
+| Error category                       | PostgreSQL / CockroachDB |        SQLite         | MySQL / MariaDB |     SQL Server      |
+| :----------------------------------- | :----------------------: | :-------------------: | :-------------: | :-----------------: |
+| **Unique violation / Duplicate key** |        `"23505"`         | `"2067"` (or `"19"`)  |    `"1062"`     | `"2627"` / `"2601"` |
+| **Foreign key violation**            |        `"23503"`         |  `"787"` (or `"19"`)  |    `"1452"`     |       `"547"`       |
+| **Not null violation**               |        `"23502"`         | `"1299"` (or `"19"`)  |    `"1048"`     |       `"515"`       |
+| **Check constraint failure**         |        `"23514"`         |  `"275"` (or `"19"`)  |    `"3819"`     |       `"547"`       |
+| **Deadlock / Serialization failure** |  `"40001"` / `"40P01"`   | `"5"` (`SQLITE_BUSY`) |    `"1213"`     |      `"1205"`       |
+
+### Official database documentation links
+
+- [PostgreSQL Error Codes (Appendix A)](https://www.postgresql.org/docs/current/errcodes-appendix.html)
+- [SQLite Result Codes & Extended Codes](https://www.sqlite.org/rescode.html)
+- [MySQL Server Error Message Reference](https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html)
+- [Microsoft SQL Server Database Engine Errors](https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-events-and-errors)
+- [Oracle Database Error Messages (ORA-)](https://docs.oracle.com/en/database/oracle/oracle-database/23/errmg/)

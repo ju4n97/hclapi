@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 
 	"github.com/ju4n97/hclapi/internal/core"
@@ -28,10 +30,10 @@ type ServerBlock struct {
 }
 
 // ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
-func (s *ServerBlock) ToServer() core.Server {
+func (s *ServerBlock) ToServer() (core.Server, error) {
 	def := core.DefaultServer()
 	if s == nil {
-		return def
+		return def, nil
 	}
 
 	srv := core.Server{
@@ -41,32 +43,37 @@ func (s *ServerBlock) ToServer() core.Server {
 
 	if s.ReadTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err == nil {
-			srv.ReadTimeout = d
+		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid read_timeout: %w", err)
 		}
+		srv.ReadTimeout = d
 	}
 	if s.WriteTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err == nil {
-			srv.WriteTimeout = d
+		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid write_timeout: %w", err)
 		}
+		srv.WriteTimeout = d
 	}
 	if s.IdleTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err == nil {
-			srv.IdleTimeout = d
+		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid idle_timeout: %w", err)
 		}
+		srv.IdleTimeout = d
 	}
 	if s.MaxBodySize != nil {
-		if b, err := core.ParseByteSize(*s.MaxBodySize); err == nil {
-			srv.MaxBodySize = b
+		b, err := core.ParseByteSize(*s.MaxBodySize)
+		if err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid max_body_size: %w", err)
 		}
+		srv.MaxBodySize = b
 	}
 	if s.ErrorBaseURL != nil {
 		srv.ErrorBaseURL = *s.ErrorBaseURL
 	}
 
-	return srv.WithDefaults()
+	return srv.WithDefaults(), nil
 }
 
 // ConnectionBlock represents a connection pool configuration block.
@@ -104,22 +111,22 @@ func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
 		if c.Pool.MaxIdleConns != nil {
 			conn.Pool.MaxIdleConns = *c.Pool.MaxIdleConns
 		}
-		if c.Pool.Size != nil {
-			conn.Pool.Size = *c.Pool.Size
-		}
 		if c.Pool.ConnMaxLifetime != nil {
 			var d core.Duration
-			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err == nil {
-				conn.Pool.ConnMaxLifetime = d
+			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err != nil {
+				return core.Connection{}, fmt.Errorf("connection %q: invalid conn_max_lifetime: %w", c.Name, err)
 			}
 			conn.Pool.ConnMaxLifetime = d
 		}
 		if c.Pool.IdleTimeout != nil {
 			var d core.Duration
-			if err := d.UnmarshalText([]byte(*c.Pool.IdleTimeout)); err == nil {
-				conn.Pool.IdleTimeout = d
+			if err := d.UnmarshalText([]byte(*c.Pool.IdleTimeout)); err != nil {
+				return core.Connection{}, fmt.Errorf("connection %q: invalid idle_timeout: %w", c.Name, err)
 			}
 			conn.Pool.IdleTimeout = d
+		}
+		if c.Pool.Size != nil {
+			conn.Pool.Size = *c.Pool.Size
 		}
 	}
 
@@ -157,6 +164,7 @@ type StepType string
 const (
 	StepTypeGo       StepType = "go"
 	StepTypeStarlark StepType = "starlark"
+	StepTypeSQL      StepType = "sql"
 	StepTypeRespond  StepType = "respond"
 )
 
@@ -166,6 +174,7 @@ type ParsedStep struct {
 	Name     string
 	Go       *GoStepBlock
 	Starlark *StarlarkStepBlock
+	SQL      *SQLStepBlock
 	Respond  *RespondStepBlock
 }
 
@@ -178,6 +187,24 @@ type GoStepBlock struct {
 // StarlarkStepBlock defines the script source for a Starlark step.
 type StarlarkStepBlock struct {
 	Source string `hcl:"source,attr"`
+}
+
+// SQLStepBlock defines the SQL query to execute.
+type SQLStepBlock struct {
+	Connection hcl.Expression  `hcl:"connection,attr"`
+	Query      string          `hcl:"query,attr"`
+	Args       hcl.Expression  `hcl:"args,optional"`
+	Catches    []SQLCatchBlock `hcl:"catch,block"`
+	Remain     hcl.Body        `hcl:",remain"`
+}
+
+// SQLCatchBlock defines error code interception and response payload mapping for a SQL step.
+type SQLCatchBlock struct {
+	Code    string         `hcl:"code,label"`
+	Status  hcl.Expression `hcl:"status,optional"`
+	Headers hcl.Expression `hcl:"headers,optional"`
+	Body    hcl.Expression `hcl:"body,optional"`
+	Remain  hcl.Body       `hcl:",remain"`
 }
 
 // RespondStepBlock defines the parameters for serializing an HTTP response.

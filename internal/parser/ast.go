@@ -17,28 +17,52 @@ type Manifest struct {
 
 // ServerBlock represents the raw HCL server syntax block.
 type ServerBlock struct {
-	Host         string        `hcl:"host,optional"`
-	Port         int           `hcl:"port,optional"`
-	ReadTimeout  core.Duration `hcl:"read_timeout,optional"`
-	WriteTimeout core.Duration `hcl:"write_timeout,optional"`
-	IdleTimeout  core.Duration `hcl:"idle_timeout,optional"`
-	MaxBodySize  core.ByteSize `hcl:"max_body_size,optional"`
-	Remain       hcl.Body      `hcl:",remain"`
+	Host         string   `hcl:"host,optional"`
+	Port         int      `hcl:"port,optional"`
+	ReadTimeout  *string  `hcl:"read_timeout,optional"`
+	WriteTimeout *string  `hcl:"write_timeout,optional"`
+	IdleTimeout  *string  `hcl:"idle_timeout,optional"`
+	MaxBodySize  *string  `hcl:"max_body_size,optional"`
+	Remain       hcl.Body `hcl:",remain"`
 }
 
 // ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
 func (s *ServerBlock) ToServer() core.Server {
+	def := core.DefaultServer()
 	if s == nil {
-		return core.DefaultServer()
+		return def
 	}
-	return core.Server{
-		Host:         s.Host,
-		Port:         s.Port,
-		ReadTimeout:  s.ReadTimeout,
-		WriteTimeout: s.WriteTimeout,
-		IdleTimeout:  s.IdleTimeout,
-		MaxBodySize:  s.MaxBodySize,
-	}.WithDefaults()
+
+	srv := core.Server{
+		Host: s.Host,
+		Port: s.Port,
+	}
+
+	if s.ReadTimeout != nil {
+		var d core.Duration
+		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err == nil {
+			srv.ReadTimeout = d
+		}
+	}
+	if s.WriteTimeout != nil {
+		var d core.Duration
+		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err == nil {
+			srv.WriteTimeout = d
+		}
+	}
+	if s.IdleTimeout != nil {
+		var d core.Duration
+		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err == nil {
+			srv.IdleTimeout = d
+		}
+	}
+	if s.MaxBodySize != nil {
+		if b, err := core.ParseByteSize(*s.MaxBodySize); err == nil {
+			srv.MaxBodySize = b
+		}
+	}
+
+	return srv.WithDefaults()
 }
 
 // ConnectionBlock represents a connection pool configuration block.

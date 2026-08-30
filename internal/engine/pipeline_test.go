@@ -87,7 +87,7 @@ def execute(ctx):
 		reqAuth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqAuth.Header.Set("Authorization", "secret-token")
 
-		ctxAuth, err := core.NewContext(reqAuth, nil)
+		ctxAuth, err := core.NewContext(nil, reqAuth)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
@@ -111,7 +111,7 @@ def execute(ctx):
 		reqUnauth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqUnauth.Header.Set("Authorization", "wrong-token")
 
-		ctxUnauth, err := core.NewContext(reqUnauth, nil)
+		ctxUnauth, err := core.NewContext(nil, reqUnauth)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}

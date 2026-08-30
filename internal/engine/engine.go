@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -75,8 +76,26 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	executor := NewPipelineExecutor(steps, e.goSteps)
 
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
-		hclapiCtx, err := core.NewContext(r, paramNames)
+		hclapiCtx, err := core.NewContext(w, r,
+			core.WithPathParams(paramNames),
+			core.WithMaxBodySize(e.server.MaxBodySize.Bytes()),
+		)
 		if err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				e.logger.WarnContext(r.Context(), "request payload too large", "error", err, "path", r.URL.Path)
+				e.errorHandler(w, r, core.ProblemDetailsError{
+					Type:   "https://github.com/ju4n97/hclapi/errors/payload-too-large",
+					Title:  "Request Entity Too Large",
+					Status: http.StatusRequestEntityTooLarge,
+					Detail: fmt.Sprintf(
+						"request body exceeded maximum size limit of %s",
+						e.server.MaxBodySize.String(),
+					),
+					Instance: r.URL.Path,
+				})
+				return
+			}
+
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
 				Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",

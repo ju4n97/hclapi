@@ -2,10 +2,12 @@ package engine_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ju4n97/hclapi/internal/core"
@@ -115,4 +117,62 @@ endpoint "GET /orgs/{org_id}/files/{filepath...}" {
 			}
 		})
 	}
+}
+
+func TestMaxBodySizeEnforcement(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manifestContent := `
+server {
+  max_body_size = "1KB"
+}
+
+endpoint "POST /upload" {
+  pipeline {
+    respond {
+      status = 200
+      body = { status = "accepted" }
+    }
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "server.hcl"), []byte(manifestContent), 0o600); err != nil {
+		t.Fatalf("failed to write test manifest: %v", err)
+	}
+
+	eng, err := engine.New(core.Options{
+		ConfigPath: tmpDir,
+	})
+	if err != nil {
+		t.Fatalf("failed to initialize engine: %v", err)
+	}
+
+	t.Run("Payload under limit succeeds", func(t *testing.T) {
+		smallBody := strings.NewReader(`{"name": "tiny payload"}`)
+		req := httptest.NewRequest(http.MethodPost, "/upload", smallBody)
+		rec := httptest.NewRecorder()
+
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Payload exceeding 1KB is rejected with 413", func(t *testing.T) {
+		largePayload := fmt.Sprintf(`{"data": "%s"}`, strings.Repeat("A", 2048))
+		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(largePayload))
+		rec := httptest.NewRecorder()
+
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("expected status 413, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		if !strings.Contains(rec.Body.String(), "Request Entity Too Large") {
+			t.Errorf("expected problem details payload too large message, got: %s", rec.Body.String())
+		}
+	})
 }

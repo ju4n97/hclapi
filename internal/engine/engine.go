@@ -12,8 +12,8 @@ import (
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-// pathParamRegex matches standard Go 1.22+ and OpenAPI URI templates like {id} or {city}.
-var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+// pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
+var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.\.\.)?\}`)
 
 // Engine is the central HTTP coordinator.
 type Engine struct {

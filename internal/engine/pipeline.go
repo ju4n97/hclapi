@@ -73,14 +73,13 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 	if err != nil {
 		return nil, fmt.Errorf("step %q args evaluation failed: %w", step.Name, err)
 	}
-	ctx.Args = args
 
 	handler, exists := p.goSteps[step.Go.Use]
 	if !exists {
 		return nil, fmt.Errorf("unregistered go function %q", step.Go.Use)
 	}
 
-	res, err := xgo.Execute(handler, ctx)
+	res, err := xgo.Execute(handler, ctx, args)
 	if err != nil {
 		return nil, fmt.Errorf("step %q execution failed: %w", step.Name, err)
 	}

@@ -15,42 +15,64 @@ func TestWrite(t *testing.T) {
 	tests := []struct {
 		name          string
 		status        int
-		evaluatedBody any
-		lastResult    any
+		headers       map[string]string
+		body          any
 		expectStatus  int
+		expectHeaders map[string]string
 		expectBody    string
 	}{
 		{
-			name:          "Explicit evaluated body takes precedence over lastResult",
-			status:        http.StatusOK,
-			evaluatedBody: map[string]string{"message": "hello"},
-			lastResult:    map[string]string{"ignored": "true"},
-			expectStatus:  http.StatusOK,
-			expectBody:    `{"message":"hello"}`,
+			name:         "Default application/json when headers are omitted",
+			status:       http.StatusOK,
+			headers:      nil,
+			body:         map[string]string{"message": "hello"},
+			expectStatus: http.StatusOK,
+			expectHeaders: map[string]string{
+				"Content-Type": "application/json",
+			},
+			expectBody: `{"message":"hello"}`,
 		},
 		{
-			name:          "Fallback to lastResult when evaluatedBody is nil",
-			status:        http.StatusCreated,
-			evaluatedBody: nil,
-			lastResult:    map[string]int{"count": 42},
-			expectStatus:  http.StatusCreated,
-			expectBody:    `{"count":42}`,
+			name:   "Custom response headers and custom Content-Type with raw text body",
+			status: http.StatusOK,
+			headers: map[string]string{
+				"Content-Type":  "text/plain",
+				"X-Cache":       "HIT",
+				"Cache-Control": "public, max-age=3600",
+			},
+			body:         "raw text payload",
+			expectStatus: http.StatusOK,
+			expectHeaders: map[string]string{
+				"Content-Type":  "text/plain",
+				"X-Cache":       "HIT",
+				"Cache-Control": "public, max-age=3600",
+			},
+			expectBody: "raw text payload",
 		},
 		{
-			name:          "Empty body when both evaluatedBody and lastResult are nil",
-			status:        http.StatusNoContent,
-			evaluatedBody: nil,
-			lastResult:    nil,
-			expectStatus:  http.StatusNoContent,
-			expectBody:    "",
+			name:   "Sanitizes CRLF in headers to prevent response splitting",
+			status: http.StatusCreated,
+			headers: map[string]string{
+				"X-Trace\r\nInjected": "trace-value\r\nInjected",
+			},
+			body:         map[string]bool{"ok": true},
+			expectStatus: http.StatusCreated,
+			expectHeaders: map[string]string{
+				"X-TraceInjected": "trace-valueInjected",
+				"Content-Type":    "application/json",
+			},
+			expectBody: `{"ok":true}`,
 		},
 		{
-			name:          "Serializes custom error payload with 404 status",
-			status:        http.StatusNotFound,
-			evaluatedBody: map[string]string{"error": "user not found"},
-			lastResult:    nil,
-			expectStatus:  http.StatusNotFound,
-			expectBody:    `{"error":"user not found"}`,
+			name:         "No Content 204 writes no body or Content-Type",
+			status:       http.StatusNoContent,
+			headers:      map[string]string{"X-Deleted": "true"},
+			body:         nil,
+			expectStatus: http.StatusNoContent,
+			expectHeaders: map[string]string{
+				"X-Deleted": "true",
+			},
+			expectBody: "",
 		},
 	}
 
@@ -59,7 +81,7 @@ func TestWrite(t *testing.T) {
 			t.Parallel()
 
 			w := httptest.NewRecorder()
-			err := xrespond.Write(w, tt.status, tt.evaluatedBody, tt.lastResult)
+			err := xrespond.Write(w, tt.status, tt.headers, tt.body)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -68,8 +90,10 @@ func TestWrite(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectStatus, w.Code)
 			}
 
-			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
-				t.Errorf("expected Content-Type application/json, got %q", ct)
+			for k, expectedVal := range tt.expectHeaders {
+				if actualVal := w.Header().Get(k); actualVal != expectedVal {
+					t.Errorf("expected header %q to be %q, got %q", k, expectedVal, actualVal)
+				}
 			}
 
 			trimmed := strings.TrimSpace(w.Body.String())

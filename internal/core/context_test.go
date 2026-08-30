@@ -90,7 +90,10 @@ func TestNewContext(t *testing.T) {
 				paramNames = append(paramNames, k)
 			}
 
-			ctx, err := core.NewContext(req, paramNames)
+			ctx, err := core.NewContext(nil, req,
+				core.WithPathParams(paramNames),
+				core.WithMaxBodySize(10*1024*1024),
+			)
 			if tt.expectError {
 				if err == nil {
 					t.Fatalf("expected error for malformed input, got nil")

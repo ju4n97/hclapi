@@ -1,7 +1,9 @@
 package engine_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,7 +89,7 @@ def execute(ctx):
 		reqAuth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqAuth.Header.Set("Authorization", "secret-token")
 
-		ctxAuth, err := core.NewContext(reqAuth, nil)
+		ctxAuth, err := core.NewContext(nil, reqAuth)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
@@ -111,7 +113,7 @@ def execute(ctx):
 		reqUnauth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		reqUnauth.Header.Set("Authorization", "wrong-token")
 
-		ctxUnauth, err := core.NewContext(reqUnauth, nil)
+		ctxUnauth, err := core.NewContext(nil, reqUnauth)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
@@ -127,6 +129,57 @@ def execute(ctx):
 
 		if !strings.Contains(recUnauth.Body.String(), "unauthorized") {
 			t.Errorf("expected unauthorized error body, got: %s", recUnauth.Body.String())
+		}
+	})
+
+	t.Run("Context cancellation aborts pipeline execution before subsequent steps", func(t *testing.T) {
+		t.Parallel()
+
+		stepTwoExecuted := false
+		goSteps := map[string]core.StepHandler{
+			"step.one": func(ctx *core.Context) (any, error) {
+				return "done_one", nil
+			},
+			"step.two": func(ctx *core.Context) (any, error) {
+				stepTwoExecuted = true
+				return "done_two", nil
+			},
+		}
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "first",
+				Go:   &parser.GoStepBlock{Use: "step.one"},
+			},
+			{
+				Type: parser.StepTypeGo,
+				Name: "second",
+				Go:   &parser.GoStepBlock{Use: "step.two"},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps)
+
+		reqCtx, cancel := context.WithCancel(t.Context())
+		cancel() // Cancel before execution
+
+		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/test", http.NoBody)
+
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		err = executor.Execute(rec, hclapiCtx)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled error, got: %v", err)
+		}
+
+		if stepTwoExecuted {
+			t.Errorf("expected step two to be skipped after context cancellation")
 		}
 	})
 }

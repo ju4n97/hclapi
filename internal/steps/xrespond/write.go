@@ -3,24 +3,70 @@ package xrespond
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 )
 
-// Write writes the HTTP status code, sets Content-Type to JSON, and serializes
-// either the evaluated body or the fallback result from the previous pipeline step.
-func Write(w http.ResponseWriter, status int, evaluatedBody, lastResult any) error {
-	w.Header().Set("Content-Type", "application/json")
+func sanitizeHeaders(s string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(s))
+}
+
+func isJSONContentType(contentType string) bool {
+	if contentType == "" {
+		return true
+	}
+	lower := strings.ToLower(contentType)
+	return strings.Contains(lower, "application/json") || strings.Contains(lower, "+json")
+}
+
+// Write sets sanitized headers, writes the status code, and serializes the response body.
+func Write(w http.ResponseWriter, status int, headers map[string]string, body any) error {
+	hasContentType := false
+
+	for k, v := range headers {
+		cleanKey := sanitizeHeaders(k)
+		cleanVal := sanitizeHeaders(v)
+		if cleanKey == "" {
+			continue
+		}
+		if strings.EqualFold(cleanKey, "Content-Type") {
+			hasContentType = true
+		}
+		w.Header().Set(cleanKey, cleanVal)
+	}
+
+	if !hasContentType && body != nil && status != http.StatusNoContent {
+		w.Header().Set("Content-Type", "application/json")
+	}
+
 	w.WriteHeader(status)
 
-	// Explicit body defined in HCL
-	if evaluatedBody != nil {
-		return json.NewEncoder(w).Encode(evaluatedBody)
+	if body == nil || status == http.StatusNoContent {
+		return nil
 	}
 
-	// Implicit fallback to the output of the preceding step
-	if lastResult != nil {
-		return json.NewEncoder(w).Encode(lastResult)
+	contentType := w.Header().Get("Content-Type")
+	if isJSONContentType(contentType) {
+		return json.NewEncoder(w).Encode(body)
 	}
 
-	return nil
+	// Write raw bytes/strings for non-JSON content types (e.g. text/plain, text/html, application/xml)
+	switch b := body.(type) {
+	case string:
+		if _, err := w.Write([]byte(b)); err != nil {
+			return fmt.Errorf("failed to write response string: %w", err)
+		}
+		return nil
+	case []byte:
+		if _, err := w.Write(b); err != nil {
+			return fmt.Errorf("failed to write response bytes: %w", err)
+		}
+		return nil
+	default:
+		if _, err := fmt.Fprint(w, b); err != nil {
+			return fmt.Errorf("failed to write response body: %w", err)
+		}
+		return nil
+	}
 }

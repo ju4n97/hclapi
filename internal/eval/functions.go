@@ -243,7 +243,10 @@ var lengthFunc = function.New(&function.Spec{
 		case ty.IsListType() || ty.IsSetType() || ty.IsTupleType() || ty.IsMapType() || ty.IsObjectType():
 			return cty.NumberIntVal(int64(val.LengthInt())), nil
 		default:
-			return cty.NilVal, fmt.Errorf("length requires a string, list, tuple, set, or map; got %s", ty.FriendlyName())
+			return cty.NilVal, fmt.Errorf(
+				"length requires a string, list, tuple, set, or map; got %s",
+				ty.FriendlyName(),
+			)
 		}
 	},
 })

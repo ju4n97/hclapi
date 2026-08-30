@@ -16,4 +16,3 @@ formatters:
         - github.com/ju4n97/hclapi
     golines:
       max-len: 120
-      shorten-comments: true

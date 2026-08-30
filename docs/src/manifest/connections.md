@@ -53,7 +53,6 @@ hclapi uses strictly canonical driver names across all supported relational, ana
 | **`"oracle"`**      | Relational SQL    |       `:1, :2`        | Oracle Database 11g, 12c, 19c, 21c, 23ai                  |
 | **`"cockroachdb"`** | Distributed SQL   |       `$1, $2`        | CockroachDB Dedicated and Serverless                      |
 | **`"clickhouse"`**  | Columnar SQL      |          `?`          | ClickHouse Cloud, ClickHouse Self-Hosted                  |
-| **`"snowflake"`**   | Data Warehouse    |          `?`          | Snowflake Cloud Data Platform                             |
 | **`"duckdb"`**      | Embedded Columnar |          `?`          | DuckDB Analytics Engine                                   |
 | **`"redis"`**       | Key-Value / Cache |          N/A          | Redis, Valkey, AWS ElastiCache                            |
 | **`"s3"`**          | Blob Storage      |          N/A          | Amazon S3, Cloudflare R2, MinIO, Google Cloud Storage     |

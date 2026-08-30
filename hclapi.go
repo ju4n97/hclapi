@@ -17,13 +17,13 @@ type Context = core.Context
 // ContextOption configures optional behavior during Context creation.
 type ContextOption = core.ContextOption
 
-// RequestState holds structured data extracted from the HTTP request.
+// RequestState represents normalized HTTP request metadata extracted at runtime.
 type RequestState = core.RequestState
 
-// StepResult stores the output or metadata produced by an executed step.
+// StepResult represents arbitrary step-specific outputs.
 type StepResult = core.StepResult
 
-// StepHandler is the type of a function that executes a single step.
+// StepHandler defines the signature for custom native Go step callbacks.
 type StepHandler = core.StepHandler
 
 // Options defines the configuration options for the hclapi engine.

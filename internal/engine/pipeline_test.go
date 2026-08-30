@@ -56,9 +56,10 @@ func TestPipelineExecutor(t *testing.T) {
 				Starlark: &parser.StarlarkStepBlock{
 					Source: `
 def execute(ctx):
+    auth_data = ctx.steps.auth.get("result", {})
     return {
-        "user_id": ctx.steps.auth.get("uid"),
-        "authorized": ctx.steps.auth.get("valid")
+        "user_id": auth_data.get("uid"),
+        "authorized": auth_data.get("valid")
     }
 `,
 				},

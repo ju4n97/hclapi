@@ -111,15 +111,11 @@ func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
 	}
 
 	stepsDict := make(map[string]cty.Value, len(ctx.Steps))
-	for name, res := range ctx.Steps {
-		stepsDict[name] = cty.ObjectVal(map[string]cty.Value{
-			"result":        anyToCty(res.Result),
-			"rows_affected": cty.NumberIntVal(res.RowsAffected),
-		})
+	for name, stepExports := range ctx.Steps {
+		stepsDict[name] = anyToCty(stepExports)
 	}
 
 	childCtx := baseEvalContext.NewChild()
-
 	childCtx.Variables = map[string]cty.Value{
 		"ctx": cty.ObjectVal(map[string]cty.Value{
 			"request":         reqVal,

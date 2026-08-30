@@ -1,38 +1,79 @@
 # redis
 
-Executes key-value operations against a Redis or Valkey connection.
-Supports cache reads, writes with TTL, deletions, and counters.
+Executes key-value commands against a Redis or Valkey connection pool. Supports cache reads, writes with TTL, key deletions, and counters.
 
 ## Declaration
 
 ```hcl
-redis "<name>" {
-  connection = connection.redis.<name>
+redis "cache_lookup" {
+  connection = connection.redis.cache
   command    = "GET"
-  key        = "cache:product:${ctx.request.path.sku}"
+  key        = "product:${ctx.request.path.sku}"
 }
 ```
 
 ## Attributes
 
-| Attribute    | Type         | Required  | Description                                  |
-| :----------- | :----------- | :-------- | :------------------------------------------- |
-| label        | `string`     | yes       | step identifier                              |
-| `connection` | `connection` | yes       | Redis connection pool                        |
-| `command`    | `string`     | yes       | `GET`, `SET`, `DEL`, `INCR`, or `EXISTS`     |
-| `key`        | `string`     | yes       | cache key, supports `${...}` interpolation   |
-| `value`      | `any`        | for `SET` | value to store, typically `json_encode(...)` |
-| `ttl`        | `Duration`   | no        | expiration for `SET`                         |
+| Attribute    | Type         | Required  | Description                                          |
+| :----------- | :----------- | :-------- | :--------------------------------------------------- |
+| label        | `string`     | yes       | Step identifier; output is written to `steps.<name>` |
+| `connection` | `connection` | yes       | Redis connection pool reference                      |
+| `command`    | `string`     | yes       | `GET`, `SET`, `DEL`, `INCR`, or `EXISTS`             |
+| `key`        | `string`     | yes       | Cache key; supports dynamic string interpolation     |
+| `value`      | `any`        | for `SET` | Value to store (typically `json_encode(...)`)        |
+| `ttl`        | `Duration`   | no        | Expiration duration for `SET` commands               |
 
-## Commands
+## Exported outputs
 
-| Command  | Requires       | Returns                    |
-| :------- | :------------- | :------------------------- |
-| `GET`    | `key`          | value, or `null` on a miss |
-| `SET`    | `key`, `value` | `"OK"`                     |
-| `DEL`    | `key`          | number of keys removed     |
-| `INCR`   | `key`          | incremented integer        |
-| `EXISTS` | `key`          | `bool`                     |
+| Field                | Type  | Description                                                                                                     |
+| :------------------- | :---- | :-------------------------------------------------------------------------------------------------------------- |
+| `steps.<name>.value` | `any` | The retrieved cache value (or `null` on a cache miss), `"OK"` for `SET`, count for `DEL`, or integer for `INCR` |
 
-See [Cache aside](../patterns.md#cache-aside) for the full read-fallback-write
-flow.
+## Examples
+
+### Cache-aside pattern
+
+```hcl
+endpoint "GET /api/v1/products/{sku}" {
+  pipeline {
+    redis "cache_lookup" {
+      connection = connection.redis.cache
+      command    = "GET"
+      key        = "cache:product:${ctx.request.path.sku}"
+    }
+
+    respond {
+      condition = steps.cache_lookup.value != null
+      status    = 200
+      headers   = { "X-Cache" = "HIT" }
+      body      = json_decode(steps.cache_lookup.value)
+    }
+
+    sql "db_query" {
+      connection = connection.postgres.main
+      query      = "SELECT id, sku, name, price FROM products WHERE sku = @sku"
+      args       = { sku = ctx.request.path.sku }
+    }
+
+    respond {
+      condition = steps.db_query.rows_affected == 0
+      status    = 404
+      body      = { error = "Product not found" }
+    }
+
+    redis "cache_write" {
+      connection = connection.redis.cache
+      command    = "SET"
+      key        = "cache:product:${ctx.request.path.sku}"
+      value      = json_encode(steps.db_query.row)
+      ttl        = "30m"
+    }
+
+    respond {
+      status  = 200
+      headers = { "X-Cache" = "MISS" }
+      body    = steps.db_query.row
+    }
+  }
+}
+```

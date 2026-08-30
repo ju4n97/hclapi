@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// RequestState holds structured data extracted from the HTTP request.
+// RequestState represents normalized HTTP request metadata extracted at runtime.
 type RequestState struct {
 	Method  string            `json:"method"`
 	Path    map[string]string `json:"path"`
@@ -21,14 +21,11 @@ type RequestState struct {
 	Body    any               `json:"body"`
 }
 
-// StepHandler is the type of a function that executes a single step.
-type StepHandler func(ctx *Context) (any, error)
+// StepResult represents arbitrary step-specific outputs.
+type StepResult = map[string]any
 
-// StepResult stores the output or metadata produced by an executed step.
-type StepResult struct {
-	Result       any   `json:"result"`
-	RowsAffected int64 `json:"rows_affected,omitempty"`
-}
+// StepHandler defines the signature for custom native Go step callbacks.
+type StepHandler func(ctx *Context) (any, error)
 
 // Context represents the state passed sequentially across a pipeline execution.
 type Context struct {
@@ -36,8 +33,7 @@ type Context struct {
 	Steps          map[string]StepResult `json:"steps"`
 	Args           map[string]any        `json:"args"`
 	TimestampEpoch int64                 `json:"timestamp_epoch"`
-
-	RawRequest *http.Request `json:"-"`
+	RawRequest     *http.Request         `json:"-"`
 }
 
 type contextConfig struct {

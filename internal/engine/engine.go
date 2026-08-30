@@ -84,7 +84,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
 				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
 				e.errorHandler(w, r, core.ProblemDetailsError{
-					Type:     "https://github.com/ju4n97/hclapi/errors/payload-too-large",
+					Type:     e.server.ProblemType("payload-too-large"),
 					Title:    "Request Entity Too Large",
 					Status:   http.StatusRequestEntityTooLarge,
 					Detail:   "request body exceeded maximum size limit of " + e.server.MaxBodySize.String(),
@@ -95,7 +95,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
-				Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
+				Type:     e.server.ProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -107,7 +107,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
-				Type:     "https://github.com/ju4n97/hclapi/errors/pipeline-execution-failed",
+				Type:     e.server.ProblemType("pipeline-execution-failed"),
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,
 				Detail:   err.Error(),

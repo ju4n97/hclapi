@@ -104,7 +104,7 @@ HTTP/1.1 400 Bad Request
 Content-Type: application/problem+json
 
 {
-  "type": "https://github.com/ju4n97/hclapi/errors/bad-request",
+  "type": "urn:hclapi:error:bad-request",
   "title": "Invalid Request Payload",
   "status": 400,
   "detail": "invalid JSON payload: invalid character '\"' after array element",

@@ -1,7 +1,6 @@
 # respond
 
-Terminates the pipeline. Sets the status, headers, and body. No step after
-`respond` runs once it fires.
+Terminates the pipeline. Sets the status, headers, and body. No step after `respond` runs once it fires.
 
 ## Declaration
 
@@ -10,68 +9,26 @@ respond {
   condition = steps.find_user.rows_affected == 0
   status    = 404
   headers = {
-    "X-Custom-Header" = "Value"
+    "Cache-Control" = "no-store"
+    "X-Trace-ID"    = uuid()
   }
   body = {
-    error = "Resource not found"
+    error = "User not found"
   }
 }
 ```
 
 ## Attributes
 
-| Attribute   | Type                  | Default                | Description                |
-| :---------- | :-------------------- | :--------------------- | :------------------------- |
-| `condition` | `Expression`          | `true`                 | step is skipped if `false` |
-| `status`    | `int` or `Expression` | `200`                  | HTTP status code           |
-| `headers`   | `map[string]string`   | `{}`                   | response headers           |
-| `body`      | `any` or `Expression` | previous step's result | payload to serialize       |
+| Attribute   | Type                  | Default                | Description                        |
+| :---------- | :-------------------- | :--------------------- | :--------------------------------- |
+| `condition` | `Expression`          | `true`                 | Step is skipped if `false`         |
+| `status`    | `int` or `Expression` | `200`                  | HTTP status code                   |
+| `headers`   | `map` or `Expression` | `{}`                   | Dynamic or static response headers |
+| `body`      | `any` or `Expression` | Previous step's result | Payload to serialize               |
 
-## Behavior
+## Content-Type and payload serialization
 
-When `condition` evaluates to `true`, the engine sets
-`Content-Type: application/json` unless overridden, applies `status`,
-serializes `body`, and terminates the pipeline.
-
-## Examples
-
-Implicit body from the preceding step.
-
-```hcl
-sql "find_user" {
-  connection = connection.postgres.main
-  query      = "SELECT id, name, email FROM users WHERE id = @id"
-  args       = { id = ctx.request.path.id }
-}
-
-respond {
-  status = 200
-}
-```
-
-204 with an empty body.
-
-```hcl
-respond {
-  condition = steps.delete_item.rows_affected == 0
-  status    = 404
-  body      = { error = "Item not found" }
-}
-
-respond {
-  status = 204
-}
-```
-
-Custom headers.
-
-```hcl
-respond {
-  status = 200
-  headers = {
-    "Cache-Control" = "public, max-age=3600"
-    "X-Rate-Limit"  = "1000"
-  }
-  body = steps.calculate_stats.result
-}
-```
+- **Default JSON:** If `Content-Type` is not specified in `headers`, the engine sets `Content-Type: application/json` and JSON-encodes `body`.
+- **Custom content types:** If `Content-Type` is explicitly set (e.g. `text/plain`, `text/html`, `application/xml`) and `body` is a `string` or `[]byte`, the raw payload is written directly without JSON encoding.
+- **Security:** All header keys and values are sanitized to strip `\r` and `\n` characters, preventing CRLF response-splitting attacks.

@@ -52,7 +52,7 @@ sql "insert_user" {
   catch "23505" {
     abort_with_status = 409
     body = {
-      type   = "https://hclapi.dev/errors/conflict"
+      type   = "urn:hclapi:error:conflict"
       title  = "Conflict"
       status = 409
       detail = "A user with this email address already exists."

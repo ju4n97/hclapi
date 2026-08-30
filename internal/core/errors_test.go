@@ -17,7 +17,7 @@ func TestProblemDetails(t *testing.T) {
 		t.Parallel()
 
 		problem := core.ProblemDetailsError{
-			Type:     "https://github.com/ju4n97/hclapi/errors/bad-request",
+			Type:     core.ProblemType("bad-request"),
 			Title:    "Invalid JSON Payload",
 			Status:   http.StatusBadRequest,
 			Detail:   "Syntax error at line 1",

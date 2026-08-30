@@ -50,7 +50,7 @@ func TestEval(t *testing.T) {
 		},
 		Steps: map[string]core.StepResult{
 			"lookup": {
-				Result: map[string]any{
+				"result": map[string]any{
 					"exists": true,
 					"tier":   "enterprise",
 				},

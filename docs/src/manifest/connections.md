@@ -1,10 +1,10 @@
 # connection
 
-Declares access parameters and pool configuration for a database or cache.
+Declares access parameters, connection pool sizing, and lifecycle policies for a database, cache, or storage backend.
 
 ## Declaration
 
-A `connection` block takes two labels: the driver and a unique name.
+A `connection` block takes two labels: the canonical driver identifier and a unique connection name.
 
 ```hcl
 connection "<driver>" "<name>" {
@@ -19,28 +19,50 @@ connection "<driver>" "<name>" {
 }
 ```
 
-The connection is referenced elsewhere as `connection.<driver>.<name>`.
+The connection is referenced in pipeline steps as `connection.<driver>.<name>`.
 
 ## Attributes
 
-| Attribute | Type     | Required | Description                   |
-| :-------- | :------- | :------- | :---------------------------- |
-| `url`     | `string` | yes      | connection DSN or URI         |
-| `pool`    | `block`  | no       | pool configuration, see below |
+| Attribute    | Type     | Required | Description                                                                |
+| :----------- | :------- | :------- | :------------------------------------------------------------------------- |
+| driver label | `string` | yes      | Canonical driver identifier (e.g. `"postgres"`, `"sqlite"`, `"sqlserver"`) |
+| name label   | `string` | yes      | Unique name identifier within the driver namespace                         |
+| `url`        | `string` | yes      | Connection DSN or URI (supports `env(...)` resolution)                     |
+| `pool`       | `block`  | no       | Connection pool tuning parameters                                          |
 
 ### pool
 
-| Attribute           | Type       | Default | Description                                                |
-| :------------------ | :--------- | :------ | :--------------------------------------------------------- |
-| `max_open_conns`    | `int`      | `25`    | maximum open connections                                   |
-| `max_idle_conns`    | `int`      | `5`     | maximum idle connections retained                          |
-| `conn_max_lifetime` | `Duration` | `"30m"` | maximum time a connection is reused before being recreated |
-| `idle_timeout`      | `Duration` | `"5m"`  | maximum idle time before eviction                          |
-| `size`              | `int`      | `20`    | total pool capacity, used by cache drivers                 |
+| Attribute           | Type       | Default | Description                                                  |
+| :------------------ | :--------- | :------ | :----------------------------------------------------------- |
+| `max_open_conns`    | `int`      | `25`    | Maximum number of open connections in the pool               |
+| `max_idle_conns`    | `int`      | `5`     | Maximum number of idle connections retained                  |
+| `conn_max_lifetime` | `Duration` | `"30m"` | Maximum time a connection may be reused before recreation    |
+| `idle_timeout`      | `Duration` | `"5m"`  | Maximum idle duration before an unused connection is evicted |
+| `size`              | `int`      | `20`    | Pool capacity used by cache and key-value drivers            |
 
-## Drivers
+## Supported drivers matrix
 
-PostgreSQL, with distinct primary and replica pools.
+hclapi uses strictly canonical driver names across all supported relational, analytical, cache, and storage engines:
+
+| Canonical driver    | Category          | Parameter placeholder | Supported databases and cloud platforms                   |
+| :------------------ | :---------------- | :-------------------: | :-------------------------------------------------------- |
+| **`"postgres"`**    | Relational SQL    |       `$1, $2`        | PostgreSQL, Supabase, TimescaleDB, Amazon Aurora Postgres |
+| **`"sqlite"`**      | Embedded SQL      |          `?`          | SQLite3, Turso, LibSQL                                    |
+| **`"mysql"`**       | Relational SQL    |          `?`          | MySQL, MariaDB, PlanetScale, TiDB, Amazon Aurora MySQL    |
+| **`"sqlserver"`**   | Relational SQL    |      `@p1, @p2`       | Microsoft SQL Server, Azure SQL Database                  |
+| **`"oracle"`**      | Relational SQL    |       `:1, :2`        | Oracle Database 11g, 12c, 19c, 21c, 23ai                  |
+| **`"cockroachdb"`** | Distributed SQL   |       `$1, $2`        | CockroachDB Dedicated and Serverless                      |
+| **`"clickhouse"`**  | Columnar SQL      |          `?`          | ClickHouse Cloud, ClickHouse Self-Hosted                  |
+| **`"snowflake"`**   | Data Warehouse    |          `?`          | Snowflake Cloud Data Platform                             |
+| **`"duckdb"`**      | Embedded Columnar |          `?`          | DuckDB Analytics Engine                                   |
+| **`"redis"`**       | Key-Value / Cache |          N/A          | Redis, Valkey, AWS ElastiCache                            |
+| **`"s3"`**          | Blob Storage      |          N/A          | Amazon S3, Cloudflare R2, MinIO, Google Cloud Storage     |
+
+## Examples
+
+### PostgreSQL
+
+Configured with dedicated primary and read-replica connection pools:
 
 ```hcl
 connection "postgres" "primary" {
@@ -64,7 +86,9 @@ connection "postgres" "replica" {
 }
 ```
 
-SQLite, a single-writer, file-backed database.
+### SQLite
+
+File-backed database running in WAL mode with single-writer serialization:
 
 ```hcl
 connection "sqlite" "main" {
@@ -77,7 +101,58 @@ connection "sqlite" "main" {
 }
 ```
 
-Redis.
+### MySQL
+
+```hcl
+connection "mysql" "main" {
+  url = env("MYSQL_URL") # format: user:pass@tcp(localhost:3306)/dbname?parseTime=true
+
+  pool {
+    max_open_conns = 30
+    max_idle_conns = 5
+  }
+}
+```
+
+### Microsoft SQL Server
+
+```hcl
+connection "sqlserver" "main" {
+  url = env("SQLSERVER_URL") # format: sqlserver://user:pass@localhost:1433?database=appdb
+
+  pool {
+    max_open_conns = 25
+    conn_max_lifetime = "30m"
+  }
+}
+```
+
+### Oracle Database
+
+```hcl
+connection "oracle" "enterprise" {
+  url = env("ORACLE_URL") # format: oracle://user:pass@localhost:1521/service_name
+
+  pool {
+    max_open_conns = 20
+    idle_timeout   = "5m"
+  }
+}
+```
+
+### ClickHouse
+
+```hcl
+connection "clickhouse" "analytics" {
+  url = env("CLICKHOUSE_URL") # format: clickhouse://user:pass@localhost:9000/analytics
+
+  pool {
+    max_open_conns = 10
+  }
+}
+```
+
+### Redis / Valkey
 
 ```hcl
 connection "redis" "cache" {
@@ -92,6 +167,8 @@ connection "redis" "cache" {
 
 ## Reference in a pipeline
 
+Step blocks reference connections by their two-part identifier (`connection.<driver>.<name>`):
+
 ```hcl
 endpoint "GET /api/v1/users/{id}" {
   pipeline {
@@ -105,13 +182,13 @@ endpoint "GET /api/v1/users/{id}" {
       connection = connection.redis.cache
       command    = "SET"
       key        = "user:${ctx.request.path.id}"
-      value      = json_encode(steps.find_user.result)
+      value      = json_encode(steps.find_user.row)
       ttl        = "15m"
     }
 
     respond {
       status = 200
-      body   = steps.find_user.result
+      body   = steps.find_user.row
     }
   }
 }

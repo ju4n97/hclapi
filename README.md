@@ -4,11 +4,29 @@
 [![Release](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml)
 [![CI](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
 
-hclapi is a backend engine distributed as a single cross-platform binary. It turns HashiCorp Configuration Language (HCL) manifests into HTTP APIs, combining data access, business logic, validation, and API definitions in a single declarative configuration, with built-in OpenAPI generation.
+hclapi is a declarative backend engine distributed as a single cross-platform binary. It turns HashiCorp Configuration Language (HCL) manifests, SQL queries, and Starlark scripts into production HTTP APIs with built-in connection pooling, validation, and OpenAPI documentation.
 
 [Documentation](https://ju4n97.github.io/hclapi/) ·
 [Why hclapi](https://ju4n97.github.io/hclapi/why.html) ·
 [Examples](./examples)
+
+## Supported connectors
+
+hclapi connects to any data source using native connection pooling and zero-CGO pure Go drivers:
+
+| Category              | Driver          | Supported engines                             |
+| :-------------------- | :-------------- | :-------------------------------------------- |
+| **Relational SQL**    | `"postgres"`    | PostgreSQL, Supabase, TimescaleDB, AWS Aurora |
+|                       | `"sqlite"`      | SQLite3, Turso, LibSQL                        |
+|                       | `"mysql"`       | MySQL, MariaDB, PlanetScale, TiDB             |
+|                       | `"sqlserver"`   | Microsoft SQL Server, Azure SQL               |
+|                       | `"oracle"`      | Oracle Database 11g – 23ai                    |
+|                       | `"cockroachdb"` | CockroachDB                                   |
+| **Analytical SQL**    | `"clickhouse"`  | ClickHouse Cloud & Self-Hosted                |
+|                       | `"snowflake"`   | Snowflake Cloud Data Platform                 |
+|                       | `"duckdb"`      | DuckDB Embedded Columnar                      |
+| **Key-Value / Cache** | `"redis"`       | Redis, Valkey, AWS ElastiCache                |
+| **Blob Storage**      | `"s3"`          | Amazon S3, Cloudflare R2, MinIO, GCS          |
 
 ## Example
 
@@ -51,20 +69,20 @@ endpoint "POST /api/v1/users" {
       }
 
       catch "23505" {
-        abort_with_status = 409
-        body = { error = "Email address already registered" }
+        status = 409
+        body   = { error = "Email address already registered" }
       }
     }
 
     respond {
       status = 201
-      body   = steps.insert_user.result
+      body   = steps.insert_user.row
     }
   }
 }
 ```
 
-## Install
+## Installation
 
 ```sh
 go install github.com/ju4n97/hclapi/cmd/hclapi@latest
@@ -74,36 +92,44 @@ go install github.com/ju4n97/hclapi/cmd/hclapi@latest
 hclapi serve -c ./api
 ```
 
-See [Installation](https://ju4n97.github.io/hclapi/installation.html) for
-precompiled binaries, and [Quickstart](https://ju4n97.github.io/hclapi/quickstart.html)
-for a full walkthrough.
+See [Installation](https://ju4n97.github.io/hclapi/installation.html) for precompiled cross-platform binaries, and [Quickstart](https://ju4n97.github.io/hclapi/quickstart.html) for a complete walkthrough.
 
-## Embedding
+## Embedding in Go
 
-hclapi implements the standard library `http.Handler` interface and mounts
-onto any Go multiplexer.
+hclapi implements the standard library `http.Handler` interface and mounts onto any Go HTTP router:
 
 ```go
-engine, err := hclapi.NewEngine(hclapi.Options{
-    ConfigPath:  "./api",
-    StrictTyping: true,
-})
-if err != nil {
-    log.Fatal(err)
-}
+package main
 
-mux := http.NewServeMux()
-mux.Handle("/api/v1/", engine.Handler())
-http.ListenAndServe(":8080", mux)
+import (
+ "log"
+ "net/http"
+
+ "github.com/ju4n97/hclapi"
+)
+
+func main() {
+  engine, err := hclapi.NewEngine(hclapi.Options{
+    ConfigPath:   "./api",
+    StrictTyping: true,
+  })
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  mux := http.NewServeMux()
+  mux.Handle("/api/v1/", engine.Handler())
+
+  log.Println("Server running on :8080")
+  http.ListenAndServe(":8080", mux)
+}
 ```
 
-See [Go integration](https://ju4n97.github.io/hclapi/go/README.html) for
-error handling, logging, and registering native Go steps.
+See [Go integration](https://ju4n97.github.io/hclapi/go/README.html) for custom error handlers, structured logging, and registering native Go steps.
 
 ## Documentation
 
-Full reference: request lifecycle, manifest syntax, pipeline steps, and
-patterns, at <https://ju4n97.github.io/hclapi/>.
+Full reference for the request lifecycle, manifest syntax, pipeline steps, and patterns is available at <https://ju4n97.github.io/hclapi/>.
 
 ## License
 

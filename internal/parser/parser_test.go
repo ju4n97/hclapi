@@ -84,7 +84,7 @@ func TestParse(t *testing.T) {
 			t.Parallel()
 
 			target := filepath.Join("testdata", tt.targetPath)
-			manifest, err := parser.Parse(target)
+			manifest, err := parser.Parse(target, nil)
 
 			if tt.expectError {
 				if err == nil {

@@ -18,8 +18,8 @@ import (
 	"github.com/zclconf/go-cty/cty/function/stdlib"
 )
 
-// standardFunctions returns the global function registry for HCL evaluation.
-func standardFunctions() map[string]function.Function {
+// StandardFunctions returns the global function registry for HCL evaluation.
+func StandardFunctions() map[string]function.Function {
 	return map[string]function.Function{
 		// System
 		"env":     envFunc,

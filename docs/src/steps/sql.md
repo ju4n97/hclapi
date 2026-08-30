@@ -19,20 +19,20 @@ sql "<name>" {
 
 ## Attributes
 
-| Attribute | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| label | `string` | yes | step identifier; output is written to `steps.<name>` |
-| `connection` | `connection` | yes | database connection pool |
-| `query` | `string` | yes | SQL statement; parameters use `@name` |
-| `args` | `map` | no | binds context values to `@parameters` |
-| `catch "<code>"` | `block` | no | handles a specific database error code |
+| Attribute        | Type         | Required | Description                                          |
+| :--------------- | :----------- | :------- | :--------------------------------------------------- |
+| label            | `string`     | yes      | step identifier; output is written to `steps.<name>` |
+| `connection`     | `connection` | yes      | database connection pool                             |
+| `query`          | `string`     | yes      | SQL statement; parameters use `@name`                |
+| `args`           | `map`        | no       | binds context values to `@parameters`                |
+| `catch "<code>"` | `block`      | no       | handles a specific database error code               |
 
 ## Output
 
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `steps.<name>.result` | `any` | a list for multiple rows, an object for one row, `null` for none |
-| `steps.<name>.rows_affected` | `int` | rows returned, updated, deleted, or inserted |
+| Field                        | Type  | Description                                                      |
+| :--------------------------- | :---- | :--------------------------------------------------------------- |
+| `steps.<name>.result`        | `any` | a list for multiple rows, an object for one row, `null` for none |
+| `steps.<name>.rows_affected` | `int` | rows returned, updated, deleted, or inserted                     |
 
 ## Catching errors
 

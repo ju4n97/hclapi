@@ -14,17 +14,17 @@ err := engine.RegisterStep("namespace.function_name", handler)
 
 `*hclapi.Context` is the Go equivalent of [`ctx`](../concepts/context.md).
 
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `ctx.Args` | `map[string]any` | evaluated `args` from the `go` block |
-| `ctx.Request.Method` | `string` | HTTP method |
-| `ctx.Request.Path` | `map[string]string` | route path parameters |
-| `ctx.Request.Query` | `map[string]string` | query string parameters |
-| `ctx.Request.Headers` | `map[string]string` | lowercase headers |
-| `ctx.Request.Body` | `any` | unmarshaled JSON body |
-| `ctx.Steps` | `map[string]core.StepResult` | outputs from prior steps |
-| `ctx.TimestampEpoch` | `int64` | ingress timestamp |
-| `ctx.RawRequest` | `*http.Request` | the underlying request |
+| Field                 | Type                         | Description                          |
+| :-------------------- | :--------------------------- | :----------------------------------- |
+| `ctx.Args`            | `map[string]any`             | evaluated `args` from the `go` block |
+| `ctx.Request.Method`  | `string`                     | HTTP method                          |
+| `ctx.Request.Path`    | `map[string]string`          | route path parameters                |
+| `ctx.Request.Query`   | `map[string]string`          | query string parameters              |
+| `ctx.Request.Headers` | `map[string]string`          | lowercase headers                    |
+| `ctx.Request.Body`    | `any`                        | unmarshaled JSON body                |
+| `ctx.Steps`           | `map[string]core.StepResult` | outputs from prior steps             |
+| `ctx.TimestampEpoch`  | `int64`                      | ingress timestamp                    |
+| `ctx.RawRequest`      | `*http.Request`              | the underlying request               |
 
 ## Example: outbound HTTP call
 

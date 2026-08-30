@@ -36,7 +36,7 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 
 	for _, step := range p.steps {
 		if err := ctx.Context().Err(); err != nil {
-			return err
+			return fmt.Errorf("pipeline execution aborted: %w", err)
 		}
 
 		switch step.Type {

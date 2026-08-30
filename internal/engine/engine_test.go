@@ -149,8 +149,10 @@ endpoint "POST /upload" {
 	}
 
 	t.Run("Payload under limit succeeds", func(t *testing.T) {
+		t.Parallel()
+
 		smallBody := strings.NewReader(`{"name": "tiny payload"}`)
-		req := httptest.NewRequest(http.MethodPost, "/upload", smallBody)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/upload", smallBody)
 		rec := httptest.NewRecorder()
 
 		eng.Handler().ServeHTTP(rec, req)
@@ -161,8 +163,10 @@ endpoint "POST /upload" {
 	})
 
 	t.Run("Payload exceeding 1KB is rejected with 413", func(t *testing.T) {
-		largePayload := fmt.Sprintf(`{"data": "%s"}`, strings.Repeat("A", 2048))
-		req := httptest.NewRequest(http.MethodPost, "/upload", strings.NewReader(largePayload))
+		t.Parallel()
+
+		largePayload := fmt.Sprintf(`{"data": %q}`, strings.Repeat("A", 2048))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/upload", strings.NewReader(largePayload))
 		rec := httptest.NewRecorder()
 
 		eng.Handler().ServeHTTP(rec, req)

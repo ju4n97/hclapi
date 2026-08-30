@@ -97,8 +97,8 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 
 		bodyBytes, err := io.ReadAll(bodyReader)
 		if err != nil {
-			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-				return nil, err // Preserved for engine status 413 mapping
+			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				return nil, fmt.Errorf("request body too large: %w", maxBytesErr)
 			}
 			return nil, fmt.Errorf("failed to read request body: %w", err)
 		}

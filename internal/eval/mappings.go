@@ -3,6 +3,7 @@ package eval
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -74,6 +75,15 @@ func anyToCty(val any) cty.Value {
 			dict[key] = cty.StringVal(sub)
 		}
 		return cty.ObjectVal(dict)
+	case []map[string]any:
+		if len(v) == 0 {
+			return cty.EmptyTupleVal
+		}
+		list := make([]cty.Value, len(v))
+		for i, item := range v {
+			list[i] = anyToCty(item)
+		}
+		return cty.TupleVal(list)
 	case []any:
 		if len(v) == 0 {
 			return cty.EmptyTupleVal
@@ -92,8 +102,31 @@ func anyToCty(val any) cty.Value {
 			list[i] = cty.StringVal(item)
 		}
 		return cty.TupleVal(list)
+	}
+
+	// Reflection fallback for any other slice, array, or custom map
+	rv := reflect.ValueOf(val)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		if rv.Len() == 0 {
+			return cty.EmptyTupleVal
+		}
+		list := make([]cty.Value, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			list[i] = anyToCty(rv.Index(i).Interface())
+		}
+		return cty.TupleVal(list)
+	case reflect.Map:
+		if rv.Len() == 0 {
+			return cty.EmptyObjectVal
+		}
+		dict := make(map[string]cty.Value, rv.Len())
+		for _, key := range rv.MapKeys() {
+			dict[fmt.Sprintf("%v", key.Interface())] = anyToCty(rv.MapIndex(key).Interface())
+		}
+		return cty.ObjectVal(dict)
 	default:
-		return cty.StringVal(fmt.Sprintf("%v", v))
+		return cty.StringVal(fmt.Sprintf("%v", val))
 	}
 }
 
@@ -127,6 +160,9 @@ func ctyToAny(val cty.Value) any {
 		for it := val.ElementIterator(); it.Next(); {
 			_, v := it.Element()
 			l = append(l, ctyToAny(v))
+		}
+		if l == nil {
+			return []any{}
 		}
 		return l
 	default:

@@ -1,5 +1,5 @@
 {
-  "name": "hclapi-rspress-docs",
+  "name": "docs",
   "private": true,
   "type": "module",
   "scripts": {

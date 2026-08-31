@@ -4,7 +4,7 @@ server {
 }
 
 connection "sqlite" "main" {
-  url = "file:/data/todos.db?mode=rwc"
+  url = "file:./data/todos.db?mode=rwc"
 
   pool {
     max_open_conns = 1
@@ -49,7 +49,7 @@ endpoint "GET /api/v1/todos" {
 
     respond {
       status = 200
-      body   = steps.list.result
+      body   = steps.list.rows
     }
   }
 }
@@ -65,8 +65,9 @@ endpoint "POST /api/v1/todos" {
     starlark "trim_input" {
       source = <<-STARLARK
         def execute(ctx):
+          title = ctx.request.body.get("title", "").strip()
           return {
-            "title": ctx.request.body.title.strip()
+            "title": title
           }
       STARLARK
     }
@@ -91,7 +92,7 @@ endpoint "POST /api/v1/todos" {
 
     respond {
       status = 201
-      body   = steps.insert.result
+      body   = steps.insert.row
     }
   }
 }
@@ -137,7 +138,7 @@ endpoint "GET /api/v1/todos/{id}" {
 
     respond {
       status = 200
-      body   = steps.fetch.result
+      body   = steps.fetch.row
     }
   }
 }
@@ -190,7 +191,7 @@ endpoint "PUT /api/v1/todos/{id}" {
 
     respond {
       status = 200
-      body   = steps.update.result
+      body   = steps.update.row
     }
   }
 }

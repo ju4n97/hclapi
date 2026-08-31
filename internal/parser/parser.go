@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
+
+	"github.com/ju4n97/hclapi/internal/core"
 )
 
 func ishclapiManifest(filename string) bool {
@@ -83,6 +85,13 @@ func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Mani
 	diags = gohcl.DecodeBody(file.Body, evalCtx, &manifest)
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("decode %s: %s", path, diags.Error())
+	}
+
+	manifestDir, err := filepath.Abs(filepath.Dir(path))
+	if err == nil {
+		for i := range manifest.Connections {
+			manifest.Connections[i].URL = core.ResolveRelativePath(manifest.Connections[i].URL, manifestDir)
+		}
 	}
 
 	return &manifest, nil

@@ -1,8 +1,11 @@
 #!/bin/sh
+
 set -eu
 
-mkdir -p ./data
+SCRIPT_DIR="$(dirname "$0")"
 
-sqlite3 ./data/todos.db < ./init.sql
+mkdir -p "$SCRIPT_DIR/data"
 
-docker compose up -d
+sqlite3 "$SCRIPT_DIR/data/todos.db" < "$SCRIPT_DIR/init.sql"
+
+# docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d

@@ -93,7 +93,10 @@ func Execute(ctx context.Context, pool *connsql.Pool, query string, args map[str
 	}
 
 	trimmedQuery := strings.ToUpper(strings.TrimSpace(rewrittenQuery))
-	isQuery := strings.HasPrefix(trimmedQuery, "SELECT") || strings.HasPrefix(trimmedQuery, "RETURNING")
+
+	isQuery := strings.HasPrefix(trimmedQuery, "SELECT") ||
+		strings.HasPrefix(trimmedQuery, "WITH") ||
+		strings.Contains(trimmedQuery, "RETURNING")
 
 	if isQuery {
 		rows, err := pool.DB.QueryContext(ctx, rewrittenQuery, orderedArgs...)

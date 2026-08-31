@@ -1,0 +1,110 @@
+---
+title: connection
+description: Configure database, cache, and storage connections, pool sizing, lifecycle policies, and supported drivers.
+---
+
+Declares access parameters, connection pool sizing, and lifecycle policies for a database, cache, or storage backend.
+
+## Declaration
+
+A `connection` block takes two labels: the canonical driver identifier and a unique connection name.
+
+```hcl
+connection "<driver>" "<name>" {
+  url = env("DATABASE_URL")
+
+  pool {
+    max_open_conns    = 25
+    max_idle_conns    = 5
+    conn_max_lifetime = "30m"
+    idle_timeout      = "5m"
+  }
+}
+```
+
+Reference the connection as `connection.<driver>.<name>`.
+
+## Attributes
+
+| Attribute    | Type     | Required | Description                                |
+| :----------- | :------- | :------- | :----------------------------------------- |
+| Driver label | `string` | yes      | Canonical driver identifier                |
+| Name label   | `string` | yes      | Unique name within the driver namespace    |
+| `url`        | `string` | yes      | DSN or URI; supports `env(...)` resolution |
+| `pool`       | `block`  | no       | Connection-pool tuning parameters          |
+
+### Pool settings
+
+| Attribute           | Type       | Default | Description                               |
+| :------------------ | :--------- | :------ | :---------------------------------------- |
+| `max_open_conns`    | `int`      | `25`    | Maximum number of open SQL connections    |
+| `max_idle_conns`    | `int`      | `5`     | Maximum idle SQL connections retained     |
+| `conn_max_lifetime` | `Duration` | `"30m"` | Maximum reuse duration                    |
+| `idle_timeout`      | `Duration` | `"5m"`  | Maximum idle duration before eviction     |
+| `size`              | `int`      | `20`    | Pool capacity for cache/key-value drivers |
+
+## Supported drivers
+
+| Driver        | Category           | Typical targets                                      |
+| :------------ | :----------------- | :--------------------------------------------------- |
+| `postgres`    | Relational SQL     | PostgreSQL, Supabase, TimescaleDB, Aurora PostgreSQL |
+| `sqlite`      | Embedded SQL       | SQLite, Turso, LibSQL                                |
+| `mysql`       | Relational SQL     | MySQL, MariaDB, PlanetScale, TiDB, Aurora MySQL      |
+| `sqlserver`   | Relational SQL     | SQL Server, Azure SQL                                |
+| `oracle`      | Relational SQL     | Oracle Database 11g–23ai                             |
+| `cockroachdb` | Distributed SQL    | CockroachDB                                          |
+| `clickhouse`  | Columnar SQL       | ClickHouse Cloud / self-hosted                       |
+| `duckdb`      | Embedded analytics | DuckDB                                               |
+| `redis`       | Key-value/cache    | Redis, Valkey, ElastiCache                           |
+| `s3`          | Blob storage       | S3, R2, MinIO, GCS-compatible endpoints              |
+
+## Example: primary and replica pools
+
+```hcl
+connection "postgres" "primary" {
+  url = env("DATABASE_PRIMARY_URL")
+
+  pool {
+    max_open_conns    = 50
+    max_idle_conns    = 10
+    conn_max_lifetime = "1h"
+    idle_timeout      = "10m"
+  }
+}
+
+connection "postgres" "replica" {
+  url = env("DATABASE_REPLICA_URL")
+
+  pool {
+    max_open_conns = 100
+    max_idle_conns = 20
+  }
+}
+```
+
+## Reference in a pipeline
+
+```hcl
+endpoint "GET /api/v1/users/{id}" {
+  pipeline {
+    sql "find_user" {
+      connection = connection.postgres.replica
+      query      = "SELECT id, name, email FROM users WHERE id = @id"
+      args       = { id = ctx.request.path.id }
+    }
+
+    redis "cache_user" {
+      connection = connection.redis.cache
+      command    = "SET"
+      key        = "user:${ctx.request.path.id}"
+      value      = json_encode(steps.find_user.row)
+      ttl        = "15m"
+    }
+
+    respond {
+      status = 200
+      body   = steps.find_user.row
+    }
+  }
+}
+```

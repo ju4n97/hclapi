@@ -1,0 +1,30 @@
+---
+title: trim_prefix
+description: Remove a prefix from the start of a string if present.
+---
+
+# trim_prefix
+
+Removes a prefix from the start of a string if present.
+
+## Signature
+
+```hcl
+trim_prefix(str: string, prefix: string) -> string
+```
+
+## Parameters
+
+| Parameter   | Type           | Required | Description             |
+| :---------- | :------------- | :------- | :---------------------- |
+| str, prefix | string, string | yes      | Input string and prefix |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+args = { token = trim_prefix(ctx.request.headers.authorization, "Bearer ") }
+```

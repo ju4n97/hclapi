@@ -1,0 +1,30 @@
+---
+title: max
+description: Return the largest value from a sequence of numbers.
+---
+
+# max
+
+Returns the largest value from a sequence of numbers.
+
+## Signature
+
+```hcl
+max(...numbers: number) -> number
+```
+
+## Parameters
+
+| Parameter | Type   | Required   | Description      |
+| :-------- | :----- | :--------- | :--------------- |
+| numbers   | number | at least 1 | Candidate values |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = { retries = max(0, ctx.request.query.retries) } }
+```

@@ -1,0 +1,30 @@
+---
+title: floor
+description: Round a floating-point number down to the nearest integer.
+---
+
+# floor
+
+Rounds a floating-point number down to the nearest integer.
+
+## Signature
+
+```hcl
+floor(num: number) -> int
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| num       | number | yes      | Input number |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = { bucket = floor(ctx.request.query.score) } }
+```

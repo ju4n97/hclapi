@@ -1,0 +1,30 @@
+---
+title: upper
+description: Convert all characters in a string to uppercase.
+---
+
+# upper
+
+Converts all characters in a string to uppercase.
+
+## Signature
+
+```hcl
+upper(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| str       | string | yes      | Input string |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+body = { country = upper(ctx.request.query.country) }
+```

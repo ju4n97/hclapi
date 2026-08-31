@@ -1,0 +1,34 @@
+---
+title: parse_int
+description: Parse an integer from a string representation in a base from 2 to 36.
+---
+
+# parse_int
+
+Parses an integer from a string representation in the specified base (2 to 36).
+
+## Signature
+
+```hcl
+parse_int(str: string, base: int) -> int
+```
+
+## Parameters
+
+| Parameter | Type        | Required | Description                   |
+| :-------- | :---------- | :------- | :---------------------------- |
+| str, base | string, int | yes      | Numeric string and radix 2–36 |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+sql "find_by_bitmask" {
+  connection = connection.postgres.main
+  query = "SELECT id FROM records WHERE flags = @mask"
+  args = { mask = parse_int(ctx.request.query.hex_flag, 16) }
+}
+```

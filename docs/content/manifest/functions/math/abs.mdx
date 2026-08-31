@@ -1,0 +1,30 @@
+---
+title: abs
+description: Return the absolute value of a number.
+---
+
+# abs
+
+Returns the absolute value of a number.
+
+## Signature
+
+```hcl
+abs(num: number) -> number
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| num       | number | yes      | Input number |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = { distance = abs(ctx.request.query.offset) } }
+```

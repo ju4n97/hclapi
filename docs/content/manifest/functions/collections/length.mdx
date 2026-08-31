@@ -1,0 +1,33 @@
+---
+title: length
+description: Return the number of elements in a list, keys in a map, or characters in a string.
+---
+
+# length
+
+Returns the total number of elements in a list, keys in a map, or characters in a string.
+
+## Signature
+
+```hcl
+length(collection: any) -> int
+```
+
+## Parameters
+
+| Parameter  | Type | Required | Description                     |
+| :--------- | :--- | :------- | :------------------------------ |
+| collection | any  | yes      | Collection or string to measure |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  status = 200
+  body = { total = length(steps.fetch_orders.result) }
+}
+```

@@ -12,7 +12,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-const outputDir = "./docs/cli"
+const outputDir = "./docs/content/cli"
 
 func main() {
 	if err := generateDocs(newRootCommand()); err != nil {

@@ -1,0 +1,38 @@
+---
+title: md5
+description: Compute the MD5 checksum of a string.
+---
+
+# md5
+
+Computes the MD5 checksum of a string, returning a 32-character hexadecimal digest.
+
+## Signature
+
+```hcl
+md5(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| str       | string | yes      | Input string |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+:::warning Security note
+MD5 is suitable for checksums such as cache keys or weak ETags, not for security-sensitive hashing.
+:::
+
+```hcl
+respond {
+  status = 200
+  headers = { "ETag" = format("\"%s\"", md5(json_encode(steps.find_user.result))) }
+  body = steps.find_user.result
+}
+```

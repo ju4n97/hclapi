@@ -1,0 +1,33 @@
+---
+title: url_decode
+description: Decode a URL percent-encoded string.
+---
+
+# url_decode
+
+Unescapes a URL percent-encoded string.
+
+## Signature
+
+```hcl
+url_decode(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description                      |
+| :-------- | :----- | :------- | :------------------------------- |
+| str       | string | yes      | The URL encoded string to decode |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  status = 200
+  body = { callback = url_decode(ctx.request.query.callback) }
+}
+```

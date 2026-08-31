@@ -1,0 +1,34 @@
+---
+title: Pipelines and steps
+description: The ordered step model inside endpoints, including execution rules, outputs, and failure behavior.
+---
+
+A pipeline is an ordered sequence of steps declared inside an `endpoint` block. Each step performs one unit of work and writes its result into the execution context for subsequent steps to read.
+
+| Step                                  | Function                                     | Exported outputs               |
+| :------------------------------------ | :------------------------------------------- | :----------------------------- |
+| [`sql`](../steps/sql)                 | Parameterized database queries and mutations | `rows`, `row`, `rows_affected` |
+| [`redis`](../steps/redis)             | Cache reads, writes, deletions, counters     | `value`                        |
+| [`starlark`](../steps/starlark)       | Sandboxed data transformation                | `result`                       |
+| [`go`](../steps/go)                   | Invokes a registered native Go function      | `result`                       |
+| [`transaction`](../steps/transaction) | Atomic multi-statement SQL execution         | Nested SQL outputs             |
+| [`parallel`](../steps/parallel)       | Concurrent branch execution                  | Nested branch outputs          |
+| [`respond`](../steps/respond)         | Terminates the pipeline                      | None                           |
+
+## Step execution rules
+
+### Unique step labels
+
+Every step except `respond` and `parallel` requires a unique name. The label defines the namespace under `steps.<name>`.
+
+### Read-only context history
+
+A step may read outputs written by prior steps, but cannot modify prior outputs or mutate `ctx.request`.
+
+### Fail-fast errors
+
+An unhandled error in any step immediately halts the pipeline and triggers the error handler.
+
+### Early termination
+
+Execution stops at the first `respond` whose condition evaluates to `true`, or at the first unconditional `respond`.

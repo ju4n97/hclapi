@@ -1,0 +1,158 @@
+# problem
+
+Constructs an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) compliant Problem Details error payload. Supports both positional shorthand for common errors and map syntax for structured validation errors and custom metadata extensions.
+
+## Signatures
+
+```hcl
+# 1. Positional shorthand (simple errors)
+problem(status: int, detail: string, custom_type: string...) -> map
+
+# 2. Object map syntax (rich errors with extensions)
+problem(config: map) -> map
+```
+
+## Parameters
+
+### Positional syntax
+
+| Parameter     | Type     | Required | Description                                                        |
+| :------------ | :------- | :------- | :----------------------------------------------------------------- |
+| `status`      | `int`    | yes      | HTTP status code (e.g. `400`, `404`, `409`, `422`, `500`)          |
+| `detail`      | `string` | yes      | Human-readable explanation specific to this occurrence             |
+| `custom_type` | `string` | no       | Custom problem type URI or slug (defaults to slugified HTTP title) |
+
+### Object map syntax
+
+| Field      | Type     | Required | Description                                                         |
+| :--------- | :------- | :------- | :------------------------------------------------------------------ |
+| `status`   | `int`    | yes      | HTTP status code                                                    |
+| `detail`   | `string` | yes      | Human-readable explanation                                          |
+| `title`    | `string` | no       | Custom title (defaults to standard `http.StatusText`)               |
+| `type`     | `string` | no       | Custom type URI or slug (defaults to URN or `error_base_url`)       |
+| `instance` | `string` | no       | Request path identifier (defaults to current route path)            |
+| `*`        | `any`    | no       | Any additional key-value pairs are preserved as RFC 9457 extensions |
+
+## Automatic field derivation
+
+To minimize boilerplate in manifests, `problem()` automatically derives missing fields:
+
+1. **Title:** If `title` is omitted, the engine uses the canonical HTTP status text for `status` (e.g. `404` -> `"Not Found"`, `409` -> `"Conflict"`).
+2. **Type URI:** If `type` is omitted, the title is slugified and appended to the configured URI scheme:
+   - **Default:** `"urn:hclapi:error:<slug>"` (e.g. `"urn:hclapi:error:not-found"`).
+   - **If `error_base_url` is set in `server {}`:** `error_base_url + "<slug>"` (e.g. `"https://docs.example.com/errors/not-found"`).
+3. **Instance:** Defaults to the current request's URL path (`ctx.request.path`).
+
+---
+
+## Examples
+
+### 1. Simple 404 not found response (Positional)
+
+```hcl
+endpoint "GET /api/v1/users/{id}" {
+  pipeline {
+    sql "find_user" {
+      connection = connection.postgres.main
+      query      = "SELECT id, name FROM users WHERE id = @id"
+      args       = { id = ctx.request.path.id }
+    }
+
+    respond {
+      condition = steps.find_user.rows_affected == 0
+      status    = 404
+      body      = problem(404, "User with ID ${ctx.request.path.id} not found")
+    }
+
+    respond {
+      status = 200
+      body   = steps.find_user.row
+    }
+  }
+}
+```
+
+#### Serialized output:
+
+```json
+{
+  "type": "urn:hclapi:error:not-found",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "User with ID 42 not found",
+  "instance": "/api/v1/users/42"
+}
+```
+
+---
+
+### 2. Database constraint collision with custom slug (Positional)
+
+```hcl
+sql "insert_user" {
+  connection = connection.postgres.main
+  query      = "INSERT INTO users (email) VALUES (@email)"
+  args       = { email = ctx.request.body.email }
+
+  catch "23505" {
+    status = 409
+    body   = problem(409, "Email address is already registered", "email-collision")
+  }
+}
+```
+
+#### Serialized output:
+
+```json
+{
+  "type": "urn:hclapi:error:email-collision",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "Email address is already registered",
+  "instance": "/api/v1/users"
+}
+```
+
+---
+
+### 3. Validation failure with RFC 9457 extensions (Map syntax)
+
+```hcl
+respond {
+  condition = ctx.request.body.age < 18
+  status    = 422
+  body = problem({
+    status     = 422
+    title      = "Unprocessable Entity"
+    detail     = "User must be at least 18 years old"
+    error_code = "AGE_RESTRICTION"
+    invalid_params = [
+      { name = "age", reason = "must be greater than or equal to 18" }
+    ]
+  })
+}
+```
+
+#### Serialized output:
+
+```json
+{
+  "type": "urn:hclapi:error:unprocessable-entity",
+  "title": "Unprocessable Entity",
+  "status": 422,
+  "detail": "User must be at least 18 years old",
+  "instance": "/api/v1/users",
+  "error_code": "AGE_RESTRICTION",
+  "invalid_params": [
+    {
+      "name": "age",
+      "reason": "must be greater than or equal to 18"
+    }
+  ]
+}
+```
+
+## Errors
+
+- Fails with an evaluation error if `status` is not an integer or if required arguments are missing.
+- Fails with an evaluation error if a single argument is passed that is not a `map` or `number`.

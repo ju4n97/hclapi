@@ -5,7 +5,7 @@ const Layout = () => (
     afterNavMenu={
       <div className="hclapi-nav-actions">    
         <a
-          href="/installation"
+          href="/docs/installation"
           className="hclapi-button hclapi-button--primary"
         >
           Install

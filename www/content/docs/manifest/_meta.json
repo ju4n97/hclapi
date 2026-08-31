@@ -1,0 +1,39 @@
+[
+  {
+    "type": "file",
+    "name": "structure",
+    "label": "Files and merging"
+  },
+  {
+    "type": "file",
+    "name": "server",
+    "label": "server"
+  },
+  {
+    "type": "file",
+    "name": "connections",
+    "label": "connection"
+  },
+  {
+    "type": "file",
+    "name": "schemas",
+    "label": "schema"
+  },
+  {
+    "type": "file",
+    "name": "endpoints",
+    "label": "endpoint"
+  },
+  {
+    "type": "file",
+    "name": "types",
+    "label": "Scalar types"
+  },
+  {
+    "type": "dir",
+    "name": "functions",
+    "label": "Functions",
+    "collapsible": true,
+    "collapsed": false
+  }
+]

@@ -1,0 +1,36 @@
+[
+  {
+    "type": "section-header",
+    "label": "Getting Started"
+  },
+  "index",
+  "why",
+  "installation",
+  "quickstart",
+  {
+    "type": "dir",
+    "name": "concepts",
+    "label": "Concepts",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "file",
+    "name": "patterns",
+    "label": "Patterns"
+  },
+  {
+    "type": "dir",
+    "name": "manifest",
+    "label": "Manifest",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "steps",
+    "label": "Pipeline steps",
+    "collapsible": true,
+    "collapsed": false
+  }
+]

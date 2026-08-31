@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
+	"github.com/zclconf/go-cty/cty/function"
 
 	"github.com/ju4n97/hclapi/internal/core"
 )
@@ -116,6 +117,11 @@ func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
 	}
 
 	childCtx := baseEvalContext.NewChild()
+
+	childCtx.Functions = map[string]function.Function{
+		"problem": problemFunc(ctx),
+	}
+
 	childCtx.Variables = map[string]cty.Value{
 		"ctx": cty.ObjectVal(map[string]cty.Value{
 			"request":         reqVal,

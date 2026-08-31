@@ -1,0 +1,27 @@
+[
+  {
+    "text": "Documentation",
+    "link": "/docs/",
+    "activeMatch": "^(?!/docs/manifest/|/docs/steps/|/docs/guides/|/docs/cli/).*"
+  },
+  {
+    "text": "Manifest",
+    "link": "/docs/manifest/structure",
+    "activeMatch": "^/docs/manifest/"
+  },
+  {
+    "text": "Pipeline steps",
+    "link": "/docs/steps/sql",
+    "activeMatch": "^/docs/steps/"
+  },
+  {
+    "text": "Guides",
+    "link": "/guides/go",
+    "activeMatch": "^/guides/"
+  },
+  {
+    "text": "CLI reference",
+    "link": "/cli/hclapi",
+    "activeMatch": "^/cli/"
+  }
+]

@@ -33,12 +33,13 @@ type Context struct {
 	Steps          map[string]map[string]any `json:"steps"`
 	TimestampEpoch int64                     `json:"timestamp_epoch"`
 	IngressTime    time.Time                 `json:"-"`
+	Server         Server                    `json:"-"`
 	RawRequest     *http.Request             `json:"-"`
 }
 
 type contextConfig struct {
-	pathParams  []string
-	maxBodySize int64
+	pathParams []string
+	server     Server
 }
 
 // ContextOption configures optional behavior during Context creation.
@@ -49,9 +50,9 @@ func WithPathParams(paramNames []string) ContextOption {
 	return func(c *contextConfig) { c.pathParams = paramNames }
 }
 
-// WithMaxBodySize sets the maximum allowed request body size in bytes.
-func WithMaxBodySize(limit int64) ContextOption {
-	return func(c *contextConfig) { c.maxBodySize = limit }
+// WithServer attaches the resolved server configuration to the request context.
+func WithServer(server Server) ContextOption {
+	return func(c *contextConfig) { c.server = server }
 }
 
 // NewContext parses the HTTP request, enforcing max body size and decoding payloads.
@@ -85,8 +86,9 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 	var bodyData any
 	if r.Body != nil && r.Body != http.NoBody {
 		bodyReader := r.Body
-		if cfg.maxBodySize > 0 && w != nil {
-			bodyReader = http.MaxBytesReader(w, r.Body, cfg.maxBodySize)
+		maxBodySize := cfg.server.MaxBodySize.Bytes()
+		if maxBodySize > 0 && w != nil {
+			bodyReader = http.MaxBytesReader(w, r.Body, maxBodySize)
 		}
 
 		bodyBytes, err := io.ReadAll(bodyReader)
@@ -126,6 +128,7 @@ func NewContext(w http.ResponseWriter, r *http.Request, opts ...ContextOption) (
 		Steps:          make(map[string]StepResult),
 		TimestampEpoch: ingressTime.Unix(),
 		IngressTime:    ingressTime,
+		Server:         cfg.server.WithDefaults(),
 		RawRequest:     r,
 	}, nil
 }

@@ -7,7 +7,7 @@ Recurring pipeline patterns referenced across endpoint configurations.
 
 ## 404 on a missing record
 
-Query a single resource, verify `rows_affected`, and return `steps.<name>.row`.
+Query a single resource, verify `rows_affected`, and return a standard `problem()` payload.
 
 ```hcl
 endpoint "GET /api/v1/users/{id}" {
@@ -21,7 +21,7 @@ endpoint "GET /api/v1/users/{id}" {
     respond {
       condition = steps.find_user.rows_affected == 0
       status    = 404
-      body      = { error = "User not found" }
+      body      = problem(404, "User not found")
     }
 
     respond {

@@ -1,0 +1,178 @@
+---
+title: Introduction
+description: A declarative backend engine that turns HCL manifests, SQL, and Starlark into HTTP APIs.
+pageType: doc-wide
+---
+
+import { OverviewGroup, SourceCode } from "@rspress/core/theme";
+
+# hclapi
+
+hclapi is a backend engine distributed as a single binary. It turns HashiCorp
+Configuration Language (HCL) manifests into HTTP APIs, combining data access,
+business logic, validation, and API definitions in a single declarative
+configuration, with built-in OpenAPI generation.
+
+:::info Request-time manifests
+
+Manifests are read and executed at request time. hclapi does not generate or
+compile Go source.
+
+:::
+
+<OverviewGroup
+  group={{
+    name: "Getting started",
+    items: [
+      {
+        text: "Installation",
+        link: "/installation",
+        headers: [
+          {
+            id: "precompiled-binaries",
+            text: "Precompiled binaries",
+            depth: 2,
+          },
+          { id: "build-from-source", text: "Build from source", depth: 2 },
+        ],
+      },
+      {
+        text: "Quickstart",
+        link: "/quickstart",
+        headers: [
+          { id: "your-first-api", text: "Your first API", depth: 2 },
+        ],
+      },
+    ],
+  }}
+/>
+
+<OverviewGroup
+  group={{
+    name: "Documentation",
+    items: [
+      {
+        text: "Concepts",
+        link: "/concepts/lifecycle",
+        items: [
+          { text: "Request lifecycle", link: "/concepts/lifecycle" },
+          { text: "Execution context", link: "/concepts/context" },
+          { text: "Pipelines and steps", link: "/concepts/pipelines" },
+          { text: "Expressions", link: "/concepts/expressions" },
+          { text: "Errors", link: "/concepts/errors" },
+        ],
+      },
+      {
+        text: "Manifest",
+        link: "/manifest/structure",
+        items: [
+          { text: "Files and merging", link: "/manifest/structure" },
+          { text: "server", link: "/manifest/server" },
+          { text: "connection", link: "/manifest/connections" },
+          { text: "schema", link: "/manifest/schemas" },
+          { text: "endpoint", link: "/manifest/endpoints" },
+          { text: "Scalar types", link: "/manifest/types" },
+        ],
+      },
+      {
+        text: "Pipeline steps",
+        link: "/steps/sql",
+        items: [
+          { text: "sql", link: "/steps/sql" },
+          { text: "starlark", link: "/steps/starlark" },
+          { text: "redis", link: "/steps/redis" },
+          { text: "transaction", link: "/steps/transaction" },
+          { text: "parallel", link: "/steps/parallel" },
+          { text: "go", link: "/steps/go" },
+          { text: "respond", link: "/steps/respond" },
+        ],
+      },
+      {
+        text: "Guides",
+        link: "/guides/go",
+        headers: [{ id: "go-integration", text: "Go integration", depth: 2 }],
+      },
+      {
+        text: "Patterns",
+        link: "/patterns",
+        headers: [
+          {
+            id: "404-on-a-missing-record",
+            text: "404 on a missing record",
+            depth: 2,
+          },
+          { id: "cache-aside", text: "Cache aside", depth: 2 },
+          {
+            id: "transactional-writes",
+            text: "Transactional writes",
+            depth: 2,
+          },
+          {
+            id: "parallel-aggregation",
+            text: "Parallel aggregation",
+            depth: 2,
+          },
+        ],
+      },
+      {
+        text: "CLI reference",
+        link: "/cli/hclapi",
+        items: [
+          { text: "hclapi", link: "/cli/hclapi" },
+          { text: "hclapi serve", link: "/cli/hclapi-serve" },
+          { text: "hclapi version", link: "/cli/hclapi-version" },
+        ],
+      },
+    ],
+  }}
+/>
+
+<OverviewGroup
+  group={{
+    name: "Machine-readable documentation",
+    items: [
+      {
+        text: "llms.txt",
+        link: "/llms.txt",
+      },
+      {
+        text: "llms-full.txt",
+        link: "/llms-full.txt",
+      },
+    ],
+  }}
+/>
+
+## How hclapi works
+
+An endpoint consists of an HTTP route, optional request validation, and an
+ordered pipeline of steps.
+
+1. A request is matched against an `endpoint`.
+
+2. Path, query, header, and body data are validated when a request schema is defined.
+
+3. Pipeline steps execute in order and write their outputs into the request context.
+
+4. A `respond` step terminates the pipeline and writes the HTTP response.
+
+See [Request lifecycle](./concepts/lifecycle.md) for the complete execution model and [Pipelines and steps](./concepts/pipelines.md) for pipeline execution rules.
+
+## What hclapi is for
+
+hclapi is intended for small HTTP APIs where the API layer is mostly a thin
+interface over existing data.
+
+It keeps endpoint definitions, queries, validation, and request processing
+close together in the manifest.
+
+hclapi does not replace a general-purpose backend framework. Services that
+require substantial application logic, complex workflows, long-running state,
+identity and authentication, schema management, or multiple cooperating
+services may be better implemented in application code.
+
+## Source
+
+Source and issue tracker:
+
+<SourceCode href="https://github.com/ju4n97/hclapi" />

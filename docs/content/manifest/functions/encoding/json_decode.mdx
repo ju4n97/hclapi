@@ -1,0 +1,40 @@
+---
+title: json_decode
+description: Parse a JSON string into corresponding HCL primitives, lists, or maps.
+---
+
+# json_decode
+
+Parses a JSON string into corresponding HCL primitives, lists, or maps.
+
+## Signature
+
+```hcl
+json_decode(str: string) -> any
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description              |
+| :-------- | :----- | :------- | :----------------------- |
+| str       | string | yes      | The JSON string to parse |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+redis "cache_lookup" {
+  connection = connection.redis.cache
+  command    = "GET"
+  key        = "product:${ctx.request.path.id}"
+}
+
+respond {
+  condition = steps.cache_lookup.value != null
+  status    = 200
+  body      = json_decode(steps.cache_lookup.value)
+}
+```

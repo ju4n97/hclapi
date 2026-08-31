@@ -1,0 +1,37 @@
+---
+title: uuid / uuid_v4
+description: Generate a cryptographically secure random UUID version 4 string; uuid is an alias to uuid_v4.
+---
+
+# uuid / uuid_v4
+
+Generates a cryptographically secure random UUID version 4 string. `uuid()` is an alias to `uuid_v4()`.
+
+## Signature
+
+```hcl
+uuid() -> string
+uuid_v4() -> string
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description   |
+| :-------- | :--- | :------- | :------------ |
+| None      | —    | —        | No parameters |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  status = 201
+  headers = { "X-Request-ID" = uuid() }
+  body = { session_id = uuid_v4(), status = "created" }
+}
+```
+
+`uuid()` is an alias for `uuid_v4()`.

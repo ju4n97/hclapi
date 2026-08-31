@@ -1,7 +1,12 @@
 package parser
 
 import (
+	"errors"
+	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
 
 	"github.com/ju4n97/hclapi/internal/core"
 )
@@ -28,10 +33,10 @@ type ServerBlock struct {
 }
 
 // ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
-func (s *ServerBlock) ToServer() core.Server {
+func (s *ServerBlock) ToServer() (core.Server, error) {
 	def := core.DefaultServer()
 	if s == nil {
-		return def
+		return def, nil
 	}
 
 	srv := core.Server{
@@ -41,40 +46,94 @@ func (s *ServerBlock) ToServer() core.Server {
 
 	if s.ReadTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err == nil {
-			srv.ReadTimeout = d
+		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid read_timeout: %w", err)
 		}
+		srv.ReadTimeout = d
 	}
 	if s.WriteTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err == nil {
-			srv.WriteTimeout = d
+		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid write_timeout: %w", err)
 		}
+		srv.WriteTimeout = d
 	}
 	if s.IdleTimeout != nil {
 		var d core.Duration
-		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err == nil {
-			srv.IdleTimeout = d
+		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid idle_timeout: %w", err)
 		}
+		srv.IdleTimeout = d
 	}
 	if s.MaxBodySize != nil {
-		if b, err := core.ParseByteSize(*s.MaxBodySize); err == nil {
-			srv.MaxBodySize = b
+		b, err := core.ParseByteSize(*s.MaxBodySize)
+		if err != nil {
+			return core.Server{}, fmt.Errorf("server: invalid max_body_size: %w", err)
 		}
+		srv.MaxBodySize = b
 	}
 	if s.ErrorBaseURL != nil {
 		srv.ErrorBaseURL = *s.ErrorBaseURL
 	}
 
-	return srv.WithDefaults()
+	return srv.WithDefaults(), nil
 }
 
 // ConnectionBlock represents a connection pool configuration block.
 type ConnectionBlock struct {
-	Type   string   `hcl:"type,attr"`
-	Name   string   `hcl:"name,label"`
-	URL    string   `hcl:"url,attr"`
-	Remain hcl.Body `hcl:",remain"`
+	Driver string               `hcl:"driver,label"`
+	Name   string               `hcl:"name,label"`
+	URL    string               `hcl:"url,attr"`
+	Pool   *ConnectionPoolBlock `hcl:"pool,block"`
+	Remain hcl.Body             `hcl:",remain"`
+}
+
+// ConnectionPoolBlock represents connection pool tuning parameters.
+type ConnectionPoolBlock struct {
+	MaxOpenConns    *int     `hcl:"max_open_conns,optional"`
+	MaxIdleConns    *int     `hcl:"max_idle_conns,optional"`
+	ConnMaxLifetime *string  `hcl:"conn_max_lifetime,optional"`
+	IdleTimeout     *string  `hcl:"idle_timeout,optional"`
+	Size            *int     `hcl:"size,optional"`
+	Remain          hcl.Body `hcl:",remain"`
+}
+
+// ToConnection maps the AST ConnectionBlock into a pure domain core.Connection with defaults applied.
+func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
+	conn := core.Connection{
+		Driver: c.Driver,
+		Name:   c.Name,
+		URL:    c.URL,
+		Pool:   core.DefaultPoolConfig(),
+	}
+
+	if c.Pool != nil {
+		if c.Pool.MaxOpenConns != nil {
+			conn.Pool.MaxOpenConns = *c.Pool.MaxOpenConns
+		}
+		if c.Pool.MaxIdleConns != nil {
+			conn.Pool.MaxIdleConns = *c.Pool.MaxIdleConns
+		}
+		if c.Pool.ConnMaxLifetime != nil {
+			var d core.Duration
+			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err != nil {
+				return core.Connection{}, fmt.Errorf("connection %q: invalid conn_max_lifetime: %w", c.Name, err)
+			}
+			conn.Pool.ConnMaxLifetime = d
+		}
+		if c.Pool.IdleTimeout != nil {
+			var d core.Duration
+			if err := d.UnmarshalText([]byte(*c.Pool.IdleTimeout)); err != nil {
+				return core.Connection{}, fmt.Errorf("connection %q: invalid idle_timeout: %w", c.Name, err)
+			}
+			conn.Pool.IdleTimeout = d
+		}
+		if c.Pool.Size != nil {
+			conn.Pool.Size = *c.Pool.Size
+		}
+	}
+
+	return conn, nil
 }
 
 // SchemaBlock represents a request body schema definition block.
@@ -108,6 +167,7 @@ type StepType string
 const (
 	StepTypeGo       StepType = "go"
 	StepTypeStarlark StepType = "starlark"
+	StepTypeSQL      StepType = "sql"
 	StepTypeRespond  StepType = "respond"
 )
 
@@ -117,6 +177,7 @@ type ParsedStep struct {
 	Name     string
 	Go       *GoStepBlock
 	Starlark *StarlarkStepBlock
+	SQL      *SQLStepBlock
 	Respond  *RespondStepBlock
 }
 
@@ -131,10 +192,59 @@ type StarlarkStepBlock struct {
 	Source string `hcl:"source,attr"`
 }
 
+// SQLStepBlock defines the SQL query to execute.
+type SQLStepBlock struct {
+	Connection hcl.Expression  `hcl:"connection,attr"`
+	Query      string          `hcl:"query,attr"`
+	Args       hcl.Expression  `hcl:"args,optional"`
+	Catches    []SQLCatchBlock `hcl:"catch,block"`
+	Remain     hcl.Body        `hcl:",remain"`
+}
+
+// SQLCatchBlock defines error code interception and response payload mapping for a SQL step.
+type SQLCatchBlock struct {
+	Code    string         `hcl:"code,label"`
+	Status  hcl.Expression `hcl:"status,optional"`
+	Headers hcl.Expression `hcl:"headers,optional"`
+	Body    hcl.Expression `hcl:"body,optional"`
+	Remain  hcl.Body       `hcl:",remain"`
+}
+
 // RespondStepBlock defines the parameters for serializing an HTTP response.
 type RespondStepBlock struct {
 	Condition hcl.Expression `hcl:"condition,optional"`
 	Status    hcl.Expression `hcl:"status,optional"`
 	Headers   hcl.Expression `hcl:"headers,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`
+}
+
+// ResolveConnectionRef extracts the connection identifier string from an HCL expression.
+// It handles unquoted traversals (connection.postgres.main) and string literals (connection: "postgres.main").
+func ResolveConnectionRef(expr hcl.Expression) (string, error) {
+	if expr == nil {
+		return "", errors.New("missing connection reference")
+	}
+
+	// If it's a traversal
+	vars := expr.Variables()
+	if len(vars) > 0 {
+		var parts []string
+		for _, split := range vars[0] {
+			switch step := split.(type) {
+			case hcl.TraverseRoot:
+				parts = append(parts, step.Name)
+			case hcl.TraverseAttr:
+				parts = append(parts, step.Name)
+			}
+		}
+		return strings.Join(parts, "."), nil
+	}
+
+	// If it's a string literal or evaluated expression
+	val, diags := expr.Value(nil)
+	if !diags.HasErrors() && val.Type().Equals(cty.String) {
+		return val.AsString(), nil
+	}
+
+	return "", errors.New("invalid connection reference expression")
 }

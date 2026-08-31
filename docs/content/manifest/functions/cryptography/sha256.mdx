@@ -1,0 +1,36 @@
+---
+title: sha256
+description: Compute a SHA-256 cryptographic hash of a string.
+---
+
+# sha256
+
+Computes the SHA-256 cryptographic hash of a string, returning a lowercase 64-character hexadecimal digest.
+
+## Signature
+
+```hcl
+sha256(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| str       | string | yes      | Input string |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+redis "cache_query" {
+  connection = connection.redis.cache
+  command = "SET"
+  key = "cache:query:${sha256(json_encode(ctx.request.body))}"
+  value = json_encode(steps.db_query.result)
+  ttl = "15m"
+}
+```

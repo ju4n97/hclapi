@@ -1,0 +1,30 @@
+---
+title: values
+description: Return all values from a map.
+---
+
+# values
+
+Returns a list containing all values from a map.
+
+## Signature
+
+```hcl
+values(map: map) -> list(any)
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :-------- | :--- | :------- | :---------- |
+| map       | map  | yes      | Source map  |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = values(ctx.request.body) }
+```

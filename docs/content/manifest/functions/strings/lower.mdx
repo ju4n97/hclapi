@@ -1,0 +1,30 @@
+---
+title: lower
+description: Convert all characters in a string to lowercase.
+---
+
+# lower
+
+Converts all characters in a string to lowercase.
+
+## Signature
+
+```hcl
+lower(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| str       | string | yes      | Input string |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+key = "user:${lower(ctx.request.path.username)}"
+```

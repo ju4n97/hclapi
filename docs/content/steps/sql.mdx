@@ -1,0 +1,115 @@
+---
+title: sql
+description: Execute parameterized SQL queries and mutations with deterministic outputs and database error handling.
+---
+
+Executes a parameterized SQL query or mutation against a database connection pool. Parameters are bound through prepared statements using `@name` placeholders.
+
+## Declaration
+
+```hcl
+sql "find_user" {
+  connection = connection.postgres.main
+  query      = <<-SQL
+    SELECT id, name, email FROM users WHERE id = @id
+  SQL
+  args = { id = ctx.request.path.id }
+}
+```
+
+## Attributes
+
+| Attribute        | Type         | Required | Description                                            |
+| :--------------- | :----------- | :------- | :----------------------------------------------------- |
+| `label`          | `string`     | yes      | Step identifier; outputs are written to `steps.<name>` |
+| `connection`     | `connection` | yes      | Database connection pool reference                     |
+| `query`          | `string`     | yes      | Query or mutation; parameters use `@name`              |
+| `args`           | `map`        | no       | Context values bound to query parameters               |
+| `catch "<code>"` | `block`      | no       | Handles specific database error codes                  |
+
+## Exported outputs
+
+| Field                        | Type            | Description                                  |
+| :--------------------------- | :-------------- | :------------------------------------------- |
+| `steps.<name>.rows`          | `list(map)`     | All returned rows; `[]` if no rows match     |
+| `steps.<name>.row`           | `map` or `null` | First returned row                           |
+| `steps.<name>.rows_affected` | `int`           | Rows returned, inserted, updated, or deleted |
+
+## Fetch a single record
+
+```hcl
+endpoint "GET /api/v1/users/{id}" {
+  pipeline {
+    sql "find_user" {
+      connection = connection.postgres.main
+      query      = "SELECT id, name, email FROM users WHERE id = @id"
+      args       = { id = ctx.request.path.id }
+    }
+
+    respond {
+      condition = steps.find_user.rows_affected == 0
+      status    = 404
+      body      = { error = "User not found" }
+    }
+
+    respond {
+      status = 200
+      body   = steps.find_user.row
+    }
+  }
+}
+```
+
+## Fetch a list
+
+```hcl
+endpoint "GET /api/v1/users" {
+  pipeline {
+    sql "list_users" {
+      connection = connection.postgres.main
+      query      = "SELECT id, name, email FROM users ORDER BY id LIMIT 50"
+    }
+
+    respond {
+      status = 200
+      body   = steps.list_users.rows
+    }
+  }
+}
+```
+
+## Catch database constraint errors
+
+```hcl
+sql "insert_user" {
+  connection = connection.postgres.main
+  query      = <<-SQL
+    INSERT INTO users (email, full_name)
+    VALUES (@email, @full_name)
+    RETURNING id, email, full_name, created_at
+  SQL
+  args = {
+    email     = ctx.request.body.email
+    full_name = ctx.request.body.full_name
+  }
+
+  catch "23505" {
+    status = 409
+    body = {
+      error = "A user with this email address already exists."
+    }
+  }
+}
+```
+
+## Common database error codes
+
+| Error                    | PostgreSQL / CockroachDB |    SQLite     | MySQL / MariaDB |   SQL Server    |
+| :----------------------- | :----------------------: | :-----------: | :-------------: | :-------------: |
+| Unique violation         |         `23505`          | `2067` / `19` |     `1062`      | `2627` / `2601` |
+| Foreign key violation    |         `23503`          | `787` / `19`  |     `1452`      |      `547`      |
+| Not null violation       |         `23502`          | `1299` / `19` |     `1048`      |      `515`      |
+| Check constraint failure |         `23514`          | `275` / `19`  |     `3819`      |      `547`      |
+| Deadlock / serialization |    `40001` / `40P01`     |      `5`      |     `1213`      |     `1205`      |
+
+See the official [PostgreSQL](https://www.postgresql.org/docs/current/errcodes-appendix.html), [SQLite](https://www.sqlite.org/rescode.html), [MySQL](https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html), and [SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-events-and-errors) error references.

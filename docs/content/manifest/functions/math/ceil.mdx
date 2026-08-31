@@ -1,0 +1,30 @@
+---
+title: ceil
+description: Round a floating-point number up to the nearest integer.
+---
+
+# ceil
+
+Rounds a floating-point number up to the nearest integer.
+
+## Signature
+
+```hcl
+ceil(num: number) -> int
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| num       | number | yes      | Input number |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = { pages = ceil(ctx.request.query.items / 25) } }
+```

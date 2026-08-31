@@ -1,31 +1,41 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/hashicorp/hcl/v2"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/steps/xgo"
 	"github.com/ju4n97/hclapi/internal/steps/xrespond"
+	"github.com/ju4n97/hclapi/internal/steps/xsql"
 	"github.com/ju4n97/hclapi/internal/steps/xstarlark"
 )
 
 // PipelineExecutor coordinates sequential pipeline step dispatching.
 type PipelineExecutor struct {
-	steps   []parser.ParsedStep
-	goSteps map[string]core.StepHandler
+	steps      []parser.ParsedStep
+	goSteps    map[string]core.StepHandler
+	sqlManager *connsql.Manager
 }
 
 // NewPipelineExecutor creates a new instance of the pipeline runner.
-func NewPipelineExecutor(steps []parser.ParsedStep, goSteps map[string]core.StepHandler) *PipelineExecutor {
+func NewPipelineExecutor(
+	steps []parser.ParsedStep,
+	goSteps map[string]core.StepHandler,
+	sqlManager *connsql.Manager,
+) *PipelineExecutor {
 	return &PipelineExecutor{
-		steps:   steps,
-		goSteps: goSteps,
+		steps:      steps,
+		goSteps:    goSteps,
+		sqlManager: sqlManager,
 	}
 }
 
@@ -38,13 +48,22 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 
 		switch step.Type {
 		case parser.StepTypeGo:
-			if _, err := p.execGoStep(step, ctx); err != nil {
+			if err := p.execGoStep(step, ctx); err != nil {
 				return err
 			}
 
 		case parser.StepTypeStarlark:
-			if _, err := p.execStarlarkStep(step, ctx); err != nil {
+			if err := p.execStarlarkStep(step, ctx); err != nil {
 				return err
+			}
+
+		case parser.StepTypeSQL:
+			responded, err := p.execSQLStep(w, step, ctx)
+			if err != nil {
+				return err
+			}
+			if responded {
+				return nil // Terminal catch step reached and written
 			}
 
 		case parser.StepTypeRespond:
@@ -64,37 +83,38 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 	return nil
 }
 
-func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
+func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) error {
 	if step.Go == nil {
-		return nil, fmt.Errorf("step %q is missing go configuration", step.Name)
+		return fmt.Errorf("step %q: missing go configuration", step.Name)
 	}
 
 	args, err := eval.Map(step.Go.Args, ctx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q args evaluation failed: %w", step.Name, err)
+		return fmt.Errorf("step %q args: %w", step.Name, err)
 	}
 
 	handler, exists := p.goSteps[step.Go.Use]
 	if !exists {
-		return nil, fmt.Errorf("unregistered go function %q", step.Go.Use)
+		return fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
 	}
 
 	res, err := xgo.Execute(handler, ctx, args)
 	if err != nil {
-		return nil, fmt.Errorf("step %q execution failed: %w", step.Name, err)
+		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
-	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = exports
+		ctx.Steps[step.Name] = map[string]any{
+			"result": res,
+		}
 	}
 
-	return exports, nil
+	return nil
 }
 
-func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) (any, error) {
+func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) error {
 	if step.Starlark == nil {
-		return nil, fmt.Errorf("step %q is missing starlark configuration", step.Name)
+		return fmt.Errorf("step %q: missing starlark configuration", step.Name)
 	}
 
 	reqFields := starlark.StringDict{
@@ -118,15 +138,72 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 
 	res, err := xstarlark.Eval(step.Starlark.Source, starlarkCtx)
 	if err != nil {
-		return nil, fmt.Errorf("step %q starlark execution failed: %w", step.Name, err)
+		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
-	exports := map[string]any{"result": res}
 	if step.Name != "" {
-		ctx.Steps[step.Name] = exports
+		ctx.Steps[step.Name] = map[string]any{
+			"result": res,
+		}
 	}
 
-	return exports, nil
+	return nil
+}
+
+func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.ParsedStep, ctx *core.Context) (bool, error) {
+	if step.SQL == nil {
+		return false, fmt.Errorf("step %q: missing sql configuration", step.Name)
+	}
+
+	connRef, err := parser.ResolveConnectionRef(step.SQL.Connection)
+	if err != nil {
+		return false, fmt.Errorf("step %q connection: %w", step.Name, err)
+	}
+
+	pool, exists := p.sqlManager.Get(connRef)
+	if !exists {
+		return false, fmt.Errorf("step %q: unknown connection %q", step.Name, connRef)
+	}
+
+	args, err := eval.Map(step.SQL.Args, ctx)
+	if err != nil {
+		return false, fmt.Errorf("step %q args: %w", step.Name, err)
+	}
+
+	res, err := xsql.Execute(ctx.Context(), pool, step.SQL.Query, args)
+	if err != nil {
+		// Attempt to intercept database constraint error codes with catch blocks
+		errCode := pool.Dialect.ExtractErrorCode(err)
+		if errCode != "" && len(step.SQL.Catches) > 0 {
+			for _, catchBlock := range step.SQL.Catches {
+				if pool.Dialect.MatchErrorCode(errCode, catchBlock.Code) {
+					if err := writeResponse(
+						w,
+						ctx,
+						catchBlock.Status,
+						catchBlock.Headers,
+						catchBlock.Body,
+						http.StatusBadRequest,
+					); err != nil {
+						return false, fmt.Errorf("step %q catch: %w", step.Name, err)
+					}
+					return true, nil
+				}
+			}
+		}
+
+		return false, fmt.Errorf("step %q: %w", step.Name, err)
+	}
+
+	if step.Name != "" {
+		ctx.Steps[step.Name] = map[string]any{
+			"rows":          res.Rows,
+			"row":           res.Row,
+			"rows_affected": res.RowsAffected,
+		}
+	}
+
+	return false, nil
 }
 
 func (p *PipelineExecutor) execRespondStep(
@@ -135,28 +212,41 @@ func (p *PipelineExecutor) execRespondStep(
 	ctx *core.Context,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, fmt.Errorf("step is missing respond configuration")
+		return false, errors.New("step is missing respond configuration")
 	}
 
 	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)
 	if err != nil {
-		return false, fmt.Errorf("respond condition evaluation failed: %w", err)
+		return false, fmt.Errorf("respond condition: %w", err)
 	}
 	if !shouldRun {
-		return false, nil // Condition was false; skip responding and continue pipeline
+		return false, nil
 	}
 
-	status, err := eval.Int(step.Respond.Status, ctx, http.StatusOK)
+	if err := writeResponse(w, ctx, step.Respond.Status, step.Respond.Headers, step.Respond.Body, http.StatusOK); err != nil {
+		return false, fmt.Errorf("step %q: %w", step.Name, err)
+	}
+
+	return true, nil // Terminal response successfully written
+}
+
+// writeResponse evaluates dynamic status, headers, and body expressions and writes the finalized HTTP response.
+func writeResponse(
+	w http.ResponseWriter,
+	ctx *core.Context,
+	statusExpr, headersExpr, bodyExpr hcl.Expression,
+	defaultStatus int,
+) error {
+	status, err := eval.Int(statusExpr, ctx, defaultStatus)
 	if err != nil {
-		return false, fmt.Errorf("respond status evaluation failed: %w", err)
+		return fmt.Errorf("eval status: %w", err)
 	}
 
-	// Evaluate headers if defined
 	var headers map[string]string
-	if step.Respond.Headers != nil {
-		evaluatedHeaders, err := eval.Map(step.Respond.Headers, ctx)
+	if headersExpr != nil {
+		evaluatedHeaders, err := eval.Map(headersExpr, ctx)
 		if err != nil {
-			return false, fmt.Errorf("respond headers evaluation failed: %w", err)
+			return fmt.Errorf("eval headers: %w", err)
 		}
 		if len(evaluatedHeaders) > 0 {
 			headers = make(map[string]string, len(evaluatedHeaders))
@@ -166,19 +256,18 @@ func (p *PipelineExecutor) execRespondStep(
 		}
 	}
 
-	// Evaluate body if defined
 	var body any
-	if step.Respond.Body != nil {
-		evaluatedBody, err := eval.Any(step.Respond.Body, ctx)
+	if bodyExpr != nil {
+		evaluatedBody, err := eval.Any(bodyExpr, ctx)
 		if err != nil {
-			return false, fmt.Errorf("respond body evaluation failed: %w", err)
+			return fmt.Errorf("eval body: %w", err)
 		}
 		body = evaluatedBody
 	}
 
 	if err := xrespond.Write(w, status, headers, body); err != nil {
-		return false, fmt.Errorf("failed to write response: %w", err)
+		return fmt.Errorf("write response: %w", err)
 	}
 
-	return true, nil // Terminal response successfully written
+	return nil
 }

@@ -1,0 +1,37 @@
+---
+title: respond
+description: Terminate a pipeline and define the HTTP status, headers, and response body.
+---
+
+Terminates the pipeline. Sets the status, headers, and body. No step after `respond` runs once it fires.
+
+## Declaration
+
+```hcl
+respond {
+  condition = steps.find_user.rows_affected == 0
+  status    = 404
+  headers = {
+    "Cache-Control" = "no-store"
+    "X-Trace-ID"    = uuid()
+  }
+  body = {
+    error = "User not found"
+  }
+}
+```
+
+## Attributes
+
+| Attribute   | Type                  | Default | Description                        |
+| :---------- | :-------------------- | :------ | :--------------------------------- |
+| `condition` | `Expression`          | `true`  | Step is skipped if `false`         |
+| `status`    | `int` or `Expression` | `200`   | HTTP status code                   |
+| `headers`   | `map` or `Expression` | `{}`    | Dynamic or static response headers |
+| `body`      | `any` or `Expression` | `null`  | Payload to serialize               |
+
+## Serialization
+
+- If `Content-Type` is absent, hclapi sets `application/json` and JSON-encodes `body`.
+- If a custom content type is provided and `body` is a string or byte slice, the raw payload is written.
+- Header names and values are sanitized to remove carriage-return and newline characters, preventing response-splitting attacks.

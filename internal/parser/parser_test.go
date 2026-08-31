@@ -1,274 +1,576 @@
 package parser_test
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 
+	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-func TestParse(t *testing.T) {
+// writeManifestTree writes an in-memory map of relative paths to file contents in a temp directory.
+func writeManifestTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+
+	for relPath, content := range files {
+		fullPath := filepath.Join(tmpDir, relPath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+			t.Fatalf("failed to create directory for %s: %v", relPath, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write test file %s: %v", relPath, err)
+		}
+	}
+
+	return tmpDir
+}
+
+// decodeSnippetSteps parses a raw HCL pipeline block string and decodes its steps.
+func decodeSnippetSteps(t *testing.T, snippet string) ([]parser.ParsedStep, error) {
+	t.Helper()
+
+	file, diags := hclsyntax.ParseConfig([]byte(snippet), "snippet.hcl", hcl.InitialPos)
+	if diags.HasErrors() {
+		t.Fatalf("syntax error in test snippet: %s", diags.Error())
+	}
+
+	pipeline := &parser.PipelineBlock{Body: file.Body}
+	return parser.DecodePipelineSteps(pipeline)
+}
+
+func TestParse_DirectoryDiscovery(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name           string
-		targetPath     string
-		expectError    bool
-		expectedRoutes int
-		validate       func(t *testing.T, m *parser.Manifest)
-	}{
-		{
-			name:           "Case 01: Flat single file in directory",
-			targetPath:     "flat_single_file",
-			expectError:    false,
-			expectedRoutes: 1,
-			validate: func(t *testing.T, m *parser.Manifest) {
-				ep := m.Endpoints[0]
-				if ep.MethodAndPath != "GET /health" {
-					t.Errorf("expected MethodAndPath 'GET /health', got %q", ep.MethodAndPath)
-				}
-			},
-		},
-		{
-			name:           "Case 02: Deeply nested directory tree merged into one AST",
-			targetPath:     "nested_tree",
-			expectError:    false,
-			expectedRoutes: 4, // 1 in root main.hcl + 2 in v1/users + 1 in v2/orders
-		},
-		{
-			name:           "Case 04: Hidden directories (.git) are skipped completely",
-			targetPath:     "hidden_dir_ignored",
-			expectError:    false,
-			expectedRoutes: 1,
-		},
-		{
-			name:        "Case 05: Invalid HCL syntax / type mismatch",
-			targetPath:  "syntax_error",
-			expectError: true,
-		},
-		{
-			name:        "Case 06: Missing required pipeline block",
-			targetPath:  "missing_block",
-			expectError: true,
-		},
-		{
-			name:           "Case 07: Empty directory tree returns empty manifest without error",
-			targetPath:     "empty_tree",
-			expectError:    false,
-			expectedRoutes: 0,
-		},
-		{
-			name:           "Direct file target: Single HCL file path",
-			targetPath:     "flat_single_file/main.hcl",
-			expectError:    false,
-			expectedRoutes: 1,
-		},
-		{
-			name:           "Direct file target: Main file path",
-			targetPath:     "nested_tree/main.hcl",
-			expectError:    false,
-			expectedRoutes: 1,
-		},
-		{
-			name:        "Non-existent path returns error",
-			targetPath:  "does_not_exist",
-			expectError: true,
-		},
-	}
+	t.Run("Single flat manifest file", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			target := filepath.Join("testdata", tt.targetPath)
-			manifest, err := parser.Parse(target, nil)
-
-			if tt.expectError {
-				if err == nil {
-					t.Fatalf("expected an error but got nil")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if manifest == nil {
-				t.Fatalf("expected manifest to not be nil")
-			}
-
-			if len(manifest.Endpoints) != tt.expectedRoutes {
-				t.Errorf("expected %d routes, got %d", tt.expectedRoutes, len(manifest.Endpoints))
-			}
-
-			if tt.validate != nil {
-				tt.validate(t, manifest)
-			}
+		dir := writeManifestTree(t, map[string]string{
+			"main.hcl": `
+endpoint "GET /health" {
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+`,
 		})
-	}
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+		if len(manifest.Endpoints) != 1 || manifest.Endpoints[0].MethodAndPath != "GET /health" {
+			t.Fatalf("expected 1 endpoint 'GET /health', got: %+v", manifest.Endpoints)
+		}
+	})
+
+	t.Run("Nested multi-directory tree merged into unified AST", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"server.hcl": `
+server {
+  host = "0.0.0.0"
+  port = 9000
+}
+`,
+			"connections.hcl": `
+connection "postgres" "primary" {
+  url = "postgres://localhost/main"
+}
+`,
+			"routes/v1/users.hcl": `
+endpoint "GET /v1/users" {
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+endpoint "POST /v1/users" {
+  pipeline {
+    respond {
+      status = 201
+    }
+  }
+}
+`,
+			"routes/v2/orders.hcl": `
+endpoint "GET /v2/orders" {
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		if manifest.Server == nil || manifest.Server.Port != 9000 {
+			t.Errorf("expected server port 9000, got: %+v", manifest.Server)
+		}
+
+		if len(manifest.Connections) != 1 || manifest.Connections[0].Driver != "postgres" {
+			t.Errorf("expected 1 postgres connection, got: %+v", manifest.Connections)
+		}
+
+		if len(manifest.Endpoints) != 3 {
+			t.Errorf("expected 3 merged endpoints, got %d", len(manifest.Endpoints))
+		}
+	})
+
+	t.Run("Hidden directories and non-HCL files are ignored", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"routes.hcl": `
+endpoint "GET /public" {
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+`,
+			".git/ignored.hcl": `
+endpoint "GET /ignored" {
+  pipeline {
+    respond {
+      status = 500
+    }
+  }
+}
+`,
+			"README.md": "# Documentation",
+			"init.sql":  "CREATE TABLE users();",
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		if len(manifest.Endpoints) != 1 || manifest.Endpoints[0].MethodAndPath != "GET /public" {
+			t.Fatalf("expected only 1 endpoint from routes.hcl, got: %+v", manifest.Endpoints)
+		}
+	})
+
+	t.Run("Empty directory returns empty manifest without error", func(t *testing.T) {
+		t.Parallel()
+
+		tmpDir := t.TempDir()
+		manifest, err := parser.Parse(tmpDir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected error on empty directory: %v", err)
+		}
+		if len(manifest.Endpoints) != 0 || len(manifest.Connections) != 0 {
+			t.Errorf("expected 0 endpoints and 0 connections, got: %+v", manifest)
+		}
+	})
+
+	t.Run("Non-existent path returns descriptive error", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := parser.Parse("path/does/not/exist", eval.BaseContext())
+		if err == nil {
+			t.Fatal("expected error on non-existent path, got nil")
+		}
+	})
+}
+
+func TestParse_Validation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Rejects duplicate connection keys across files", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"conn1.hcl": `connection "postgres" "primary" { url = "postgres://db1" }`,
+			"conn2.hcl": `connection "postgres" "primary" { url = "postgres://db2" }`,
+		})
+
+		_, err := parser.Parse(dir, eval.BaseContext())
+		if err == nil {
+			t.Fatal("expected error on duplicate connection, got nil")
+		}
+		if !strings.Contains(err.Error(), `duplicate connection declaration "connection.postgres.primary"`) {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("Reports file and line on syntax errors", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"bad.hcl": `
+endpoint "GET /bad" {
+  pipeline {
+    respond = invalid syntax here !!!
+  }
+}
+`,
+		})
+
+		_, err := parser.Parse(dir, eval.BaseContext())
+		if err == nil {
+			t.Fatal("expected syntax error, got nil")
+		}
+	})
 }
 
 func TestDecodePipelineSteps(t *testing.T) {
 	t.Parallel()
 
-	parsePipeline := func(t *testing.T, hclSnippet string) parser.PipelineBlock {
-		t.Helper()
+	t.Run("Decodes go step with and without args", func(t *testing.T) {
+		t.Parallel()
 
-		file, diags := hclsyntax.ParseConfig([]byte(hclSnippet), "snippet.hcl", hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			t.Fatalf("test helper syntax error: %s", diags.Error())
+		snippet := `
+go "auth" {
+  use  = "auth.verify"
+  args = { token = ctx.request.headers.authorization }
+}
+go "metrics" {
+  use = "metrics.flush"
+}
+`
+		steps, err := decodeSnippetSteps(t, snippet)
+		if err != nil {
+			t.Fatalf("unexpected decode error: %v", err)
 		}
-		return parser.PipelineBlock{Body: file.Body}
-	}
+		if len(steps) != 2 {
+			t.Fatalf("expected 2 steps, got %d", len(steps))
+		}
 
-	tests := []struct {
-		name          string
-		hclSnippet    string
-		expectError   bool
-		expectedSteps int
-		validate      func(t *testing.T, steps []parser.ParsedStep)
-	}{
-		{
-			name: "Valid sequential steps with correct order, labels, and dynamic expressions",
-			hclSnippet: `
-				go "step_one" {
-					use  = "crypto.hash"
-					args = { algorithm = "sha256" }
-				}
-				go "step_two" {
-					use = "auth.verify"
-				}
-				respond {
-					condition = steps.step_one.result != null
-					status    = 200
-					body      = "OK"
-				}
-			`,
-			expectError:   false,
-			expectedSteps: 3,
-			validate: func(t *testing.T, steps []parser.ParsedStep) {
-				// Step 0: Go with Args
-				if steps[0].Type != parser.StepTypeGo || steps[0].Name != "step_one" ||
-					steps[0].Go.Use != "crypto.hash" {
-					t.Errorf("step 0 mismatch: %+v", steps[0])
-				}
-				val0, _ := steps[0].Go.Args.Value(nil)
-				if val0.IsNull() {
-					t.Errorf("expected step 0 args to be defined")
-				}
+		if steps[0].Type != parser.StepTypeGo || steps[0].Name != "auth" || steps[0].Go.Use != "auth.verify" {
+			t.Errorf("step 0 mismatch: %+v", steps[0])
+		}
+		if steps[0].Go.Args == nil {
+			t.Errorf("expected step 0 to have args expression")
+		}
 
-				// Step 1: Go without Args
-				if steps[1].Type != parser.StepTypeGo || steps[1].Name != "step_two" ||
-					steps[1].Go.Use != "auth.verify" {
-					t.Errorf("step 1 mismatch: %+v", steps[1])
-				}
-				if steps[1].Go.Args != nil {
-					val1, _ := steps[1].Go.Args.Value(nil)
-					if !val1.IsNull() {
-						t.Errorf("expected step 1 args to be null/omitted, got: %v", val1)
-					}
-				}
+		if steps[1].Type != parser.StepTypeGo || steps[1].Name != "metrics" || steps[1].Go.Use != "metrics.flush" {
+			t.Errorf("step 1 mismatch: %+v", steps[1])
+		}
+	})
 
-				// Step 2: Respond
-				if steps[2].Type != parser.StepTypeRespond {
-					t.Errorf("step 2 mismatch: %+v", steps[2])
-				}
-				if steps[2].Respond.Condition == nil || steps[2].Respond.Status == nil || steps[2].Respond.Body == nil {
-					t.Errorf("step 2 missing expressions: %+v", steps[2].Respond)
-				}
-			},
-		},
-		{
-			name:          "Empty pipeline body returns 0 steps without error",
-			hclSnippet:    ``,
-			expectError:   false,
-			expectedSteps: 0,
-		},
-		{
-			name: "Unknown step type returns error",
-			hclSnippet: `
-				unsupported_step "foo" {
-					some_attr = "bar"
-				}
-			`,
-			expectError: true,
-		},
-		{
-			name: "Invalid attribute type in go step returns error",
-			hclSnippet: `
-				go "bad_step" {
-					use = ["cannot", "be", "a", "list"] # HCL can't coerce a list to string
-				}
-			`,
-			expectError: true,
-		},
-		{
-			name: "Go step without required label returns error",
-			hclSnippet: `
-				go {
-					use = "logger.flush"
-				}
-			`,
-			expectError: true,
-		},
-		{
-			name: "Valid starlark step decoding",
-			hclSnippet: `
-				starlark "transform" {
-					source = "def execute(ctx): return {'ok': True}"
-				}
-				respond {
-					status = 200
-				}
-			`,
-			expectError:   false,
-			expectedSteps: 2,
-			validate: func(t *testing.T, steps []parser.ParsedStep) {
-				if steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
-					t.Errorf("step 0 mismatch: %+v", steps[0])
-				}
-				if steps[1].Type != parser.StepTypeRespond {
-					t.Errorf("step 1 mismatch: %+v", steps[1])
-				}
-				if steps[1].Respond.Body != nil {
-					val, _ := steps[1].Respond.Body.Value(nil)
-					if !val.IsNull() {
-						t.Errorf("expected step 1 body to be null/omitted, got: %v", val)
-					}
-				}
-			},
-		},
-	}
+	t.Run("Decodes starlark step", func(t *testing.T) {
+		t.Parallel()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		snippet := `
+starlark "transform" {
+  source = <<-STARLARK
+    def execute(ctx):
+      return {"count": len(ctx.request.body.get("items", []))}
+  STARLARK
+}
+`
+		steps, err := decodeSnippetSteps(t, snippet)
+		if err != nil {
+			t.Fatalf("unexpected decode error: %v", err)
+		}
+		if len(steps) != 1 {
+			t.Fatalf("expected 1 step, got %d", len(steps))
+		}
+		if steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
+			t.Errorf("step mismatch: %+v", steps[0])
+		}
+		if !strings.Contains(steps[0].Starlark.Source, "def execute(ctx):") {
+			t.Errorf("expected source to contain function definition: %s", steps[0].Starlark.Source)
+		}
+	})
 
-			p := parsePipeline(t, tt.hclSnippet)
-			steps, err := parser.DecodePipelineSteps(&p)
+	t.Run("Decodes sql step with query, args, and catch blocks", func(t *testing.T) {
+		t.Parallel()
 
-			if tt.expectError {
-				if err == nil {
-					t.Fatalf("expected error but got nil")
-				}
-				return
+		snippet := `
+sql "insert_user" {
+  connection = connection.postgres.main
+  query      = "INSERT INTO users (email) VALUES (@email) RETURNING id"
+  args       = { email = ctx.request.body.email }
+
+  catch "23505" {
+    status  = 409
+    headers = { "X-Error" = "Conflict" }
+    body    = { error = "Email already exists" }
+  }
+}
+`
+		steps, err := decodeSnippetSteps(t, snippet)
+		if err != nil {
+			t.Fatalf("unexpected decode error: %v", err)
+		}
+		if len(steps) != 1 {
+			t.Fatalf("expected 1 step, got %d", len(steps))
+		}
+
+		step := steps[0]
+		if step.Type != parser.StepTypeSQL || step.Name != "insert_user" {
+			t.Fatalf("step type/name mismatch: %+v", step)
+		}
+		if step.SQL.Query != "INSERT INTO users (email) VALUES (@email) RETURNING id" {
+			t.Errorf("unexpected query: %s", step.SQL.Query)
+		}
+		if step.SQL.Connection == nil {
+			t.Errorf("expected connection and args expressions to be defined")
+		}
+		if step.SQL.Args == nil {
+			t.Errorf("expected args expression to be defined")
+		}
+		if len(step.SQL.Catches) != 1 || step.SQL.Catches[0].Code != "23505" {
+			t.Fatalf("expected 1 catch block with code '23505', got: %+v", step.SQL.Catches)
+		}
+		if step.SQL.Catches[0].Status == nil {
+			t.Errorf("expected catch block status and body expressions to be defined")
+		}
+		if step.SQL.Catches[0].Headers == nil {
+			t.Errorf("expected catch block status and body expressions to be defined")
+		}
+		if step.SQL.Catches[0].Body == nil {
+			t.Errorf("expected catch block status and body expressions to be defined")
+		}
+	})
+
+	t.Run("Decodes respond step with condition, status, headers, and body", func(t *testing.T) {
+		t.Parallel()
+
+		snippet := `
+respond {
+  condition = steps.find_user.rows_affected == 0
+  status    = 404
+  headers   = { "X-Trace" = "trace-123" }
+  body      = { error = "Not found" }
+}
+`
+		steps, err := decodeSnippetSteps(t, snippet)
+		if err != nil {
+			t.Fatalf("unexpected decode error: %v", err)
+		}
+		if len(steps) != 1 {
+			t.Fatalf("expected 1 step, got %d", len(steps))
+		}
+
+		step := steps[0]
+		if step.Type != parser.StepTypeRespond {
+			t.Fatalf("expected respond step, got: %s", step.Type)
+		}
+		if step.Respond.Condition == nil || step.Respond.Status == nil || step.Respond.Headers == nil ||
+			step.Respond.Body == nil {
+			t.Errorf("expected all respond attributes to be defined: %+v", step.Respond)
+		}
+	})
+
+	t.Run("Preserves declaration order across mixed step types", func(t *testing.T) {
+		t.Parallel()
+
+		snippet := `
+sql "get_user" {
+  connection = connection.postgres.main
+  query      = "SELECT id FROM users"
+}
+starlark "sanitize" {
+  source = "def execute(ctx): return {}"
+}
+go "notify" {
+  use = "email.send"
+}
+respond {
+  status = 200
+  body   = steps.sanitize.result
+}
+`
+		steps, err := decodeSnippetSteps(t, snippet)
+		if err != nil {
+			t.Fatalf("unexpected decode error: %v", err)
+		}
+		if len(steps) != 4 {
+			t.Fatalf("expected 4 steps, got %d", len(steps))
+		}
+
+		expectedOrder := []parser.StepType{
+			parser.StepTypeSQL,
+			parser.StepTypeStarlark,
+			parser.StepTypeGo,
+			parser.StepTypeRespond,
+		}
+
+		for i, expected := range expectedOrder {
+			if steps[i].Type != expected {
+				t.Errorf("step %d: expected %s, got %s", i, expected, steps[i].Type)
 			}
+		}
+	})
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+	t.Run("Rejects unknown step types", func(t *testing.T) {
+		t.Parallel()
 
-			if len(steps) != tt.expectedSteps {
-				t.Errorf("expected %d steps, got %d", tt.expectedSteps, len(steps))
-			}
+		snippet := `
+unsupported_block "foo" {
+  attr = "bar"
+}
+`
+		_, err := decodeSnippetSteps(t, snippet)
+		if err == nil {
+			t.Fatal("expected error on unknown step type, got nil")
+		}
+	})
 
-			if tt.validate != nil {
-				tt.validate(t, steps)
-			}
+	t.Run("Rejects named steps missing required label", func(t *testing.T) {
+		t.Parallel()
+
+		snippet := `
+go {
+  use = "missing.label"
+}
+`
+		_, err := decodeSnippetSteps(t, snippet)
+		if err == nil {
+			t.Fatal("expected error on go step without label, got nil")
+		}
+	})
+}
+
+func TestServerBlock_ToServer(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Parses custom server settings and byte sizes", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"server.hcl": `
+server {
+  host          = "0.0.0.0"
+  port          = 3000
+  read_timeout  = "30s"
+  max_body_size = "50MB"
+}
+`,
 		})
-	}
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		srv, err := manifest.Server.ToServer()
+		if err != nil {
+			t.Fatalf("unexpected mapping error: %v", err)
+		}
+
+		if srv.Host != "0.0.0.0" || srv.Port != 3000 {
+			t.Errorf("unexpected host/port: %s:%d", srv.Host, srv.Port)
+		}
+		if srv.ReadTimeout.Duration() != 30*time.Second {
+			t.Errorf("expected 30s read timeout, got %v", srv.ReadTimeout)
+		}
+		if srv.MaxBodySize.Bytes() != 50*1000*1000 {
+			t.Errorf("expected 50MB, got %d", srv.MaxBodySize.Bytes())
+		}
+	})
+
+	t.Run("Rejects malformed max_body_size unit", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"server.hcl": `
+server {
+  max_body_size = "10XB"
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		_, err = manifest.Server.ToServer()
+		if err == nil {
+			t.Fatal("expected error on invalid byte size, got nil")
+		}
+	})
+}
+
+func TestConnectionBlock_ToConnection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Parses custom pool configuration and durations", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"connections.hcl": `
+connection "postgres" "primary" {
+  url = "postgres://user:pass@localhost:5432/db"
+
+  pool {
+    max_open_conns    = 50
+    max_idle_conns    = 10
+    conn_max_lifetime = "1h"
+    idle_timeout      = "10m"
+    size              = 30
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		conn, err := manifest.Connections[0].ToConnection()
+		if err != nil {
+			t.Fatalf("unexpected mapping error: %v", err)
+		}
+
+		if conn.Driver != "postgres" || conn.Name != "primary" {
+			t.Errorf("unexpected driver/name: %s.%s", conn.Driver, conn.Name)
+		}
+		if conn.Pool.MaxOpenConns != 50 || conn.Pool.MaxIdleConns != 10 {
+			t.Errorf("unexpected open/idle conns: %+v", conn.Pool)
+		}
+		if conn.Pool.ConnMaxLifetime.Duration() != time.Hour {
+			t.Errorf("expected 1h lifetime, got %v", conn.Pool.ConnMaxLifetime)
+		}
+		if conn.Pool.IdleTimeout.Duration() != 10*time.Minute {
+			t.Errorf("expected 10m idle timeout, got %v", conn.Pool.IdleTimeout)
+		}
+	})
+
+	t.Run("Rejects malformed duration strings", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"connections.hcl": `
+connection "postgres" "bad_duration" {
+  url = "postgres://localhost/db"
+  pool {
+    conn_max_lifetime = "invalid_duration"
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		_, err = manifest.Connections[0].ToConnection()
+		if err == nil {
+			t.Fatal("expected error on invalid duration, got nil")
+		}
+	})
 }

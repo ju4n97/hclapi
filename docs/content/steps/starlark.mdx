@@ -1,0 +1,68 @@
+---
+title: starlark
+description: Execute sandboxed Starlark for data transformation, filtering, and business logic.
+---
+
+Executes sandboxed Starlark for data transformation, filtering, and business logic.
+
+## Declaration
+
+```hcl
+starlark "<name>" {
+  source = <<-STARLARK
+    def execute(ctx):
+      return { "status": "processed" }
+  STARLARK
+}
+```
+
+The script must define `execute(ctx)`, returning a dict, list, or scalar. `ctx` mirrors the [execution context](../concepts/context), using dictionary access instead of dotted attributes.
+
+## Attributes
+
+| Attribute | Type     | Required | Description                             |
+| :-------- | :------- | :------- | :-------------------------------------- |
+| `label`   | `string` | yes      | Step identifier                         |
+| `source`  | `string` | yes      | Starlark source defining `execute(ctx)` |
+
+## Example: defaults and lookups
+
+```python
+def execute(ctx):
+  prefix = ctx.request.body.get("prefix", "default_prefix")
+  tags = ctx.request.body.get("tags", [])
+  user_id = ctx.request.body["user_id"]
+
+  return {"prefix": prefix, "total_tags": len(tags), "user_id": user_id}
+```
+
+## Example: list comprehension
+
+```python
+def execute(ctx):
+  raw_tags = ctx.request.body.get("tags", [])
+  prefix = ctx.request.body.get("prefix", "tag")
+
+  cleaned = [prefix + ":" + t.strip().lower() for t in raw_tags if len(t.strip()) > 0]
+  return {"count": len(cleaned), "tags": cleaned}
+```
+
+## Example: reshape prior step results
+
+```python
+def execute(ctx):
+  account = ctx.steps.fetch_account
+  invoices = ctx.steps.fetch_invoices
+
+  total_spent = sum([inv["amount_cents"] for inv in invoices if inv["status"] == "paid"])
+
+  return {
+    "account_id": account["id"],
+    "name": account["name"].strip().title(),
+    "total_spent_cents": total_spent
+  }
+```
+
+:::note Sandboxing
+Starlark scripts have no filesystem or network access. Unbounded recursion and infinite loops are prevented by the runtime.
+:::

@@ -1,0 +1,34 @@
+---
+title: contains
+description: Determine whether a list contains a specific value.
+---
+
+# contains
+
+Determines whether a list contains a specific value.
+
+## Signature
+
+```hcl
+contains(list: list, value: any) -> bool
+```
+
+## Parameters
+
+| Parameter   | Type      | Required | Description              |
+| :---------- | :-------- | :------- | :----------------------- |
+| list, value | list, any | yes      | List and candidate value |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  condition = !contains(["admin", "editor"], ctx.request.headers.x_role)
+  status = 403
+  body = { error = "Forbidden: Insufficient privileges" }
+}
+```

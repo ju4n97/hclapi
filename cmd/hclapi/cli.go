@@ -15,6 +15,7 @@ func newRootCommand() *cli.Command {
 		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			newServeCommand(),
+			newVersionCommand(),
 		},
 	}
 }

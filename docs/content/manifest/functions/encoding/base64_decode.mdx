@@ -1,0 +1,33 @@
+---
+title: base64_decode
+description: Decode a standard Base64 encoded string back to plain text.
+---
+
+# base64_decode
+
+Decodes a standard Base64 encoded string back to plain text.
+
+## Signature
+
+```hcl
+base64_decode(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description                 |
+| :-------- | :----- | :------- | :-------------------------- |
+| str       | string | yes      | The Base64 string to decode |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  status = 200
+  body = { value = base64_decode(ctx.request.headers.x_token) }
+}
+```

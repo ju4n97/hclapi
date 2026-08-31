@@ -1,0 +1,30 @@
+---
+title: min
+description: Return the smallest value from a sequence of numbers.
+---
+
+# min
+
+Returns the smallest value from a sequence of numbers.
+
+## Signature
+
+```hcl
+min(...numbers: number) -> number
+```
+
+## Parameters
+
+| Parameter | Type   | Required   | Description      |
+| :-------- | :----- | :--------- | :--------------- |
+| numbers   | number | at least 1 | Candidate values |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+args = { limit = min(coalesce(ctx.request.query.limit, 20), 100) }
+```

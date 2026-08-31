@@ -1,0 +1,30 @@
+---
+title: trim_space
+description: Remove leading and trailing whitespace from a string.
+---
+
+# trim_space
+
+Removes leading and trailing whitespace characters (spaces, tabs, newlines) from a string.
+
+## Signature
+
+```hcl
+trim_space(str: string) -> string
+```
+
+## Parameters
+
+| Parameter | Type   | Required | Description  |
+| :-------- | :----- | :------- | :----------- |
+| str       | string | yes      | Input string |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+args = { query = "%${trim_space(ctx.request.query.q)}%" }
+```

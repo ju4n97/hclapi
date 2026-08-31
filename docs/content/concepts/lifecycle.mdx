@@ -1,0 +1,37 @@
+---
+title: Request lifecycle
+description: How hclapi validates manifests at boot and executes the same fixed pipeline for each request.
+---
+
+import { Steps } from "@rspress/core/theme";
+
+hclapi has two phases. Manifests are validated once, at boot. Every request after that runs the same fixed pipeline.
+
+| Phase   | Trigger               | Result                                                  | On failure                                       |
+| :------ | :-------------------- | :------------------------------------------------------ | :----------------------------------------------- |
+| Boot    | `hclapi serve` starts | Manifests parsed, connections opened, routes registered | Process exits with a file and line diagnostic    |
+| Request | HTTP request arrives  | Route matched, pipeline runs, response serialized       | Request returns RFC 9457 error; server continues |
+
+## Stages
+
+<Steps>
+
+### 1. Ingress
+
+The method and path are matched. Headers, query parameters, and body are parsed.
+
+### 2. Context initialization
+
+A request-scoped [execution context](./context) is created.
+
+### 3. Step execution
+
+[Pipeline steps](./pipelines) run in order, reading from and appending to the context.
+
+### 4. Response
+
+A `respond` step serializes status, headers, and body, and terminates the pipeline.
+
+</Steps>
+
+A request that fails schema validation or arrives with unparseable JSON never reaches step execution.

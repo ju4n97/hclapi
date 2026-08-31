@@ -1,0 +1,33 @@
+---
+title: now
+description: Return the current system timestamp in UTC formatted according to RFC 3339.
+---
+
+# now
+
+Returns the current system timestamp in UTC formatted according to RFC 3339.
+
+## Signature
+
+```hcl
+now() -> string
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description   |
+| :-------- | :--- | :------- | :------------ |
+| None      | —    | —        | No parameters |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond {
+  status = 200
+  body = { status = "ok", received_at = now(), epoch = ctx.timestamp_epoch }
+}
+```

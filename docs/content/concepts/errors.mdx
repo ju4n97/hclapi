@@ -1,0 +1,51 @@
+---
+title: Errors
+description: RFC 9457 Problem Details returned by hclapi for ingress, validation, and pipeline failures.
+---
+
+hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details for every error, whether raised at ingress, during validation, or during pipeline execution.
+
+```json
+{
+  "type": "urn:hclapi:error:bad-request",
+  "title": "Invalid Request Payload",
+  "status": 400,
+  "detail": "invalid JSON payload: invalid character '\"' after array element",
+  "instance": "/api/v1/transform",
+  "step": "ingress",
+  "invalid_params": [{ "name": "tags", "reason": "must be a valid JSON array" }]
+}
+```
+
+| Field            | Type     | Description                                             |
+| :--------------- | :------- | :------------------------------------------------------ |
+| `type`           | `string` | URI or URN identifying the problem category             |
+| `title`          | `string` | Short summary of the problem type                       |
+| `status`         | `int`    | HTTP status code                                        |
+| `detail`         | `string` | Explanation specific to this occurrence                 |
+| `instance`       | `string` | Request path that produced the error                    |
+| `step`           | `string` | Pipeline step where the failure occurred, if applicable |
+| `invalid_params` | `list`   | Field-level validation errors                           |
+
+## Problem type identifiers
+
+- `urn:hclapi:error:bad-request` — malformed JSON or unparseable payload.
+- `urn:hclapi:error:payload-too-large` — request body exceeded `max_body_size`.
+- `urn:hclapi:error:validation-error` — payload failed schema constraints.
+- `urn:hclapi:error:pipeline-execution-failed` — unhandled step failure or database timeout.
+
+## Self-hosting error documentation
+
+Standalone deployments can override the default URN prefix:
+
+```hcl
+server {
+  error_base_url = "https://docs.mycompany.com/errors/"
+}
+```
+
+This transforms `urn:hclapi:error:bad-request` into `https://docs.mycompany.com/errors/bad-request`.
+
+:::tip Embedded applications
+When embedding hclapi into Go, replace the default response shape with a custom `ErrorHandler`. See [Go integration](../guides/go).
+:::

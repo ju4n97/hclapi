@@ -10,21 +10,23 @@ tasks:
 
   cli-docs:
     desc: Generate CLI reference
-    cmd: go run -tags docs ./cmd/hclapi/docs.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go
+    cmds: 
+      - go run -tags docs ./cmd/hclapi
+      - bunx prettier@latest --write docs/content/cli
 
   cli-man:
     desc: Generate man pages
-    cmd: go run -tags man ./cmd/hclapi/man.go ./cmd/hclapi/cli.go ./cmd/hclapi/serve.go
+    cmd: go run -tags man ./cmd/hclapi
 
   docs-serve:
     desc: Serve documentation
     dir: docs
-    cmd: mdbook serve
+    cmd: bun run dev
 
   docs-build:
     desc: Build documentation
     dir: docs
-    cmd: mdbook build
+    cmd: bun run build
 
   test:
     desc: Run tests
@@ -36,6 +38,10 @@ tasks:
       CGO_ENABLED: 1
     cmd: go test -race -count=1 -timeout=30s ./...
 
+  test-integration:
+    desc: Run containerized integration tests agains real services
+    cmd: go test -v -tags=integration -run="^TestIntegration" -timeout=5m ./...
+
   lint:
     desc: Lint code
     cmd: golangci-lint run
@@ -46,7 +52,7 @@ tasks:
 
   fmt-docs:
     desc: Format docs
-    cmd: bunx prettier@latest --write docs/src
+    cmd: bunx prettier@latest --write docs/content
 
   update:
     desc: Update dependencies

@@ -1,0 +1,66 @@
+---
+title: Execution context
+description: The request-scoped ctx object and the data exposed by requests and completed pipeline steps.
+---
+
+`ctx` is the request-scoped object every step reads from. It holds the incoming request and the accumulated output of prior steps.
+
+```text
+ctx
+├── timestamp_epoch : int
+├── request
+│   ├── method  : string
+│   ├── path    : map[string]string
+│   ├── query   : map[string]string
+│   ├── headers : map[string]string
+│   └── body    : any
+└── steps
+    ├── <sql_step_name>
+    │   ├── rows          : list(map)
+    │   ├── row           : map (or null)
+    │   └── rows_affected : int
+    ├── <redis_step_name>
+    │   └── value         : any
+    ├── <starlark_step_name>
+    │   └── result        : any
+    └── <go_step_name>
+        └── result        : any
+```
+
+## Request
+
+The request object is populated at ingress and remains immutable for the life of the request.
+
+| Field                 | Type                | Example                             |
+| :-------------------- | :------------------ | :---------------------------------- |
+| `ctx.request.method`  | `string`            | `"POST"`                            |
+| `ctx.request.path`    | `map[string]string` | `ctx.request.path.id`               |
+| `ctx.request.query`   | `map[string]string` | `ctx.request.query.page`            |
+| `ctx.request.headers` | `map[string]string` | `ctx.request.headers.authorization` |
+| `ctx.request.body`    | `any`               | `ctx.request.body.email`            |
+
+Path parameters are bound from route templates. Catch-all parameters such as `{filepath...}` bind the remaining path. Header keys are lowercased at ingress.
+
+## Steps
+
+| Step type      | Exported fields                | Description                                  |
+| :------------- | :----------------------------- | :------------------------------------------- |
+| **`sql`**      | `rows`, `row`, `rows_affected` | Query results and affected-row count         |
+| **`redis`**    | `value`                        | Retrieved cache value or command result      |
+| **`starlark`** | `result`                       | Value returned by `execute(ctx)`             |
+| **`go`**       | `result`                       | Value returned by the registered Go function |
+
+## Access from HCL and Starlark
+
+In HCL expressions, `steps` is available as a root-level shorthand for `ctx.steps`. In Starlark scripts, values are accessed beneath `ctx` using dictionary syntax.
+
+| Value           | HCL                                 | Starlark                                         |
+| :-------------- | :---------------------------------- | :----------------------------------------------- |
+| Path parameter  | `ctx.request.path.id`               | `ctx.request.path["id"]`                         |
+| Query parameter | `ctx.request.query.filter`          | `ctx.request.query.get("filter")`                |
+| Header          | `ctx.request.headers.authorization` | `ctx.request.headers.get("authorization")`       |
+| Body field      | `ctx.request.body.name`             | `ctx.request.body["name"]`                       |
+| SQL record      | `steps.lookup.row.user_id`          | `ctx.steps.lookup.get("row", {}).get("user_id")` |
+| SQL list        | `steps.list_users.rows`             | `ctx.steps.list_users["rows"]`                   |
+| Redis value     | `steps.cache_lookup.value`          | `ctx.steps.cache_lookup.get("value")`            |
+| Step result     | `steps.compute.result`              | `ctx.steps.compute["result"]`                    |

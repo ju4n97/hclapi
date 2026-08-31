@@ -2,12 +2,14 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
 
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -21,6 +23,7 @@ type Engine struct {
 	options      core.Options
 	server       core.Server
 	mux          *http.ServeMux
+	sqlManager   *connsql.Manager
 	goSteps      map[string]core.StepHandler
 	errorHandler core.ErrorHandler
 	logger       *slog.Logger
@@ -40,13 +43,39 @@ func New(options core.Options) (*Engine, error) {
 
 	manifest, err := parser.Parse(options.ConfigPath, eval.BaseContext())
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse manifests: %w", err)
+		return nil, fmt.Errorf("parse manifests: %w", err)
+	}
+
+	bootCtx := context.Background()
+
+	sqlManager := connsql.NewManager()
+
+	for _, connBlock := range manifest.Connections {
+		conn, err := connBlock.ToConnection()
+		if err != nil {
+			return nil, fmt.Errorf("connection config %q: %w", connBlock.Name, err)
+		}
+
+		if connsql.IsSupportedDriver(conn.Driver) {
+			if err := sqlManager.Open(bootCtx, conn); err != nil {
+				_ = sqlManager.Close()
+				return nil, fmt.Errorf("init connection %q: %w", conn.Reference(), err)
+			}
+			logger.Info("initialized database connection pool", "connection", conn.Reference(), "driver", conn.Driver)
+		}
+	}
+
+	serverConfig, err := manifest.Server.ToServer()
+	if err != nil {
+		_ = sqlManager.Close()
+		return nil, fmt.Errorf("server config: %w", err)
 	}
 
 	e := &Engine{
 		options:      options,
-		server:       manifest.Server.ToServer(),
+		server:       serverConfig,
 		mux:          http.NewServeMux(),
+		sqlManager:   sqlManager,
 		goSteps:      make(map[string]core.StepHandler),
 		errorHandler: errorHandler,
 		logger:       logger,
@@ -55,7 +84,7 @@ func New(options core.Options) (*Engine, error) {
 	for _, ep := range manifest.Endpoints {
 		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode pipeline steps: %w", err)
+			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
 		}
 
 		e.bindRoute(ep.MethodAndPath, steps)
@@ -73,7 +102,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 		}
 	}
 
-	executor := NewPipelineExecutor(steps, e.goSteps)
+	executor := NewPipelineExecutor(steps, e.goSteps, e.sqlManager)
 
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
 		hclapiCtx, err := core.NewContext(w, r,
@@ -117,10 +146,18 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	})
 }
 
+// Close gracefully closes all active connection pools.
+func (e *Engine) Close() error {
+	if e.sqlManager != nil {
+		return e.sqlManager.Close()
+	}
+	return nil
+}
+
 // RegisterStep registers a named custom Go function for the pipeline runtime.
 func (e *Engine) RegisterStep(name string, handler core.StepHandler) error {
 	if _, exists := e.goSteps[name]; exists {
-		return fmt.Errorf("step %q is already registered", name)
+		return fmt.Errorf("step %q already registered", name)
 	}
 
 	e.goSteps[name] = handler

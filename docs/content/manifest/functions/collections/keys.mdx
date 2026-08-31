@@ -1,0 +1,30 @@
+---
+title: keys
+description: Return all keys from a map, sorted lexically.
+---
+
+# keys
+
+Returns a list containing all keys from a map, sorted lexically.
+
+## Signature
+
+```hcl
+keys(map: map) -> list(string)
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :-------- | :--- | :------- | :---------- |
+| map       | map  | yes      | Source map  |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = keys(ctx.request.body) }
+```

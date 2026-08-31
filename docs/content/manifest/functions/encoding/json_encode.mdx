@@ -1,0 +1,40 @@
+---
+title: json_encode
+description: Serialize HCL data structures into a valid JSON string.
+---
+
+# json_encode
+
+Serializes any HCL data structure (primitive, map, object, list) into a valid JSON string.
+
+## Signature
+
+```hcl
+json_encode(value: any) -> string
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description                              |
+| :-------- | :--- | :------- | :--------------------------------------- |
+| value     | any  | yes      | The value or data structure to serialize |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+endpoint "GET /api/v1/products/{id}" {
+  pipeline {
+    redis "cache_write" {
+      connection = connection.redis.cache
+      command    = "SET"
+      key        = "product:${ctx.request.path.id}"
+      value      = json_encode(steps.find_product.result)
+      ttl        = "30m"
+    }
+  }
+}
+```

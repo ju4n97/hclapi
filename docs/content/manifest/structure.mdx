@@ -1,0 +1,67 @@
+---
+title: Files and merging
+description: How hclapi discovers HCL files, scans directories, and merges manifests into one service definition.
+---
+
+hclapi builds its runtime tree from a single file, or by walking a directory and merging every manifest it finds into one service definition.
+
+## Recognized files
+
+| Pattern | Example                       |
+| :------ | :---------------------------- |
+| `*.hcl` | `main.hcl`, `connections.hcl` |
+
+Non-manifest files such as `index.md`, `init.sql`, `.gitignore`, and static assets are ignored during discovery.
+
+## Directory scanning
+
+When passed a directory with `hclapi serve -c ./config`, the parser walks the tree recursively. Directories beginning with a dot (`.git`, `.cache`) are skipped. Endpoints, connections, schemas, and server settings found under the tree are merged into one AST.
+
+## Merge rules
+
+:::warning Duplicate endpoint detection
+Endpoints are identified by HTTP method and path. Declaring the same pair in more than one file halts startup with a diagnostic naming both files.
+:::
+
+Server blocks merge by attribute. If multiple files declare `server {}`, the last evaluated value wins for explicitly set attributes; unset attributes retain defaults.
+
+Connections and schemas occupy global namespaces. A connection labeled `connection "postgres" "primary"` in one file is available to endpoints in another file.
+
+## Layouts
+
+### Flat layout
+
+```text title="my-service/"
+my-service/
+├── main.hcl
+└── docker-compose.yaml
+```
+
+### Domain-driven layout
+
+```text title="api-service/"
+api-service/
+├── server.hcl
+├── connections.hcl
+├── schemas/
+│   ├── account.hcl
+│   └── user.hcl
+└── routes/
+    ├── accounts.hcl
+    └── users.hcl
+```
+
+### Versioned layout
+
+```text
+gateway/
+├── server.hcl
+├── schemas/
+│   ├── v1.hcl
+│   └── v2.hcl
+└── routes/
+    ├── v1/
+    └── v2/
+```
+
+`hclapi serve -c ./gateway` merges all versioned routes into the same router.

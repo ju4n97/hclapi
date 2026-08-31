@@ -11,7 +11,9 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	_ "modernc.org/sqlite"
 
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -84,7 +86,7 @@ def execute(ctx):
 			},
 		}
 
-		executor := engine.NewPipelineExecutor(steps, goSteps)
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		// 1. Test authorized request
 		reqAuth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
@@ -160,7 +162,7 @@ def execute(ctx):
 			},
 		}
 
-		executor := engine.NewPipelineExecutor(steps, goSteps)
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		reqCtx, cancel := context.WithCancel(t.Context())
 		cancel() // Cancel before execution
@@ -208,7 +210,7 @@ def execute(ctx):
 			},
 		}
 
-		executor := engine.NewPipelineExecutor(steps, goSteps)
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		hclapiCtx, err := core.NewContext(nil, req)
@@ -247,7 +249,7 @@ def execute(ctx):
 			},
 		}
 
-		executor := engine.NewPipelineExecutor(steps, nil)
+		executor := engine.NewPipelineExecutor(steps, nil, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		hclapiCtx, err := core.NewContext(nil, req)
@@ -270,6 +272,182 @@ def execute(ctx):
 
 		if h := rec.Header().Get("X-Echo-Method"); h != "GET" {
 			t.Errorf("expected header 'GET', got %q", h)
+		}
+	})
+
+	t.Run("Executes SQL step in pipeline and exports row, rows, and rows_affected", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := connsql.NewManager()
+		conn := core.Connection{
+			Driver: "sqlite",
+			Name:   "main",
+			URL:    "file:pipeline_mem?mode=memory&cache=shared",
+			Pool:   core.DefaultPoolConfig(),
+		}
+		if err := mgr.Open(t.Context(), conn); err != nil {
+			t.Fatalf("failed to open sqlite in-memory pool: %v", err)
+		}
+		t.Cleanup(func() { _ = mgr.Close() })
+
+		pool, _ := mgr.Get("sqlite.main")
+
+		schema := `
+			CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
+			INSERT INTO users VALUES (1, 'Jane', 'jane@example.com');
+			INSERT INTO users VALUES (2, 'John', 'john@example.com');
+		`
+		if _, err := pool.DB.ExecContext(t.Context(), schema); err != nil {
+			t.Fatalf("failed to seed test table: %v", err)
+		}
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeSQL,
+				Name: "find_user",
+				SQL: &parser.SQLStepBlock{
+					Connection: parseExpr(t, `connection.sqlite.main`),
+					Query:      "SELECT id, name, email FROM users WHERE id = @id",
+					Args:       parseExpr(t, `{ id = ctx.request.path.id }`),
+				},
+			},
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Condition: parseExpr(t, `steps.find_user.rows_affected > 0`),
+					Status:    parseExpr(t, `200`),
+					Body: parseExpr(t, `{
+						user          = steps.find_user.row
+						all_users     = steps.find_user.rows
+						total_matched = steps.find_user.rows_affected
+					}`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, mgr)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/1", http.NoBody)
+		req.SetPathValue("id", "1")
+
+		hclapiCtx, err := core.NewContext(nil, req, core.WithPathParams([]string{"id"}))
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response JSON: %v", err)
+		}
+
+		if resp["total_matched"] != float64(1) {
+			t.Errorf("expected total_matched 1, got %v", resp["total_matched"])
+		}
+
+		user, ok := resp["user"].(map[string]any)
+		if !ok || user["name"] != "Jane" || user["email"] != "jane@example.com" {
+			t.Errorf("expected user Jane with email, got %+v", resp["user"])
+		}
+	})
+
+	t.Run("SQL step intercepts constraint violation with catch block", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := connsql.NewManager()
+		conn := core.Connection{
+			Driver: "sqlite",
+			Name:   "main",
+			URL:    "file:pipeline_catch_mem?mode=memory&cache=shared",
+			Pool:   core.DefaultPoolConfig(),
+		}
+		if err := mgr.Open(t.Context(), conn); err != nil {
+			t.Fatalf("failed to open sqlite in-memory pool: %v", err)
+		}
+		t.Cleanup(func() { _ = mgr.Close() })
+
+		pool, _ := mgr.Get("sqlite.main")
+
+		// Create table with UNIQUE constraint
+		schema := `
+			CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT UNIQUE);
+			INSERT INTO accounts VALUES (1, 'existing@example.com');
+		`
+		if _, err := pool.DB.ExecContext(t.Context(), schema); err != nil {
+			t.Fatalf("failed to seed test table: %v", err)
+		}
+
+		// Pipeline trying to insert duplicate email, catching SQLite constraint code "19"
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeSQL,
+				Name: "insert_account",
+				SQL: &parser.SQLStepBlock{
+					Connection: parseExpr(t, `connection.sqlite.main`),
+					Query:      "INSERT INTO accounts (id, email) VALUES (2, @email)",
+					Args:       parseExpr(t, `{ email = ctx.request.body.email }`),
+					Catches: []parser.SQLCatchBlock{
+						{
+							Code:    "19",
+							Status:  parseExpr(t, `409`),
+							Headers: parseExpr(t, `{ "X-Error" = "Conflict" }`),
+							Body:    parseExpr(t, `{ error = "Account with this email already exists" }`),
+						},
+					},
+				},
+			},
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `201`),
+					Body:   parseExpr(t, `steps.insert_account.row`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, mgr)
+
+		req := httptest.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			"/accounts",
+			strings.NewReader(`{"email": "existing@example.com"}`),
+		)
+		req.Header.Set("Content-Type", "application/json")
+
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected pipeline execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusConflict {
+			t.Errorf("expected status 409 Conflict, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		if h := rec.Header().Get("X-Error"); h != "Conflict" {
+			t.Errorf("expected header X-Error 'Conflict', got %q", h)
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response JSON: %v", err)
+		}
+
+		if resp["error"] != "Account with this email already exists" {
+			t.Errorf("unexpected error payload: %+v", resp)
 		}
 	})
 }

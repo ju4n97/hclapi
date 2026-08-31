@@ -1,8 +1,10 @@
+//go:build !docs && !man
+
 package main
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os"
 )
 
@@ -10,7 +12,7 @@ func main() {
 	ctx := context.Background()
 
 	if err := newRootCommand().Run(ctx, os.Args); err != nil {
-		slog.Error("cli execution failed", "error", err)
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
 }

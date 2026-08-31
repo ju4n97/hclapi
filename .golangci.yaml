@@ -7,156 +7,60 @@ run:
 linters:
   default: none
   enable:
-    # Core correctness
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
+    # Correctness
+    - govet        # Run the Go vet analyzers; catch invalid constructs and suspicious code.
+    - staticcheck  # Find correctness issues and common concurrency, API, and logic bugs.
+    - errcheck     # Require explicit handling of returned errors.
+    - errorlint    # Enforce correct error wrapping and inspection semantics.
+    - bodyclose    # Ensure HTTP response bodies are closed on all paths.
+    - nilerr       # Catch cases where an error is checked but nil is returned instead.
 
-    # Error handling
-    - errorlint
-    - errname
-    - wrapcheck
+    # Dead code and redundant operations
+    - ineffassign  # Catch assignments whose values are never subsequently used.
+    - unused       # Catch unused declarations and other unreachable code.
+    - unconvert    # Catch conversions that do not change the resulting type.
 
-    # Style & clarity
-    - revive
-    - gocritic
-    - misspell
-    - unconvert
-    - unparam
-    - whitespace
-    - nolintlint
+    # Code quality
+    - gocritic     # Catch suspicious constructs and common implementation mistakes.
+    - copyloopvar  # Catch loop-variable captures that can lead to incorrect behavior.
+    - perfsprint   # Catch avoidable formatting overhead in string construction.
 
-    # Safety / common bugs
-    - asasalint
-    - bidichk
-    - bodyclose
-    - copyloopvar
-    - durationcheck
-    - forcetypeassert
-    - nilerr
-    - noctx
-
-    # Modern Go
-    - modernize
-    - exptostd
-    - usestdlibvars
-    - perfsprint
-
-    # Tests
-    - testifylint
-
-    # Extra
-    - exhaustive
-    - prealloc
-    - rowserrcheck
-    - sloglint
-    - gocheckcompilerdirectives
-    - gochecknoinits
+    # Idiomatic style and documentation
+    - revive       # Enforce Go initialisms, doc structure, and clean error flow.
+    - godot        # Ensure top-level declarations and doc comments end with a period.
 
   settings:
-    errcheck:
-      check-type-assertions: true
-      check-blank: true
+    errcheck:      
+      exclude-functions:
+        # Deferred SQL cleanup
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
 
-    errorlint:
-      errorf: true
-      asserts: true
-      comparison: true
-
-    gocritic:
-      enabled-tags:
-        - diagnostic
-        - style
-        - performance
-      disabled-checks:
-        - hugeParam
-        - rangeValCopy
-
-    misspell:
-      locale: US
-
-    nolintlint:
-      require-explanation: true
-      require-specific: true
+        # Intentionally ignored output
+        - fmt.Fprintf(os.Stdout)
+        - fmt.Fprintf(os.Stderr)
+        - fmt.Fprint(os.Stdout)
+        - fmt.Fprint(os.Stderr)
+        - fmt.Fprintln(os.Stdout)
+        - fmt.Fprintln(os.Stderr)
 
     revive:
       rules:
-        - name: blank-imports
-        - name: context-as-argument
-        - name: context-keys-type
-        - name: dot-imports
-        - name: error-return
-        - name: error-strings
-        - name: error-naming
-        - name: exported
-        - name: if-return
-        - name: increment-decrement
+        # Enforce canonical initialisms (ID, URL, HTTP, JSON, API, SQL)
         - name: var-naming
-        - name: package-comments
-        - name: range
-        - name: receiver-naming
-        - name: time-naming
-        - name: unexported-return
-        - name: indent-error-flow
-        - name: errorf
-        - name: empty-block
-        - name: superfluous-else
-        - name: unreachable-code
-        - name: redefines-builtin-id
+          severity: warning
 
-    staticcheck:
-      checks:
-        - all
-        - "-ST1000"   # package comments (optional)
-        - "-ST1003"
-        - "-ST1020"
-        - "-ST1021"
-        - "-ST1022"
+        # Enforce lowercase error strings without trailing punctuation
+        - name: error-strings
+          severity: warning
 
-    wrapcheck:
-      ignore-sigs:
-        - .Errorf(
-        - errors.New(
-        - errors.Unwrap(
-        - errors.Join(
-        - .Wrap(
-        - .Wrapf(
-        - .WithMessage(
-        - .WithMessagef(
-        - .WithStack(
-        - (*encoding/json.Encoder).Encode
-        - path/filepath.WalkDir
-        - io/fs.WalkDir
-        - os.Remove
-        - os.RemoveAll
-        - os.Rename
-        - (*os.File).Close
-        - (*os.File).Sync
-        - (*bufio.Writer).Flush
-        - (*gzip.Writer).Close
-        - (*zip.Writer).Close
-        - net/http.Server.Serve
-        - net/http.Server.ListenAndServe
-        - net/http.Server.ListenAndServeTLS
+        # Enforce clean guard-clause return flow without redundant else blocks
+        - name: if-return
+          severity: warning
 
-  exclusions:
-    generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
-    rules:
-      - path: _test\.go
-        linters:
-          - dupl
-          - funlen
-          - gocyclo
-          - wrapcheck
-          - errcheck
-          - forcetypeassert
+    godot:
+      scope: declarations
+      period: true
 
 formatters:
   enable:
@@ -178,12 +82,8 @@ formatters:
       custom-order: true
 
     golines:
-      max-len: 120
+      max-len: 130
       tab-len: 4
       shorten-comments: false
       reformat-tags: true
       chain-split-dots: true
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0

@@ -1,0 +1,30 @@
+---
+title: trim
+description: Remove characters defined in cutset from both ends of a string.
+---
+
+# trim
+
+Removes characters defined in `cutset` from both ends of a string.
+
+## Signature
+
+```hcl
+trim(str: string, cutset: string) -> string
+```
+
+## Parameters
+
+| Parameter   | Type           | Required | Description             |
+| :---------- | :------------- | :------- | :---------------------- |
+| str, cutset | string, string | yes      | Input string and cutset |
+
+## Return value
+
+Returns the documented result for the function signature.
+
+## Example
+
+```hcl
+respond { status = 200, body = { normalized = trim(ctx.request.query.value, " -") } }
+```

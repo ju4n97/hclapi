@@ -1,0 +1,134 @@
+package connsql
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	_ "github.com/go-sql-driver/mysql"  // MySQL & MariaDB
+	_ "github.com/jackc/pgx/v5/stdlib"  // PostgreSQL & CockroachDB
+	_ "github.com/microsoft/go-mssqldb" // SQL Server
+	_ "modernc.org/sqlite"              // SQLite
+
+	"github.com/ju4n97/hclapi/internal/core"
+)
+
+// Pool wraps an active *sql.DB pool with its database dialect and configuration metadata.
+type Pool struct {
+	DB      *sql.DB
+	Dialect Dialect
+	Config  core.Connection
+}
+
+// Manager manages the lifecycle, pooling, and retrieval of active database connection pools.
+type Manager struct {
+	mu    sync.RWMutex
+	pools map[string]*Pool
+}
+
+// NewManager initializes an empty connection pool manager.
+func NewManager() *Manager {
+	return &Manager{
+		pools: make(map[string]*Pool),
+	}
+}
+
+// IsSupportedDriver checks if the driver identifier belongs to a supported SQL engine.
+func IsSupportedDriver(driver string) bool {
+	switch strings.ToLower(driver) {
+	case "postgres",
+		"cockroachdb",
+		"sqlite",
+		"mysql",
+		"sqlserver",
+		"oracle",
+		"clickhouse",
+		"duckdb":
+		return true
+	default:
+		return false
+	}
+}
+
+// mapDriverName maps user manifest driver labels to registered database/sql driver names.
+func mapDriverName(driver string) string {
+	switch strings.ToLower(driver) {
+	case "postgres", "cockroachdb":
+		return "pgx"
+	default:
+		// "sqlite", "mysql", "sqlserver", "oracle", "clickhouse", "duckdb"
+		// match their registered driver names directly in database/sql
+		return strings.ToLower(driver)
+	}
+}
+
+// Open initializes a connection pool, applies pool sizing limits, pings the database, and registers it.
+func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := conn.Key()
+	if _, exists := m.pools[key]; exists {
+		return fmt.Errorf("connection %q is already registered", conn.Reference())
+	}
+
+	driverName := mapDriverName(conn.Driver)
+	db, err := sql.Open(driverName, conn.URL)
+	if err != nil {
+		return fmt.Errorf("open %s driver: %w", driverName, err)
+	}
+
+	// Apply connection pool settings
+	db.SetMaxOpenConns(conn.Pool.MaxOpenConns)
+	db.SetMaxIdleConns(conn.Pool.MaxIdleConns)
+	db.SetConnMaxLifetime(conn.Pool.ConnMaxLifetime.Duration())
+	db.SetConnMaxIdleTime(conn.Pool.IdleTimeout.Duration())
+
+	// Verify connectivity with timeout
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(pingCtx); err != nil {
+		_ = db.Close()
+		return fmt.Errorf("ping database: %w", err)
+	}
+
+	pool := &Pool{
+		DB:      db,
+		Dialect: ResolveDialect(conn.Driver),
+		Config:  conn,
+	}
+
+	m.pools[key] = pool
+	return nil
+}
+
+// Get retrieves an active connection pool by key ("postgres.main") or reference ("connection.postgres.main").
+func (m *Manager) Get(keyOrRef string) (*Pool, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cleanKey := strings.TrimPrefix(keyOrRef, "connection.")
+	pool, exists := m.pools[cleanKey]
+	return pool, exists
+}
+
+// Close gracefully closes all active database connection pools.
+func (m *Manager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var errs []error
+	for _, pool := range m.pools {
+		if err := pool.DB.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close database pool %q: %w", pool.Config.Reference(), err))
+		}
+	}
+
+	m.pools = make(map[string]*Pool)
+	return errors.Join(errs...)
+}

@@ -30,6 +30,20 @@ linters:
     - godot        # Ensure top-level declarations and doc comments end with a period.
 
   settings:
+    errcheck:      
+      exclude-functions:
+        # Deferred SQL cleanup
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+
+        # Intentionally ignored output
+        - fmt.Fprintf(os.Stdout)
+        - fmt.Fprintf(os.Stderr)
+        - fmt.Fprint(os.Stdout)
+        - fmt.Fprint(os.Stderr)
+        - fmt.Fprintln(os.Stdout)
+        - fmt.Fprintln(os.Stderr)
+
     revive:
       rules:
         # Enforce canonical initialisms (ID, URL, HTTP, JSON, API, SQL)

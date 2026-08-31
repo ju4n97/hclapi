@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -211,7 +212,7 @@ func (p *PipelineExecutor) execRespondStep(
 	ctx *core.Context,
 ) (bool, error) {
 	if step.Respond == nil {
-		return false, fmt.Errorf("step is missing respond configuration")
+		return false, errors.New("step is missing respond configuration")
 	}
 
 	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)

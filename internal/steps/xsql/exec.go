@@ -62,7 +62,7 @@ func ScanRows(rows *sql.Rows) ([]map[string]any, error) {
 
 		rowMap := make(map[string]any, len(cols))
 		for i, colName := range cols {
-			var val any = values[i]
+			val := values[i]
 			switch v := val.(type) {
 			case []byte:
 				val = string(v)

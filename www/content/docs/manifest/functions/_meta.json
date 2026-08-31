@@ -1,0 +1,44 @@
+[
+  {
+    "type": "dir",
+    "name": "system",
+    "label": "System",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "encoding",
+    "label": "Encoding",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "strings",
+    "label": "Strings",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "collections",
+    "label": "Collections",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "cryptography",
+    "label": "Cryptography",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "dir",
+    "name": "math",
+    "label": "Math",
+    "collapsible": true,
+    "collapsed": false
+  }
+]

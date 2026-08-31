@@ -4,9 +4,14 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/eval"
 )
 
 var (
@@ -97,6 +102,54 @@ func TestFunctions_System(t *testing.T) {
 		}
 		if time.Since(parsed) > 5*time.Second {
 			t.Errorf("now() generated timestamp too far in the past: %v", parsed)
+		}
+	})
+
+	t.Run("problem function builds RFC 9457 payload", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := &core.Context{
+			Server: core.Server{
+				ErrorBaseURL: "https://docs.example.com/errors/",
+			},
+			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/42", http.NoBody),
+		}
+
+		// Standard status and detail
+		res, err := eval.Any(parseExpr(t, `problem(404, "User not found")`), ctx)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		m, ok := res.(map[string]any)
+		if !ok {
+			t.Fatalf("expected map[string]any, got %T", res)
+		}
+
+		if m["status"] != int64(404) || m["title"] != "Not Found" {
+			t.Errorf("unexpected status/title: %+v", m)
+		}
+		if m["detail"] != "User not found" {
+			t.Errorf("expected detail 'User not found', got %v", m["detail"])
+		}
+		if m["type"] != "https://docs.example.com/errors/not-found" {
+			t.Errorf("expected custom base URL type, got %v", m["type"])
+		}
+		if m["instance"] != "/api/v1/users/42" {
+			t.Errorf("expected instance '/api/v1/users/42', got %v", m["instance"])
+		}
+
+		// Default URN fallback without base URL
+		ctxNoBase := &core.Context{
+			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items", http.NoBody),
+		}
+		resURN, err := eval.Any(parseExpr(t, `problem(400, "Invalid parameter", "invalid-param")`), ctxNoBase)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		mURN := resURN.(map[string]any)
+		if mURN["type"] != "urn:hclapi:error:invalid-param" {
+			t.Errorf("expected URN type, got %v", mURN["type"])
 		}
 	})
 }

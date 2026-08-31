@@ -92,7 +92,9 @@ func TestNewContext(t *testing.T) {
 
 			ctx, err := core.NewContext(nil, req,
 				core.WithPathParams(paramNames),
-				core.WithMaxBodySize(10*1024*1024),
+				core.WithServer(core.Server{
+					MaxBodySize: 10 * 1024 * 1024,
+				}),
 			)
 			if tt.expectError {
 				if err == nil {

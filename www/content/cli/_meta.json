@@ -1,0 +1,17 @@
+[
+  {
+    "type": "file",
+    "name": "hclapi",
+    "label": "hclapi"
+  },
+  {
+    "type": "file",
+    "name": "hclapi-serve",
+    "label": "serve"
+  },
+  {
+    "type": "file",
+    "name": "hclapi-version",
+    "label": "version"
+  }
+]

@@ -1,0 +1,12 @@
+[
+  "lower",
+  "upper",
+  "trim_space",
+  "trim",
+  "trim_prefix",
+  "trim_suffix",
+  "split",
+  "join",
+  "replace",
+  "format"
+]

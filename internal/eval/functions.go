@@ -8,14 +8,18 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 	"uuid"
 
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
+
+	"github.com/ju4n97/hclapi/internal/core"
 )
 
 // StandardFunctions returns the global function registry for HCL evaluation.
@@ -115,6 +119,142 @@ var nowFunc = function.New(&function.Spec{
 		return cty.StringVal(time.Now().UTC().Format(time.RFC3339)), nil
 	},
 })
+
+// problemFunc constructs an RFC 9457 Problem Details object from positional arguments or an object map.
+func problemFunc(ctx *core.Context) function.Function {
+	var instancePath string
+	var errorBaseURL string
+
+	if ctx != nil {
+		errorBaseURL = ctx.Server.ErrorBaseURL
+		if ctx.RawRequest != nil && ctx.RawRequest.URL != nil {
+			instancePath = ctx.RawRequest.URL.Path
+		}
+	}
+
+	return function.New(&function.Spec{
+		Description: "Constructs an RFC 9457 compliant Problem Details object from positional arguments or an object map.",
+		VarParam: &function.Parameter{
+			Name:             "args",
+			Type:             cty.DynamicPseudoType,
+			AllowDynamicType: true,
+		},
+		Type: function.StaticReturnType(cty.DynamicPseudoType),
+		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+			if len(args) == 0 {
+				return cty.NilVal, fmt.Errorf("problem() requires at least 1 argument")
+			}
+
+			// Mode 1: Object / Map passed as single argument: problem({ status = 404, detail = "..." })
+			if len(args) == 1 && (args[0].Type().IsObjectType() || args[0].Type().IsMapType()) {
+				objMap := ctyToAny(args[0])
+				m, ok := objMap.(map[string]any)
+				if !ok {
+					return cty.NilVal, fmt.Errorf("problem() argument must be an object map")
+				}
+
+				status := 500
+				if s, ok := m["status"].(int64); ok {
+					status = int(s)
+				} else if s, ok := m["status"].(int); ok {
+					status = s
+				}
+
+				title := http.StatusText(status)
+				if title == "" {
+					title = "Error"
+				}
+				if t, ok := m["title"].(string); ok && t != "" {
+					title = t
+				}
+
+				slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
+				typeURI := core.ProblemType(slug)
+				if errorBaseURL != "" {
+					typeURI = errorBaseURL + slug
+				}
+				if customType, ok := m["type"].(string); ok && customType != "" {
+					if strings.Contains(customType, "://") || strings.HasPrefix(customType, "urn:") {
+						typeURI = customType
+					} else if errorBaseURL != "" {
+						typeURI = errorBaseURL + customType
+					} else {
+						typeURI = core.ProblemType(customType)
+					}
+				}
+
+				instance := instancePath
+				if inst, ok := m["instance"].(string); ok && inst != "" {
+					instance = inst
+				}
+
+				// Populate standard RFC 9457 fields if omitted
+				m["status"] = status
+				m["title"] = title
+				m["type"] = typeURI
+				if instance != "" && m["instance"] == nil {
+					m["instance"] = instance
+				}
+
+				return anyToCty(m), nil
+			}
+
+			// Mode 2: Positional arguments: problem(status, detail, [type])
+			if len(args) < 2 {
+				return cty.NilVal, fmt.Errorf(
+					"problem() positional syntax requires status and detail (e.g. problem(404, \"not found\"))",
+				)
+			}
+
+			if !args[0].Type().Equals(cty.Number) {
+				return cty.NilVal, fmt.Errorf("problem() status must be a number")
+			}
+
+			bf := args[0].AsBigFloat()
+			statusCode, _ := bf.Int64()
+			status := int(statusCode)
+
+			detail := ""
+			if !args[1].IsNull() {
+				detail = fmt.Sprintf("%v", ctyToAny(args[1]))
+			}
+
+			title := http.StatusText(status)
+			if title == "" {
+				title = "Error"
+			}
+
+			slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
+			typeURI := core.ProblemType(slug)
+			if errorBaseURL != "" {
+				typeURI = errorBaseURL + slug
+			}
+
+			if len(args) > 2 && !args[2].IsNull() {
+				custom := fmt.Sprintf("%v", ctyToAny(args[2]))
+				if strings.Contains(custom, "://") || strings.HasPrefix(custom, "urn:") {
+					typeURI = custom
+				} else if errorBaseURL != "" {
+					typeURI = errorBaseURL + custom
+				} else {
+					typeURI = core.ProblemType(custom)
+				}
+			}
+
+			resMap := map[string]any{
+				"status": status,
+				"title":  title,
+				"detail": detail,
+				"type":   typeURI,
+			}
+			if instancePath != "" {
+				resMap["instance"] = instancePath
+			}
+
+			return anyToCty(resMap), nil
+		},
+	})
+}
 
 // base64EncodeFunc encodes a string using standard RFC 4648 Base64 encoding.
 var base64EncodeFunc = function.New(&function.Spec{

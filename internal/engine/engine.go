@@ -107,7 +107,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
 		hclapiCtx, err := core.NewContext(w, r,
 			core.WithPathParams(paramNames),
-			core.WithMaxBodySize(e.server.MaxBodySize.Bytes()),
+			core.WithServer(e.server),
 		)
 		if err != nil {
 			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {

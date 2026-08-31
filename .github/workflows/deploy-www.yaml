@@ -1,12 +1,12 @@
-name: Deploy Documentation
+name: Deploy website
 
 on:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - 'docs/**'
-  #     - '.github/workflows/deploy-docs.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - "www/**"
+      - ".github/workflows/deploy-www.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,15 +15,16 @@ permissions:
   id-token: write
 
 concurrency:
-  group: 'pages'
+  group: pages
   cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -31,24 +32,29 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: docs
-        run: bun ci
+        working-directory: www
+        run: bun install --frozen-lockfile
 
-      - name: Build documentation
-        working-directory: docs
+      - name: Build website
+        working-directory: www
         run: bun run build
 
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: docs/.vitepress/dist
+          path: www/dist
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

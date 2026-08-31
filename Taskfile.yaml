@@ -18,14 +18,14 @@ tasks:
     desc: Generate man pages
     cmd: go run -tags man ./cmd/hclapi
 
-  docs-serve:
-    desc: Serve documentation
-    dir: docs
+  www-serve:
+    desc: Serve website
+    dir: www
     cmd: bun run dev
 
-  docs-build:
-    desc: Build documentation
-    dir: docs
+  www-build:
+    desc: Build website
+    dir: www
     cmd: bun run build
 
   test:
@@ -50,9 +50,9 @@ tasks:
     desc: Format code
     cmd: golangci-lint fmt
 
-  fmt-docs:
-    desc: Format docs
-    cmd: bunx prettier@latest --write docs/content
+  fmt-www:
+    desc: Format www
+    cmd: bunx prettier@latest --write www/content
 
   update:
     desc: Update dependencies

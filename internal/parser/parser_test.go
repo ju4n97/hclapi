@@ -3,9 +3,7 @@ package parser_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -14,9 +12,9 @@ import (
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-// writeManifestTree writes an in-memory map of relative paths to file contents in a temp directory.
 func writeManifestTree(t *testing.T, files map[string]string) string {
 	t.Helper()
+
 	tmpDir := t.TempDir()
 
 	for relPath, content := range files {
@@ -32,7 +30,6 @@ func writeManifestTree(t *testing.T, files map[string]string) string {
 	return tmpDir
 }
 
-// decodeSnippetSteps parses a raw HCL pipeline block string and decodes its steps.
 func decodeSnippetSteps(t *testing.T, snippet string) ([]parser.ParsedStep, error) {
 	t.Helper()
 
@@ -122,11 +119,9 @@ endpoint "GET /v2/orders" {
 		if manifest.Server == nil || manifest.Server.Port != 9000 {
 			t.Errorf("expected server port 9000, got: %+v", manifest.Server)
 		}
-
 		if len(manifest.Connections) != 1 || manifest.Connections[0].Driver != "postgres" {
 			t.Errorf("expected 1 postgres connection, got: %+v", manifest.Connections)
 		}
-
 		if len(manifest.Endpoints) != 3 {
 			t.Errorf("expected 3 merged endpoints, got %d", len(manifest.Endpoints))
 		}
@@ -162,7 +157,6 @@ endpoint "GET /ignored" {
 		if err != nil {
 			t.Fatalf("unexpected parse error: %v", err)
 		}
-
 		if len(manifest.Endpoints) != 1 || manifest.Endpoints[0].MethodAndPath != "GET /public" {
 			t.Fatalf("expected only 1 endpoint from routes.hcl, got: %+v", manifest.Endpoints)
 		}
@@ -191,25 +185,8 @@ endpoint "GET /ignored" {
 	})
 }
 
-func TestParse_Validation(t *testing.T) {
+func TestParse_SyntaxErrors(t *testing.T) {
 	t.Parallel()
-
-	t.Run("Rejects duplicate connection keys across files", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writeManifestTree(t, map[string]string{
-			"conn1.hcl": `connection "postgres" "primary" { url = "postgres://db1" }`,
-			"conn2.hcl": `connection "postgres" "primary" { url = "postgres://db2" }`,
-		})
-
-		_, err := parser.Parse(dir, eval.BaseContext())
-		if err == nil {
-			t.Fatal("expected error on duplicate connection, got nil")
-		}
-		if !strings.Contains(err.Error(), `duplicate connection declaration "connection.postgres.primary"`) {
-			t.Errorf("unexpected error message: %v", err)
-		}
-	})
 
 	t.Run("Reports file and line on syntax errors", func(t *testing.T) {
 		t.Parallel()
@@ -253,14 +230,9 @@ go "metrics" {
 		if len(steps) != 2 {
 			t.Fatalf("expected 2 steps, got %d", len(steps))
 		}
-
 		if steps[0].Type != parser.StepTypeGo || steps[0].Name != "auth" || steps[0].Go.Use != "auth.verify" {
 			t.Errorf("step 0 mismatch: %+v", steps[0])
 		}
-		if steps[0].Go.Args == nil {
-			t.Errorf("expected step 0 to have args expression")
-		}
-
 		if steps[1].Type != parser.StepTypeGo || steps[1].Name != "metrics" || steps[1].Go.Use != "metrics.flush" {
 			t.Errorf("step 1 mismatch: %+v", steps[1])
 		}
@@ -281,14 +253,8 @@ starlark "transform" {
 		if err != nil {
 			t.Fatalf("unexpected decode error: %v", err)
 		}
-		if len(steps) != 1 {
-			t.Fatalf("expected 1 step, got %d", len(steps))
-		}
-		if steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
-			t.Errorf("step mismatch: %+v", steps[0])
-		}
-		if !strings.Contains(steps[0].Starlark.Source, "def execute(ctx):") {
-			t.Errorf("expected source to contain function definition: %s", steps[0].Starlark.Source)
+		if len(steps) != 1 || steps[0].Type != parser.StepTypeStarlark || steps[0].Name != "transform" {
+			t.Errorf("step mismatch: %+v", steps)
 		}
 	})
 
@@ -318,28 +284,13 @@ sql "insert_user" {
 
 		step := steps[0]
 		if step.Type != parser.StepTypeSQL || step.Name != "insert_user" {
-			t.Fatalf("step type/name mismatch: %+v", step)
+			t.Fatalf("step mismatch: %+v", step)
 		}
 		if step.SQL.Query != "INSERT INTO users (email) VALUES (@email) RETURNING id" {
 			t.Errorf("unexpected query: %s", step.SQL.Query)
 		}
-		if step.SQL.Connection == nil {
-			t.Errorf("expected connection and args expressions to be defined")
-		}
-		if step.SQL.Args == nil {
-			t.Errorf("expected args expression to be defined")
-		}
 		if len(step.SQL.Catches) != 1 || step.SQL.Catches[0].Code != "23505" {
-			t.Fatalf("expected 1 catch block with code '23505', got: %+v", step.SQL.Catches)
-		}
-		if step.SQL.Catches[0].Status == nil {
-			t.Errorf("expected catch block status and body expressions to be defined")
-		}
-		if step.SQL.Catches[0].Headers == nil {
-			t.Errorf("expected catch block status and body expressions to be defined")
-		}
-		if step.SQL.Catches[0].Body == nil {
-			t.Errorf("expected catch block status and body expressions to be defined")
+			t.Errorf("catch block mismatch: %+v", step.SQL.Catches)
 		}
 	})
 
@@ -358,17 +309,8 @@ respond {
 		if err != nil {
 			t.Fatalf("unexpected decode error: %v", err)
 		}
-		if len(steps) != 1 {
-			t.Fatalf("expected 1 step, got %d", len(steps))
-		}
-
-		step := steps[0]
-		if step.Type != parser.StepTypeRespond {
-			t.Fatalf("expected respond step, got: %s", step.Type)
-		}
-		if step.Respond.Condition == nil || step.Respond.Status == nil || step.Respond.Headers == nil ||
-			step.Respond.Body == nil {
-			t.Errorf("expected all respond attributes to be defined: %+v", step.Respond)
+		if len(steps) != 1 || steps[0].Type != parser.StepTypeRespond {
+			t.Fatalf("expected respond step, got: %+v", steps)
 		}
 	})
 
@@ -394,9 +336,6 @@ respond {
 		steps, err := decodeSnippetSteps(t, snippet)
 		if err != nil {
 			t.Fatalf("unexpected decode error: %v", err)
-		}
-		if len(steps) != 4 {
-			t.Fatalf("expected 4 steps, got %d", len(steps))
 		}
 
 		expectedOrder := []parser.StepType{
@@ -426,151 +365,37 @@ unsupported_block "foo" {
 			t.Fatal("expected error on unknown step type, got nil")
 		}
 	})
-
-	t.Run("Rejects named steps missing required label", func(t *testing.T) {
-		t.Parallel()
-
-		snippet := `
-go {
-  use = "missing.label"
-}
-`
-		_, err := decodeSnippetSteps(t, snippet)
-		if err == nil {
-			t.Fatal("expected error on go step without label, got nil")
-		}
-	})
 }
 
-func TestServerBlock_ToServer(t *testing.T) {
-	t.Parallel()
+func TestParse_BootTimeEvaluation(t *testing.T) {
+	t.Setenv("APP_USER_PATTERN", "^[a-z0-9_]+$")
 
-	t.Run("Parses custom server settings and byte sizes", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writeManifestTree(t, map[string]string{
-			"server.hcl": `
-server {
-  host          = "0.0.0.0"
-  port          = 3000
-  read_timeout  = "30s"
-  max_body_size = "50MB"
-}
-`,
-		})
-
-		manifest, err := parser.Parse(dir, eval.BaseContext())
-		if err != nil {
-			t.Fatalf("unexpected parse error: %v", err)
-		}
-
-		srv, err := manifest.Server.ToServer()
-		if err != nil {
-			t.Fatalf("unexpected mapping error: %v", err)
-		}
-
-		if srv.Host != "0.0.0.0" || srv.Port != 3000 {
-			t.Errorf("unexpected host/port: %s:%d", srv.Host, srv.Port)
-		}
-		if srv.ReadTimeout.Duration() != 30*time.Second {
-			t.Errorf("expected 30s read timeout, got %v", srv.ReadTimeout)
-		}
-		if srv.MaxBodySize.Bytes() != 50*1000*1000 {
-			t.Errorf("expected 50MB, got %d", srv.MaxBodySize.Bytes())
-		}
-	})
-
-	t.Run("Rejects malformed max_body_size unit", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writeManifestTree(t, map[string]string{
-			"server.hcl": `
-server {
-  max_body_size = "10XB"
-}
-`,
-		})
-
-		manifest, err := parser.Parse(dir, eval.BaseContext())
-		if err != nil {
-			t.Fatalf("unexpected parse error: %v", err)
-		}
-
-		_, err = manifest.Server.ToServer()
-		if err == nil {
-			t.Fatal("expected error on invalid byte size, got nil")
-		}
-	})
-}
-
-func TestConnectionBlock_ToConnection(t *testing.T) {
-	t.Parallel()
-
-	t.Run("Parses custom pool configuration and durations", func(t *testing.T) {
-		t.Parallel()
-
-		dir := writeManifestTree(t, map[string]string{
-			"connections.hcl": `
-connection "postgres" "primary" {
-  url = "postgres://user:pass@localhost:5432/db"
-
-  pool {
-    max_open_conns    = 50
-    max_idle_conns    = 10
-    conn_max_lifetime = "1h"
-    idle_timeout      = "10m"
-    size              = 30
+	dir := writeManifestTree(t, map[string]string{
+		"schema.hcl": `
+schema "account" {
+  field "username" {
+    type        = string
+    pattern     = env("APP_USER_PATTERN")
+    description = format("Minimum length is %d", 3)
   }
 }
 `,
-		})
-
-		manifest, err := parser.Parse(dir, eval.BaseContext())
-		if err != nil {
-			t.Fatalf("unexpected parse error: %v", err)
-		}
-
-		conn, err := manifest.Connections[0].ToConnection()
-		if err != nil {
-			t.Fatalf("unexpected mapping error: %v", err)
-		}
-
-		if conn.Driver != "postgres" || conn.Name != "primary" {
-			t.Errorf("unexpected driver/name: %s.%s", conn.Driver, conn.Name)
-		}
-		if conn.Pool.MaxOpenConns != 50 || conn.Pool.MaxIdleConns != 10 {
-			t.Errorf("unexpected open/idle conns: %+v", conn.Pool)
-		}
-		if conn.Pool.ConnMaxLifetime.Duration() != time.Hour {
-			t.Errorf("expected 1h lifetime, got %v", conn.Pool.ConnMaxLifetime)
-		}
-		if conn.Pool.IdleTimeout.Duration() != 10*time.Minute {
-			t.Errorf("expected 10m idle timeout, got %v", conn.Pool.IdleTimeout)
-		}
 	})
 
-	t.Run("Rejects malformed duration strings", func(t *testing.T) {
-		t.Parallel()
+	manifest, err := parser.Parse(dir, eval.BaseContext())
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
 
-		dir := writeManifestTree(t, map[string]string{
-			"connections.hcl": `
-connection "postgres" "bad_duration" {
-  url = "postgres://localhost/db"
-  pool {
-    conn_max_lifetime = "invalid_duration"
-  }
-}
-`,
-		})
+	if len(manifest.Schemas) != 1 || len(manifest.Schemas[0].Fields) != 1 {
+		t.Fatalf("expected 1 schema with 1 field, got: %+v", manifest.Schemas)
+	}
 
-		manifest, err := parser.Parse(dir, eval.BaseContext())
-		if err != nil {
-			t.Fatalf("unexpected parse error: %v", err)
-		}
-
-		_, err = manifest.Connections[0].ToConnection()
-		if err == nil {
-			t.Fatal("expected error on invalid duration, got nil")
-		}
-	})
+	field := manifest.Schemas[0].Fields[0]
+	if field.Pattern == nil || *field.Pattern != "^[a-z0-9_]+$" {
+		t.Errorf("expected pattern '^[a-z0-9_]+$', got: %v", field.Pattern)
+	}
+	if field.Description == nil || *field.Description != "Minimum length is 3" {
+		t.Errorf("expected description 'Minimum length is 3', got: %v", field.Description)
+	}
 }

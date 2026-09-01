@@ -267,6 +267,116 @@ func TestFunctions_Strings(t *testing.T) {
 func TestFunctions_Collections(t *testing.T) {
 	t.Parallel()
 
+	t.Run("list", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			expr string
+			want string
+		}{
+			{
+				name: "string",
+				expr: `list(string)`,
+				want: "list(string)",
+			},
+			{
+				name: "int",
+				expr: `list(int)`,
+				want: "list(int)",
+			},
+			{
+				name: "float",
+				expr: `list(float)`,
+				want: "list(float)",
+			},
+			{
+				name: "bool",
+				expr: `list(bool)`,
+				want: "list(bool)",
+			},
+			{
+				name: "nested list",
+				expr: `list(list(string))`,
+				want: "list(list(string))",
+			},
+			{
+				name: "nested map",
+				expr: `list(map(string))`,
+				want: "list(map(string))",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				res, err := evalExpr(t, tt.expr)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if res != tt.want {
+					t.Errorf("expected %q, got %q", tt.want, res)
+				}
+			})
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			expr string
+			want string
+		}{
+			{
+				name: "string",
+				expr: `map(string)`,
+				want: "map(string)",
+			},
+			{
+				name: "int",
+				expr: `map(int)`,
+				want: "map(int)",
+			},
+			{
+				name: "float",
+				expr: `map(float)`,
+				want: "map(float)",
+			},
+			{
+				name: "bool",
+				expr: `map(bool)`,
+				want: "map(bool)",
+			},
+			{
+				name: "nested list",
+				expr: `map(list(string))`,
+				want: "map(list(string))",
+			},
+			{
+				name: "nested map",
+				expr: `map(map(string))`,
+				want: "map(map(string))",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				res, err := evalExpr(t, tt.expr)
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if res != tt.want {
+					t.Errorf("expected %q, got %q", tt.want, res)
+				}
+			})
+		}
+	})
+
 	t.Run("coalesce", func(t *testing.T) {
 		t.Parallel()
 

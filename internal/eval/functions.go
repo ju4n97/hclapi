@@ -22,8 +22,48 @@ import (
 	"github.com/ju4n97/hclapi/internal/core"
 )
 
-// StandardFunctions returns the global function registry for HCL evaluation.
-func StandardFunctions() map[string]function.Function {
+// typeConstructors returns HCL functions used specifically for schema type definitions (e.g. list(string)).
+func typeConstructors() map[string]function.Function {
+	return map[string]function.Function{
+		"list": listFunc,
+		"map":  mapFunc,
+	}
+}
+
+// listFunc constructs a list type definition for schema fields.
+var listFunc = function.New(&function.Spec{
+	Description: "Constructs a list type definition for schema fields.",
+	Params: []function.Parameter{
+		{
+			Name:        "elemType",
+			Type:        cty.String,
+			Description: "The element type of the list",
+		},
+	},
+	Type: function.StaticReturnType(cty.String),
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		return cty.StringVal("list(" + args[0].AsString() + ")"), nil
+	},
+})
+
+// mapFunc constructs a map type definition for schema fields.
+var mapFunc = function.New(&function.Spec{
+	Description: "Constructs a map type definition for schema fields.",
+	Params: []function.Parameter{
+		{
+			Name:        "elemType",
+			Type:        cty.String,
+			Description: "The value type of the map",
+		},
+	},
+	Type: function.StaticReturnType(cty.String),
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		return cty.StringVal("map(" + args[0].AsString() + ")"), nil
+	},
+})
+
+// standardFunctions returns the global function registry for HCL evaluation.
+func standardFunctions() map[string]function.Function {
 	return map[string]function.Function{
 		// System
 		"env":     envFunc,

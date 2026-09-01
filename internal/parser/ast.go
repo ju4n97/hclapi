@@ -1,14 +1,13 @@
 package parser
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
+	"github.com/hashicorp/hcl/v2/gohcl"
 
 	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/eval"
 )
 
 // Manifest represents the root collection of merged HCL route definitions.
@@ -136,10 +135,171 @@ func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
 	return conn, nil
 }
 
-// SchemaBlock represents a request body schema definition block.
+// FieldBlock defines a single field's data type, presence, defaults, and validation constraints.
+type FieldBlock struct {
+	Name        string         `hcl:"name,label"`
+	Type        hcl.Expression `hcl:"type,attr"`
+	Required    bool           `hcl:"required,optional"`
+	Default     hcl.Expression `hcl:"default,optional"`
+	Description *string        `hcl:"description,optional"`
+	Enum        hcl.Expression `hcl:"enum,optional"`
+	Format      *string        `hcl:"format,optional"`
+	Pattern     *string        `hcl:"pattern,optional"`
+	MinLength   *int           `hcl:"min_length,optional"`
+	MaxLength   *int           `hcl:"max_length,optional"`
+	Min         *float64       `hcl:"min,optional"`
+	Max         *float64       `hcl:"max,optional"`
+	MinItems    *int           `hcl:"min_items,optional"`
+	MaxItems    *int           `hcl:"max_items,optional"`
+	UniqueItems bool           `hcl:"unique_items,optional"`
+	Remain      hcl.Body       `hcl:",remain"`
+}
+
+// ToField maps the AST FieldBlock into a pure domain core.Field with defaults applied.
+func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (core.Field, error) {
+	fieldType := "any"
+	if f.Type != nil {
+		typeVal, err := eval.Any(f.Type, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q type: %w", f.Name, err)
+		}
+		if typeVal != nil {
+			fieldType = fmt.Sprintf("%v", typeVal)
+		}
+	}
+
+	var enumList []any
+	if f.Enum != nil {
+		rawEnum, err := eval.Any(f.Enum, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q enum: %w", f.Name, err)
+		}
+		if list, ok := rawEnum.([]any); ok {
+			enumList = list
+		}
+	}
+
+	var defaultVal any
+	if f.Default != nil {
+		rawDefault, err := eval.Any(f.Default, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q default: %w", f.Name, err)
+		}
+		defaultVal = rawDefault
+	}
+
+	field := core.Field{
+		Name:        f.Name,
+		Type:        fieldType,
+		Required:    f.Required,
+		Default:     defaultVal,
+		Enum:        enumList,
+		UniqueItems: f.UniqueItems,
+		MinLength:   f.MinLength,
+		MaxLength:   f.MaxLength,
+		Min:         f.Min,
+		Max:         f.Max,
+		MinItems:    f.MinItems,
+		MaxItems:    f.MaxItems,
+	}
+
+	if f.Description != nil {
+		field.Description = *f.Description
+	}
+	if f.Format != nil {
+		field.Format = *f.Format
+	}
+	if f.Pattern != nil {
+		field.Pattern = *f.Pattern
+	}
+
+	return field, nil
+}
+
+// FieldGroupBlock represents a collection of field validation rules (for path, query, headers, or inline body).
+type FieldGroupBlock struct {
+	Fields []FieldBlock `hcl:"field,block"`
+	Remain hcl.Body     `hcl:",remain"`
+}
+
+// SchemaBlock represents a reusable request payload schema definition block.
 type SchemaBlock struct {
-	Name   string   `hcl:"name,label"`
-	Remain hcl.Body `hcl:",remain"`
+	Name        string       `hcl:"name,label"`
+	Description *string      `hcl:"description,optional"`
+	Fields      []FieldBlock `hcl:"field,block"`
+	Remain      hcl.Body     `hcl:",remain"`
+}
+
+// RequestBlock represents parameter and body validation rules for an endpoint.
+type RequestBlock struct {
+	PathInline    *FieldGroupBlock
+	PathExpr      hcl.Expression
+	QueryInline   *FieldGroupBlock
+	QueryExpr     hcl.Expression
+	HeadersInline *FieldGroupBlock
+	HeadersExpr   hcl.Expression
+	BodyInline    *FieldGroupBlock
+	BodyExpr      hcl.Expression
+	Remain        hcl.Body `hcl:",remain"`
+}
+
+// Decode extracts inline field blocks or schema reference expressions for path, query, headers, and body.
+func (r *RequestBlock) Decode(evalCtx *hcl.EvalContext) error {
+	if r == nil || r.Remain == nil {
+		return nil
+	}
+
+	content, _, diags := r.Remain.PartialContent(&hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{
+			{Name: "path", Required: false},
+			{Name: "query", Required: false},
+			{Name: "headers", Required: false},
+			{Name: "body", Required: false},
+		},
+		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "path"},
+			{Type: "query"},
+			{Type: "headers"},
+			{Type: "body"},
+		},
+	})
+	if diags.HasErrors() {
+		return fmt.Errorf("request block: %s", diags.Error())
+	}
+
+	// Capture attribute expressions (e.g. headers = schema.auth_headers)
+	if attr, ok := content.Attributes["path"]; ok {
+		r.PathExpr = attr.Expr
+	}
+	if attr, ok := content.Attributes["query"]; ok {
+		r.QueryExpr = attr.Expr
+	}
+	if attr, ok := content.Attributes["headers"]; ok {
+		r.HeadersExpr = attr.Expr
+	}
+	if attr, ok := content.Attributes["body"]; ok {
+		r.BodyExpr = attr.Expr
+	}
+
+	// Capture inline blocks (e.g. query { field "limit" { ... } })
+	for _, block := range content.Blocks {
+		var inline FieldGroupBlock
+		if err := gohcl.DecodeBody(block.Body, evalCtx, &inline); err.HasErrors() {
+			return fmt.Errorf("inline %s block: %s", block.Type, err.Error())
+		}
+		switch block.Type {
+		case "path":
+			r.PathInline = &inline
+		case "query":
+			r.QueryInline = &inline
+		case "headers":
+			r.HeadersInline = &inline
+		case "body":
+			r.BodyInline = &inline
+		}
+	}
+
+	return nil
 }
 
 // EndpointBlock represents a single HTTP route declaration block.
@@ -149,11 +309,6 @@ type EndpointBlock struct {
 	Request       *RequestBlock `hcl:"request,block"`
 	Pipeline      PipelineBlock `hcl:"pipeline,block"`
 	Remain        hcl.Body      `hcl:",remain"`
-}
-
-// RequestBlock represents the request validation block.
-type RequestBlock struct {
-	Remain hcl.Body `hcl:",remain"`
 }
 
 // PipelineBlock encapsulates the raw HCL body of pipeline steps to preserve definition order.
@@ -216,35 +371,4 @@ type RespondStepBlock struct {
 	Status    hcl.Expression `hcl:"status,optional"`
 	Headers   hcl.Expression `hcl:"headers,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`
-}
-
-// ResolveConnectionRef extracts the connection identifier string from an HCL expression.
-// It handles unquoted traversals (connection.postgres.main) and string literals (connection: "postgres.main").
-func ResolveConnectionRef(expr hcl.Expression) (string, error) {
-	if expr == nil {
-		return "", errors.New("missing connection reference")
-	}
-
-	// If it's a traversal
-	vars := expr.Variables()
-	if len(vars) > 0 {
-		var parts []string
-		for _, split := range vars[0] {
-			switch step := split.(type) {
-			case hcl.TraverseRoot:
-				parts = append(parts, step.Name)
-			case hcl.TraverseAttr:
-				parts = append(parts, step.Name)
-			}
-		}
-		return strings.Join(parts, "."), nil
-	}
-
-	// If it's a string literal or evaluated expression
-	val, diags := expr.Value(nil)
-	if !diags.HasErrors() && val.Type().Equals(cty.String) {
-		return val.AsString(), nil
-	}
-
-	return "", errors.New("invalid connection reference expression")
 }

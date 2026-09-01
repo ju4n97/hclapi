@@ -3,17 +3,19 @@ title: Expressions
 description: Request-time HCL expressions for context access, conditions, interpolation, argument mapping, and response construction.
 ---
 
+Request-time HCL expressions for context access, conditions, interpolation, argument mapping, and response construction.
+
 HCL attributes support expressions evaluated at request time. Expressions read from [`ctx`](./context.md) to map parameters, branch on conditions, interpolate strings, and construct response bodies.
 
 ## Operators
 
-| Operator             | Meaning            | Example                                                             |
-| :------------------- | :----------------- | :------------------------------------------------------------------ | ---------- | ---------------------------------- | --- | ----------------------------------- |
-| `==`, `!=`           | Equality           | `steps.lookup.rows_affected == 0`                                   |
-| `>`, `>=`, `<`, `<=` | Numeric comparison | `steps.inventory.result.count < 5`                                  |
-| `&&`                 | Logical AND        | `steps.auth.result.valid == true && ctx.request.body.admin == true` |
-| `                    |                    | `                                                                   | Logical OR | `ctx.request.query.format == "csv" |     | ctx.request.query.format == "xlsx"` |
-| `!`                  | Logical NOT        | `!steps.user.result.is_active`                                      |
+| Operator             | Meaning            | Example                                                                     |
+| :------------------- | :----------------- | :-------------------------------------------------------------------------- |
+| `==`, `!=`           | Equality           | `steps.lookup.rows_affected == 0`                                           |
+| `>`, `>=`, `<`, `<=` | Numeric comparison | `steps.inventory.result.count < 5`                                          |
+| `&&`                 | Logical AND        | `steps.auth.result.valid == true && ctx.request.body.admin == true`         |
+| `\|\|`               | Logical OR         | `ctx.request.query.format == "csv" \|\| ctx.request.query.format == "xlsx"` |
+| `!`                  | Logical NOT        | `!steps.user.result.is_active`                                              |
 
 A field that may be absent is compared against `null`:
 
@@ -33,9 +35,10 @@ respond {
 redis "session_write" {
   connection = connection.redis.sessions
   command    = "SET"
-  key        = "session:${ctx.request.headers.x_session_id}:user"
-  value      = steps.find_user.result.id
-  ttl        = "15m"
+
+  key   = "session:${ctx.request.headers.x_session_id}:user"
+  value = steps.find_user.result.id
+  ttl   = "15m"
 }
 ```
 
@@ -46,12 +49,14 @@ redis "session_write" {
 ```hcl
 sql "update_account" {
   connection = connection.postgres.main
-  query      = <<-SQL
+
+  query = <<-SQL
     UPDATE accounts
     SET name = @name, updated_at = NOW()
     WHERE id = @id
     RETURNING id, name, updated_at
   SQL
+
   args = {
     id   = ctx.request.path.id
     name = steps.sanitize_input.result.clean_name
@@ -66,8 +71,10 @@ Object and list literals can be constructed inline.
 ```hcl
 respond {
   status = 201
+
   body = {
     account = steps.create_account.result
+
     metadata = {
       requested_by = ctx.request.headers.authorization
       created_at   = ctx.timestamp_epoch

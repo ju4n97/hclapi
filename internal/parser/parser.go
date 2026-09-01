@@ -63,34 +63,6 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 		return nil, err
 	}
 
-	// Validate unique schema names across files
-	seenSchemas := make(map[string]bool, len(mergedManifest.Schemas))
-	for _, schema := range mergedManifest.Schemas {
-		if seenSchemas[schema.Name] {
-			return nil, fmt.Errorf("duplicate schema declaration %q", "schema."+schema.Name)
-		}
-		seenSchemas[schema.Name] = true
-	}
-
-	// Decode request body attributes/blocks on all endpoints
-	for i := range mergedManifest.Endpoints {
-		if mergedManifest.Endpoints[i].Request != nil {
-			if err := mergedManifest.Endpoints[i].Request.Decode(evalCtx); err != nil {
-				return nil, fmt.Errorf("endpoint %q: %w", mergedManifest.Endpoints[i].MethodAndPath, err)
-			}
-		}
-	}
-
-	// Validate unique connection keys (<driver>.<name>)
-	seenConnections := make(map[string]bool, len(mergedManifest.Connections))
-	for _, conn := range mergedManifest.Connections {
-		key := fmt.Sprintf("%s.%s", conn.Driver, conn.Name)
-		if seenConnections[key] {
-			return nil, fmt.Errorf("duplicate connection declaration %q", "connection."+key)
-		}
-		seenConnections[key] = true
-	}
-
 	return &mergedManifest, nil
 }
 
@@ -110,6 +82,14 @@ func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Mani
 	if err == nil {
 		for i := range manifest.Connections {
 			manifest.Connections[i].URL = core.ResolveRelativePath(manifest.Connections[i].URL, manifestDir)
+		}
+	}
+
+	for i := range manifest.Endpoints {
+		if manifest.Endpoints[i].Request != nil {
+			if err := manifest.Endpoints[i].Request.Decode(evalCtx); err != nil {
+				return nil, fmt.Errorf("endpoint %q: %w", manifest.Endpoints[i].MethodAndPath, err)
+			}
 		}
 	}
 

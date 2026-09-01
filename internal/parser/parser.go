@@ -75,7 +75,7 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	// Decode request body attributes/blocks on all endpoints
 	for i := range mergedManifest.Endpoints {
 		if mergedManifest.Endpoints[i].Request != nil {
-			if err := mergedManifest.Endpoints[i].Request.DecodeBody(evalCtx); err != nil {
+			if err := mergedManifest.Endpoints[i].Request.Decode(evalCtx); err != nil {
 				return nil, fmt.Errorf("endpoint %q: %w", mergedManifest.Endpoints[i].MethodAndPath, err)
 			}
 		}

@@ -1,3 +1,4 @@
+// Package validator enforces OpenAPI 3.1 schema types, format constraints, and default value normalization.
 package validator
 
 import (
@@ -7,6 +8,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +24,7 @@ var (
 	)
 )
 
-// Validate validates an input data map against compiled domain fields.
+// Validate checks a JSON-decoded map against compiled schema field rules.
 func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
 	var invalidParams []core.InvalidParam
 
@@ -39,7 +41,7 @@ func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
 			continue
 		}
 
-		if errReason := validateTypeAndConstraints(val, field); errReason != "" {
+		if errReason := validateValue(val, field); errReason != "" {
 			invalidParams = append(invalidParams, core.InvalidParam{
 				Name:   field.Name,
 				Reason: errReason,
@@ -50,66 +52,66 @@ func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
 	return invalidParams
 }
 
-func validateTypeAndConstraints(val any, field core.Field) string {
+// ValidateStringMap validates string-keyed parameter maps (query, path, headers) with zero map allocations.
+func ValidateStringMap(data map[string]string, fields []core.Field) []core.InvalidParam {
+	var invalidParams []core.InvalidParam
+
+	for _, field := range fields {
+		rawStr, exists := data[field.Name]
+
+		if !exists || rawStr == "" {
+			if field.Required {
+				invalidParams = append(invalidParams, core.InvalidParam{
+					Name:   field.Name,
+					Reason: "field is required",
+				})
+			}
+			continue
+		}
+
+		// Coerce string to target type for constraint checking
+		coercedVal, errReason := coerceString(rawStr, field.Type)
+		if errReason != "" {
+			invalidParams = append(invalidParams, core.InvalidParam{
+				Name:   field.Name,
+				Reason: errReason,
+			})
+			continue
+		}
+
+		if errReason := validateValue(coercedVal, field); errReason != "" {
+			invalidParams = append(invalidParams, core.InvalidParam{
+				Name:   field.Name,
+				Reason: errReason,
+			})
+		}
+	}
+
+	return invalidParams
+}
+
+func validateValue(val any, field core.Field) string {
 	switch {
 	case field.Type == "string":
 		strVal, ok := val.(string)
 		if !ok {
 			return "must be of type string"
 		}
-
-		if field.MinLength != nil && len([]rune(strVal)) < *field.MinLength {
-			return fmt.Sprintf("length must be at least %d characters", *field.MinLength)
-		}
-		if field.MaxLength != nil && len([]rune(strVal)) > *field.MaxLength {
-			return fmt.Sprintf("length must be at most %d characters", *field.MaxLength)
-		}
-		if field.Pattern != "" {
-			matched, err := regexp.MatchString(field.Pattern, strVal)
-			if err != nil || !matched {
-				return fmt.Sprintf("must match pattern %s", field.Pattern)
-			}
-		}
-		if field.Format != "" {
-			if !validateFormat(strVal, field.Format) {
-				return fmt.Sprintf("must be a valid %s format", field.Format)
-			}
-		}
-		if reason := validateEnum(strVal, field.Enum); reason != "" {
-			return reason
-		}
+		return checkStringConstraints(strVal, field)
 
 	case field.Type == "int":
-		numVal, ok := toInt64(val)
+		intVal, ok := toInt64(val)
 		if !ok {
 			return "must be of type int"
 		}
-
-		if field.Min != nil && float64(numVal) < *field.Min {
-			return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
-		}
-		if field.Max != nil && float64(numVal) > *field.Max {
-			return fmt.Sprintf("must be less than or equal to %v", *field.Max)
-		}
-		if reason := validateEnum(numVal, field.Enum); reason != "" {
-			return reason
-		}
+		return checkNumericConstraints(float64(intVal), intVal, field)
 
 	case field.Type == "float":
-		fVal, ok := toFloat64(val)
+		floatVal, ok := toFloat64(val)
 		if !ok {
 			return "must be of type float"
 		}
-
-		if field.Min != nil && fVal < *field.Min {
-			return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
-		}
-		if field.Max != nil && fVal > *field.Max {
-			return fmt.Sprintf("must be less than or equal to %v", *field.Max)
-		}
-		if reason := validateEnum(fVal, field.Enum); reason != "" {
-			return reason
-		}
+		return checkNumericConstraints(floatVal, floatVal, field)
 
 	case field.Type == "bool":
 		if _, ok := val.(bool); !ok {
@@ -117,21 +119,7 @@ func validateTypeAndConstraints(val any, field core.Field) string {
 		}
 
 	case strings.HasPrefix(field.Type, "list"):
-		rv := reflect.ValueOf(val)
-		if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
-			return "must be of type list"
-		}
-
-		itemCount := rv.Len()
-		if field.MinItems != nil && itemCount < *field.MinItems {
-			return fmt.Sprintf("must contain at least %d items", *field.MinItems)
-		}
-		if field.MaxItems != nil && itemCount > *field.MaxItems {
-			return fmt.Sprintf("must contain at most %d items", *field.MaxItems)
-		}
-		if field.UniqueItems && hasDuplicates(rv) {
-			return "items must be unique"
-		}
+		return checkListConstraints(val, field)
 
 	case strings.HasPrefix(field.Type, "map"):
 		rv := reflect.ValueOf(val)
@@ -144,6 +132,78 @@ func validateTypeAndConstraints(val any, field core.Field) string {
 	}
 
 	return ""
+}
+
+func checkStringConstraints(val string, field core.Field) string {
+	runes := []rune(val)
+	if field.MinLength != nil && len(runes) < *field.MinLength {
+		return fmt.Sprintf("length must be at least %d characters", *field.MinLength)
+	}
+	if field.MaxLength != nil && len(runes) > *field.MaxLength {
+		return fmt.Sprintf("length must be at most %d characters", *field.MaxLength)
+	}
+	if field.Pattern != "" {
+		matched, err := regexp.MatchString(field.Pattern, val)
+		if err != nil || !matched {
+			return fmt.Sprintf("must match pattern %s", field.Pattern)
+		}
+	}
+	if field.Format != "" {
+		if !validateFormat(val, field.Format) {
+			return fmt.Sprintf("must be a valid %s format", field.Format)
+		}
+	}
+	if len(field.Enum) > 0 {
+		return checkEnum(val, field.Enum)
+	}
+	return ""
+}
+
+func checkNumericConstraints(val float64, rawVal any, field core.Field) string {
+	if field.Min != nil && val < *field.Min {
+		return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
+	}
+	if field.Max != nil && val > *field.Max {
+		return fmt.Sprintf("must be less than or equal to %v", *field.Max)
+	}
+	if len(field.Enum) > 0 {
+		return checkEnum(rawVal, field.Enum)
+	}
+	return ""
+}
+
+func checkListConstraints(val any, field core.Field) string {
+	rv := reflect.ValueOf(val)
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return "must be of type list"
+	}
+
+	count := rv.Len()
+	if field.MinItems != nil && count < *field.MinItems {
+		return fmt.Sprintf("must contain at least %d items", *field.MinItems)
+	}
+	if field.MaxItems != nil && count > *field.MaxItems {
+		return fmt.Sprintf("must contain at most %d items", *field.MaxItems)
+	}
+	if field.UniqueItems && hasDuplicates(rv) {
+		return "items must be unique"
+	}
+	return ""
+}
+
+func checkEnum(val any, enumList []any) string {
+	target := fmt.Sprintf("%v", val)
+	for _, item := range enumList {
+		if fmt.Sprintf("%v", item) == target {
+			return ""
+		}
+	}
+
+	var formatted []string
+	for _, item := range enumList {
+		formatted = append(formatted, fmt.Sprintf("%q", fmt.Sprintf("%v", item)))
+	}
+	return fmt.Sprintf("must be one of: [%s]", strings.Join(formatted, ", "))
 }
 
 func validateFormat(val, format string) bool {
@@ -175,22 +235,33 @@ func validateFormat(val, format string) bool {
 	}
 }
 
-func validateEnum(val any, enumList []any) string {
-	if len(enumList) == 0 {
-		return ""
-	}
-
-	for _, item := range enumList {
-		if fmt.Sprintf("%v", item) == fmt.Sprintf("%v", val) {
-			return ""
+func coerceString(raw, targetType string) (any, string) {
+	trimmed := strings.TrimSpace(raw)
+	switch targetType {
+	case "string":
+		return raw, ""
+	case "int":
+		if i, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+			return i, ""
 		}
+		return nil, "must be of type int"
+	case "float":
+		if f, err := strconv.ParseFloat(trimmed, 64); err == nil {
+			return f, ""
+		}
+		return nil, "must be of type float"
+	case "bool":
+		switch strings.ToLower(trimmed) {
+		case "true", "1", "yes", "on":
+			return true, ""
+		case "false", "0", "no", "off":
+			return false, ""
+		default:
+			return nil, "must be of type bool"
+		}
+	default:
+		return raw, ""
 	}
-
-	var items []string
-	for _, item := range enumList {
-		items = append(items, fmt.Sprintf("%q", fmt.Sprintf("%v", item)))
-	}
-	return fmt.Sprintf("must be one of: [%s]", strings.Join(items, ", "))
 }
 
 func hasDuplicates(rv reflect.Value) bool {
@@ -208,6 +279,12 @@ func hasDuplicates(rv reflect.Value) bool {
 func toInt64(val any) (int64, bool) {
 	switch v := val.(type) {
 	case int:
+		return int64(v), true
+	case int8:
+		return int64(v), true
+	case int16:
+		return int64(v), true
+	case int32:
 		return int64(v), true
 	case int64:
 		return v, true

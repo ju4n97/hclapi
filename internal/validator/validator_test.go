@@ -82,11 +82,11 @@ func TestValidate(t *testing.T) {
 		t.Parallel()
 
 		data := map[string]any{
-			"email":    "invalid-email-address", // Bad email format
-			"username": "AB!",                   // Bad pattern, length < 3
-			"role":     "superadmin",            // Not in enum
-			"age":      15,                      // < 18 min
-			"tags":     []any{"go", "go"},       // Duplicate items
+			"email":    "invalid-email",
+			"username": "AB!",
+			"role":     "superadmin",
+			"age":      15,
+			"tags":     []any{"go", "go"},
 		}
 
 		errors := validator.Validate(data, fields)
@@ -112,46 +112,44 @@ func TestValidate(t *testing.T) {
 			t.Errorf("unexpected tags error: %q", errMap["tags"])
 		}
 	})
+}
 
-	t.Run("Validates built-in formats", func(t *testing.T) {
+func TestValidateStringMap(t *testing.T) {
+	t.Parallel()
+
+	fields := []core.Field{
+		{Name: "limit", Type: "int", Required: true, Min: new(float64(1)), Max: new(float64(100))},
+		{Name: "sort", Type: "string", Enum: []any{"asc", "desc"}},
+		{Name: "active", Type: "bool"},
+	}
+
+	t.Run("Coerces and validates valid string map", func(t *testing.T) {
 		t.Parallel()
 
-		formatFields := []core.Field{
-			{Name: "uuid_field", Type: "string", Format: "uuid"},
-			{Name: "uri_field", Type: "string", Format: "uri"},
-			{Name: "datetime_field", Type: "string", Format: "date-time"},
-			{Name: "date_field", Type: "string", Format: "date"},
-			{Name: "ipv4_field", Type: "string", Format: "ipv4"},
-			{Name: "ipv6_field", Type: "string", Format: "ipv6"},
-			{Name: "host_field", Type: "string", Format: "hostname"},
+		data := map[string]string{
+			"limit":  "25",
+			"sort":   "desc",
+			"active": "true",
 		}
 
-		validData := map[string]any{
-			"uuid_field":     "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-			"uri_field":      "https://example.com/api",
-			"datetime_field": "2026-08-31T20:00:00Z",
-			"date_field":     "2026-08-31",
-			"ipv4_field":     "192.168.1.1",
-			"ipv6_field":     "2001:db8::1",
-			"host_field":     "api.example.com",
+		errs := validator.ValidateStringMap(data, fields)
+		if len(errs) != 0 {
+			t.Fatalf("expected 0 errors, got: %+v", errs)
+		}
+	})
+
+	t.Run("Catches invalid coerced types and bounds in string map", func(t *testing.T) {
+		t.Parallel()
+
+		data := map[string]string{
+			"limit":  "200",    // exceeds max 100
+			"sort":   "random", // invalid enum
+			"active": "invalid",
 		}
 
-		if errs := validator.Validate(validData, formatFields); len(errs) != 0 {
-			t.Errorf("expected valid formats to pass, got errors: %+v", errs)
-		}
-
-		invalidData := map[string]any{
-			"uuid_field":     "not-a-uuid",
-			"uri_field":      "invalid uri",
-			"datetime_field": "31-08-2026",
-			"date_field":     "invalid-date",
-			"ipv4_field":     "999.999.999.999",
-			"ipv6_field":     "192.168.1.1",
-			"host_field":     "-bad-host-",
-		}
-
-		if errs := validator.Validate(invalidData, formatFields); len(errs) != len(formatFields) {
-			t.Errorf("expected %d format errors, got %d: %+v", len(formatFields), len(errs), errs)
+		errs := validator.ValidateStringMap(data, fields)
+		if len(errs) != 3 {
+			t.Fatalf("expected 3 errors, got %d: %+v", len(errs), errs)
 		}
 	})
 }

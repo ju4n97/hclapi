@@ -1,13 +1,10 @@
 package parser
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
-	"github.com/zclconf/go-cty/cty"
 
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
@@ -235,42 +232,69 @@ type SchemaBlock struct {
 
 // RequestBlock represents parameter and body validation rules for an endpoint.
 type RequestBlock struct {
-	Path       *FieldGroupBlock `hcl:"path,block"`
-	Query      *FieldGroupBlock `hcl:"query,block"`
-	Headers    *FieldGroupBlock `hcl:"headers,block"`
-	Remain     hcl.Body         `hcl:",remain"`
-	BodyExpr   hcl.Expression   // Populated if `body = schema.name` attribute is used
-	BodyInline *FieldGroupBlock // Populated if inline `body { field ... }` block is used
+	PathInline    *FieldGroupBlock
+	PathExpr      hcl.Expression
+	QueryInline   *FieldGroupBlock
+	QueryExpr     hcl.Expression
+	HeadersInline *FieldGroupBlock
+	HeadersExpr   hcl.Expression
+	BodyInline    *FieldGroupBlock
+	BodyExpr      hcl.Expression
+	Remain        hcl.Body `hcl:",remain"`
 }
 
-// DecodeBody decodes the body attribute expression or inline body block from the request body remainder.
-func (r *RequestBlock) DecodeBody(ctx *hcl.EvalContext) error {
+// Decode extracts inline field blocks or schema reference expressions for path, query, headers, and body.
+func (r *RequestBlock) Decode(evalCtx *hcl.EvalContext) error {
 	if r == nil || r.Remain == nil {
 		return nil
 	}
 
 	content, _, diags := r.Remain.PartialContent(&hcl.BodySchema{
 		Attributes: []hcl.AttributeSchema{
+			{Name: "path", Required: false},
+			{Name: "query", Required: false},
+			{Name: "headers", Required: false},
 			{Name: "body", Required: false},
 		},
 		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "path"},
+			{Type: "query"},
+			{Type: "headers"},
 			{Type: "body"},
 		},
 	})
 	if diags.HasErrors() {
-		return fmt.Errorf("request body: %w", diags)
+		return fmt.Errorf("request block: %s", diags.Error())
 	}
 
+	// Capture attribute expressions (e.g. headers = schema.auth_headers)
+	if attr, ok := content.Attributes["path"]; ok {
+		r.PathExpr = attr.Expr
+	}
+	if attr, ok := content.Attributes["query"]; ok {
+		r.QueryExpr = attr.Expr
+	}
+	if attr, ok := content.Attributes["headers"]; ok {
+		r.HeadersExpr = attr.Expr
+	}
 	if attr, ok := content.Attributes["body"]; ok {
 		r.BodyExpr = attr.Expr
 	}
 
+	// Capture inline blocks (e.g. query { field "limit" { ... } })
 	for _, block := range content.Blocks {
-		if block.Type == "body" {
-			var inline FieldGroupBlock
-			if err := gohcl.DecodeBody(block.Body, ctx, &inline); err.HasErrors() {
-				return fmt.Errorf("inline body block: %w", err)
-			}
+		var inline FieldGroupBlock
+		if err := gohcl.DecodeBody(block.Body, evalCtx, &inline); err.HasErrors() {
+			return fmt.Errorf("inline %s block: %s", block.Type, err.Error())
+		}
+		switch block.Type {
+		case "path":
+			r.PathInline = &inline
+		case "query":
+			r.QueryInline = &inline
+		case "headers":
+			r.HeadersInline = &inline
+		case "body":
 			r.BodyInline = &inline
 		}
 	}
@@ -347,35 +371,4 @@ type RespondStepBlock struct {
 	Status    hcl.Expression `hcl:"status,optional"`
 	Headers   hcl.Expression `hcl:"headers,optional"`
 	Body      hcl.Expression `hcl:"body,optional"`
-}
-
-// ResolveConnectionRef extracts the connection identifier string from an HCL expression.
-// It handles unquoted traversals (connection.postgres.main) and string literals (connection: "postgres.main").
-func ResolveConnectionRef(expr hcl.Expression) (string, error) {
-	if expr == nil {
-		return "", errors.New("missing connection reference")
-	}
-
-	// If it's a traversal
-	vars := expr.Variables()
-	if len(vars) > 0 {
-		var parts []string
-		for _, split := range vars[0] {
-			switch step := split.(type) {
-			case hcl.TraverseRoot:
-				parts = append(parts, step.Name)
-			case hcl.TraverseAttr:
-				parts = append(parts, step.Name)
-			}
-		}
-		return strings.Join(parts, "."), nil
-	}
-
-	// If it's a string literal or evaluated expression
-	val, diags := expr.Value(nil)
-	if !diags.HasErrors() && val.Type().Equals(cty.String) {
-		return val.AsString(), nil
-	}
-
-	return "", errors.New("invalid connection reference expression")
 }

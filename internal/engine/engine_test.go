@@ -180,3 +180,143 @@ endpoint "POST /upload" {
 		}
 	})
 }
+
+func TestSchemaValidationIngress(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manifestContent := `
+schema "user_create" {
+  field "email" {
+    type     = string
+    required = true
+    format   = "email"
+  }
+  field "username" {
+    type       = string
+    required   = true
+    min_length = 3
+  }
+  field "role" {
+    type    = string
+    default = "member"
+    enum    = ["admin", "member"]
+  }
+}
+
+endpoint "POST /api/v1/users" {
+  request {
+    headers {
+      field "x-api-key" {
+        type     = string
+        required = true
+        format   = "uuid"
+      }
+    }
+    query {
+      field "source" {
+        type    = string
+        default = "direct"
+      }
+    }
+    body = schema.user_create
+  }
+
+  pipeline {
+    respond {
+      status = 201
+      body = {
+        email    = ctx.request.body.email
+        username = ctx.request.body.username
+        role     = ctx.request.body.role
+        source   = ctx.request.query.source
+      }
+    }
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
+		t.Fatalf("failed to write test manifest: %v", err)
+	}
+
+	eng, err := engine.New(core.Options{
+		ConfigPath: tmpDir,
+	})
+	if err != nil {
+		t.Fatalf("failed to initialize engine: %v", err)
+	}
+
+	t.Run("Returns 422 when required header, bad email, and invalid enum are sent", func(t *testing.T) {
+		t.Parallel()
+
+		body := strings.NewReader(`{
+			"email": "not-an-email",
+			"username": "ab",
+			"role": "superadmin"
+		}`)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", body)
+		req.Header.Set("Content-Type", "application/json")
+		// x-api-key header intentionally omitted
+
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected status 422, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var problem core.ProblemDetailsError
+		if err := json.NewDecoder(rec.Body).Decode(&problem); err != nil {
+			t.Fatalf("failed to decode 422 problem details: %v", err)
+		}
+
+		if problem.Title != "Unprocessable Entity" {
+			t.Errorf("expected title 'Unprocessable Entity', got %q", problem.Title)
+		}
+		if len(problem.InvalidParams) < 3 {
+			t.Errorf(
+				"expected at least 3 invalid params (header, email, role), got %d: %+v",
+				len(problem.InvalidParams),
+				problem.InvalidParams,
+			)
+		}
+	})
+
+	t.Run("Succeeds, injects defaults, and normalizes valid payload", func(t *testing.T) {
+		t.Parallel()
+
+		body := strings.NewReader(`{
+			"email": "jane@example.com",
+			"username": "jane_doe"
+		}`)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", "f47ac10b-58cc-4372-a567-0e02b2c3d479")
+
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if resp["email"] != "jane@example.com" {
+			t.Errorf("expected email 'jane@example.com', got %v", resp["email"])
+		}
+		// Injected schema default
+		if resp["role"] != "member" {
+			t.Errorf("expected injected default role 'member', got %v", resp["role"])
+		}
+		// Injected query default
+		if resp["source"] != "direct" {
+			t.Errorf("expected injected query default 'direct', got %v", resp["source"])
+		}
+	})
+}

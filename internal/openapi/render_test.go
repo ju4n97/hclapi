@@ -32,7 +32,7 @@ func TestRenderHTML(t *testing.T) {
 		if !strings.Contains(htmlStr, "@scalar/api-reference") {
 			t.Errorf("expected Scalar CDN in HTML")
 		}
-		if !strings.Contains(htmlStr, `data-spec-url="/openapi.json"`) {
+		if !strings.Contains(htmlStr, `data-url="/openapi.json"`) {
 			t.Errorf("expected SpecURL '/openapi.json' in HTML")
 		}
 		if !strings.Contains(htmlStr, "Acme Storefront API (v1.2.0)") {

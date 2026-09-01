@@ -41,41 +41,46 @@ func RewriteNamedQuery(query string, args map[string]any, d connsql.Dialect) (st
 	return rewritten, orderedArgs, nil
 }
 
-// ScanRows dynamically scans an arbitrary *sql.Rows result set into a slice of maps with type normalization.
+// ScanRows dynamically scans *sql.Rows into a slice of maps with type normalization and multi-result set support.
 func ScanRows(rows *sql.Rows) ([]map[string]any, error) {
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("read columns: %w", err)
-	}
-
 	var results []map[string]any
-	for rows.Next() {
-		values := make([]any, len(cols))
-		valuePtrs := make([]any, len(cols))
-		for i := range values {
-			valuePtrs[i] = &values[i]
+
+	for {
+		cols, err := rows.Columns()
+		if err != nil {
+			break // No more active result sets
 		}
 
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, fmt.Errorf("scan column: %w", err)
-		}
+		if len(cols) > 0 {
+			for rows.Next() {
+				values := make([]any, len(cols))
+				valuePtrs := make([]any, len(cols))
+				for i := range values {
+					valuePtrs[i] = &values[i]
+				}
 
-		rowMap := make(map[string]any, len(cols))
-		for i, colName := range cols {
-			val := values[i]
-			switch v := val.(type) {
-			case []byte:
-				val = string(v)
-			case time.Time:
-				val = v.Format(time.RFC3339)
+				if err := rows.Scan(valuePtrs...); err != nil {
+					return nil, fmt.Errorf("scan column: %w", err)
+				}
+
+				rowMap := make(map[string]any, len(cols))
+				for i, colName := range cols {
+					var val any = values[i]
+					switch v := val.(type) {
+					case []byte:
+						val = string(v)
+					case time.Time:
+						val = v.Format(time.RFC3339)
+					}
+					rowMap[colName] = val
+				}
+				results = append(results, rowMap)
 			}
-			rowMap[colName] = val
 		}
-		results = append(results, rowMap)
-	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate rows: %w", err)
+		if !rows.NextResultSet() {
+			break
+		}
 	}
 
 	if results == nil {
@@ -93,12 +98,18 @@ func Execute(ctx context.Context, pool *connsql.Pool, query string, args map[str
 	}
 
 	trimmedQuery := strings.ToUpper(strings.TrimSpace(rewrittenQuery))
-
-	isQuery := strings.HasPrefix(trimmedQuery, "SELECT") ||
+	isRowProducing := strings.HasPrefix(trimmedQuery, "SELECT") ||
 		strings.HasPrefix(trimmedQuery, "WITH") ||
-		strings.Contains(trimmedQuery, "RETURNING")
+		strings.HasPrefix(trimmedQuery, "CALL") ||
+		strings.HasPrefix(trimmedQuery, "EXEC") ||
+		strings.HasPrefix(trimmedQuery, "PRAGMA") ||
+		strings.HasPrefix(trimmedQuery, "SHOW") ||
+		strings.HasPrefix(trimmedQuery, "DESC") ||
+		strings.HasPrefix(trimmedQuery, "EXPLAIN") ||
+		strings.Contains(trimmedQuery, "RETURNING") ||
+		strings.Contains(trimmedQuery, "OUTPUT")
 
-	if isQuery {
+	if isRowProducing {
 		rows, err := pool.DB.QueryContext(ctx, rewrittenQuery, orderedArgs...)
 		if err != nil {
 			return nil, fmt.Errorf("query: %w", err)

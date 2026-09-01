@@ -265,7 +265,7 @@ def execute(ctx):
 		rec := httptest.NewRecorder()
 		err = executor.Execute(rec, hclapiCtx)
 
-				if err == nil || !strings.Contains(err.Error(), "too many steps") {
+		if err == nil || !strings.Contains(err.Error(), "too many steps") {
 			t.Fatalf("expected step limit exceeded error, got: %v", err)
 		}
 	})
@@ -280,13 +280,19 @@ func TestPipeline_SQL(t *testing.T) {
 		mgr := setupTestSQLiteManager(t)
 		pool, _ := mgr.Get("sqlite.main")
 
-		schema := `
-			CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);
-			INSERT INTO users VALUES (1, 'Jane', 'jane@example.com');
-			INSERT INTO users VALUES (2, 'John', 'john@example.com');
-		`
-		if _, err := pool.DB.ExecContext(t.Context(), schema); err != nil {
-			t.Fatalf("failed to seed test table: %v", err)
+		createStmt := `CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT);`
+		if _, err := pool.DB.ExecContext(t.Context(), createStmt); err != nil {
+			t.Fatalf("failed to create users table: %v", err)
+		}
+
+		insertStmt1 := `INSERT INTO users VALUES (1, 'Jane', 'jane@example.com');`
+		if _, err := pool.DB.ExecContext(t.Context(), insertStmt1); err != nil {
+			t.Fatalf("failed to insert user 1: %v", err)
+		}
+
+		insertStmt2 := `INSERT INTO users VALUES (2, 'John', 'john@example.com');`
+		if _, err := pool.DB.ExecContext(t.Context(), insertStmt2); err != nil {
+			t.Fatalf("failed to insert user 2: %v", err)
 		}
 
 		steps := []parser.ParsedStep{

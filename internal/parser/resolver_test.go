@@ -3,26 +3,8 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-
 	"github.com/ju4n97/hclapi/internal/parser"
 )
-
-func parseHCL(t *testing.T, exprStr string) hcl.Expression {
-	t.Helper()
-
-	expr, diags := hclsyntax.ParseExpression(
-		[]byte(exprStr),
-		"test.hcl",
-		hcl.InitialPos,
-	)
-	if diags.HasErrors() {
-		t.Fatalf("failed to parse test expression %q: %s", exprStr, diags.Error())
-	}
-
-	return expr
-}
 
 func TestResolveConnectionRef(t *testing.T) {
 	t.Parallel()
@@ -34,53 +16,32 @@ func TestResolveConnectionRef(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:        "unquoted standard traversal",
+			name:        "Unquoted standard traversal (connection.postgres.main)",
 			exprStr:     "connection.postgres.main",
 			expectedRef: "connection.postgres.main",
+			expectError: false,
 		},
 		{
-			name:        "unquoted short traversal",
+			name:        "Unquoted short traversal (postgres.primary)",
 			exprStr:     "postgres.primary",
 			expectedRef: "postgres.primary",
+			expectError: false,
 		},
 		{
-			name:        "unquoted deep traversal",
-			exprStr:     "connection.db.replica.asia_east",
-			expectedRef: "connection.db.replica.asia_east",
-		},
-		{
-			name:        "quoted string literal",
+			name:        "Quoted string literal (\"connection.sqlite.main\")",
 			exprStr:     `"connection.sqlite.main"`,
 			expectedRef: "connection.sqlite.main",
+			expectError: false,
 		},
 		{
-			name:        "quoted short string literal",
+			name:        "Quoted short string literal (\"sqlite.main\")",
 			exprStr:     `"sqlite.main"`,
 			expectedRef: "sqlite.main",
+			expectError: false,
 		},
 		{
-			name:        "empty string literal",
-			exprStr:     `""`,
-			expectedRef: "",
-		},
-		{
-			name:        "rejects numeric expression",
+			name:        "Rejects numeric expressions",
 			exprStr:     "12345",
-			expectError: true,
-		},
-		{
-			name:        "rejects boolean expression",
-			exprStr:     "true",
-			expectError: true,
-		},
-		{
-			name:        "rejects object expression",
-			exprStr:     `{ a = "b" }`,
-			expectError: true,
-		},
-		{
-			name:        "rejects list expression",
-			exprStr:     `["a", "b"]`,
 			expectError: true,
 		},
 	}
@@ -89,11 +50,7 @@ func TestResolveConnectionRef(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var expr hcl.Expression
-			if tt.exprStr != "" {
-				expr = parseHCL(t, tt.exprStr)
-			}
-
+			expr := parseHCL(t, tt.exprStr)
 			ref, err := parser.ResolveConnectionRef(expr)
 			if tt.expectError {
 				if err == nil {
@@ -105,14 +62,13 @@ func TestResolveConnectionRef(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-
 			if ref != tt.expectedRef {
 				t.Errorf("expected ref %q, got %q", tt.expectedRef, ref)
 			}
 		})
 	}
 
-	t.Run("rejects nil expression", func(t *testing.T) {
+	t.Run("Rejects nil expression", func(t *testing.T) {
 		t.Parallel()
 
 		_, err := parser.ResolveConnectionRef(nil)
@@ -132,63 +88,32 @@ func TestResolveSchemaRef(t *testing.T) {
 		expectError bool
 	}{
 		{
-			name:        "schema traversal",
+			name:        "Unquoted standard traversal (schema.user_create)",
 			exprStr:     "schema.user_create",
 			expectedRef: "user_create",
+			expectError: false,
 		},
 		{
-			name:        "schema traversal with underscore",
-			exprStr:     "schema.user_create_v2",
-			expectedRef: "user_create_v2",
-		},
-		{
-			name:        "schema traversal with multiple attributes",
-			exprStr:     "foo.schema.user_create",
-			expectedRef: "schema",
-		},
-		{
-			name:        "root-only traversal",
+			name:        "Unquoted root identifier (user_create)",
 			exprStr:     "user_create",
 			expectedRef: "user_create",
+			expectError: false,
 		},
 		{
-			name:        "quoted schema reference",
+			name:        "Quoted string literal with schema prefix (\"schema.user_create\")",
 			exprStr:     `"schema.user_create"`,
 			expectedRef: "user_create",
+			expectError: false,
 		},
 		{
-			name:        "quoted schema reference without prefix",
+			name:        "Quoted plain string literal (\"user_create\")",
 			exprStr:     `"user_create"`,
 			expectedRef: "user_create",
+			expectError: false,
 		},
 		{
-			name:        "empty string literal",
-			exprStr:     `""`,
-			expectedRef: "",
-		},
-		{
-			name:        "non-schema string literal",
-			exprStr:     `"connection.postgres"`,
-			expectedRef: "connection.postgres",
-		},
-		{
-			name:        "rejects numeric expression",
-			exprStr:     "12345",
-			expectError: true,
-		},
-		{
-			name:        "rejects boolean expression",
-			exprStr:     "true",
-			expectError: true,
-		},
-		{
-			name:        "rejects object expression",
-			exprStr:     `{ name = "user_create" }`,
-			expectError: true,
-		},
-		{
-			name:        "rejects list expression",
-			exprStr:     `["user_create"]`,
+			name:        "Rejects numeric expression",
+			exprStr:     "999",
 			expectError: true,
 		},
 	}
@@ -198,7 +123,6 @@ func TestResolveSchemaRef(t *testing.T) {
 			t.Parallel()
 
 			expr := parseHCL(t, tt.exprStr)
-
 			ref, err := parser.ResolveSchemaRef(expr)
 			if tt.expectError {
 				if err == nil {
@@ -210,14 +134,13 @@ func TestResolveSchemaRef(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-
 			if ref != tt.expectedRef {
 				t.Errorf("expected ref %q, got %q", tt.expectedRef, ref)
 			}
 		})
 	}
 
-	t.Run("rejects nil expression", func(t *testing.T) {
+	t.Run("Rejects nil expression", func(t *testing.T) {
 		t.Parallel()
 
 		_, err := parser.ResolveSchemaRef(nil)

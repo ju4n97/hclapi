@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"regexp"
 
-	sqlconn "github.com/ju4n97/hclapi/internal/connectors/connsql"
+	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
@@ -23,7 +23,7 @@ type Engine struct {
 	options      core.Options
 	server       core.Server
 	mux          *http.ServeMux
-	sqlManager   *sqlconn.Manager
+	sqlManager   *connsql.Manager
 	goSteps      map[string]core.StepHandler
 	errorHandler core.ErrorHandler
 	logger       *slog.Logger
@@ -56,10 +56,10 @@ func New(options core.Options) (*Engine, error) {
 	bootCtx := context.Background()
 
 	// Initialize database connection pools for compiled connections
-	sqlManager := sqlconn.NewManager()
+	sqlManager := connsql.NewManager()
 
 	for _, conn := range service.Connections {
-		if sqlconn.IsSupportedDriver(conn.Driver) {
+		if connsql.IsSupportedDriver(conn.Driver) {
 			if err := sqlManager.Open(bootCtx, conn); err != nil {
 				_ = sqlManager.Close()
 				return nil, fmt.Errorf("init connection %q: %w", conn.Reference(), err)

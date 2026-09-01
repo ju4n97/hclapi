@@ -51,7 +51,7 @@ func main() {
         w.Write([]byte("OK"))
     })
 
-    mux.Handle("/api/v1/", engine.Handler())
+    mux.Handle("/", engine.Handler())
 
     srvConfig := engine.Server()
     server := &http.Server{

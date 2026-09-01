@@ -176,7 +176,7 @@ func main() {
     w.Write([]byte("OK"))
   })
 
-  mux.Handle("/api/v1/", engine.Handler())
+  mux.Handle("/", engine.Handler())
 
   log.Println("Server running on :8080")
   http.ListenAndServe(":8080", mux)

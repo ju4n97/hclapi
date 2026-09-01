@@ -78,6 +78,20 @@ func TestValidate(t *testing.T) {
 		}
 	})
 
+	t.Run("Rejects empty string on required field", func(t *testing.T) {
+		t.Parallel()
+
+		data := map[string]any{
+			"email":    "   ", // Empty whitespace string
+			"username": "jane_doe",
+		}
+
+		errors := validator.Validate(data, fields)
+		if len(errors) != 1 || errors[0].Name != "email" {
+			t.Fatalf("expected empty string error on required email, got: %+v", errors)
+		}
+	})
+
 	t.Run("Catches invalid format, bounds, pattern, enum, and duplicates", func(t *testing.T) {
 		t.Parallel()
 

@@ -41,6 +41,16 @@ func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
 			continue
 		}
 
+		if field.Required {
+			if strVal, ok := val.(string); ok && strings.TrimSpace(strVal) == "" {
+				invalidParams = append(invalidParams, core.InvalidParam{
+					Name:   field.Name,
+					Reason: "field is required and cannot be empty",
+				})
+				continue
+			}
+		}
+
 		if errReason := validateValue(val, field); errReason != "" {
 			invalidParams = append(invalidParams, core.InvalidParam{
 				Name:   field.Name,
@@ -59,11 +69,11 @@ func ValidateStringMap(data map[string]string, fields []core.Field) []core.Inval
 	for _, field := range fields {
 		rawStr, exists := data[field.Name]
 
-		if !exists || rawStr == "" {
+		if !exists || strings.TrimSpace(rawStr) == "" {
 			if field.Required {
 				invalidParams = append(invalidParams, core.InvalidParam{
 					Name:   field.Name,
-					Reason: "field is required",
+					Reason: "field is required and cannot be empty",
 				})
 			}
 			continue

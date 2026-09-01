@@ -104,6 +104,11 @@ func New(options core.Options) (*Engine, error) {
 	// Bind compiled endpoints to the HTTP router
 	for _, endpoint := range service.Endpoints {
 		if endpoint.OpenAPI != nil {
+			if endpoint.OpenAPI.Format != "" {
+				logger.Info("mounted openapi specification", "route", endpoint.MethodAndPath, "format", endpoint.OpenAPI.Format)
+			} else {
+				logger.Info("mounted interactive documentation", "route", endpoint.MethodAndPath, "renderer", endpoint.OpenAPI.UI)
+			}
 			e.bindOpenAPIRoute(endpoint, specJSON, specYAML)
 		} else {
 			e.bindRoute(endpoint)
@@ -139,8 +144,8 @@ func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, 
 
 		data := openapi.TemplateData{
 			Title:       handler.Title,
-			Version:     handler.Version,	
-			Description: handler.Description,	
+			Version:     handler.Version,
+			Description: handler.Description,
 			SpecURL:     specURL + ".json",
 			SpecYAMLURL: specURL + ".yaml",
 		}

@@ -3,8 +3,22 @@ server {
   port = 8080
 }
 
+endpoint "GET /openapi.json" {
+  openapi {
+    format = "json"
+  }
+}
+
+endpoint "GET /docs" {
+  description = "Interactive API reference."
+
+  openapi {
+    ui = "scalar"
+  }
+}
+
 endpoint "GET /api/v1/health" {
-  description = "Returns runtime status and system telemetry."
+  description = "Returns server telemetry and current epoch timestamp."
 
   pipeline {
     starlark "sysinfo" {
@@ -26,32 +40,26 @@ endpoint "GET /api/v1/health" {
 }
 
 endpoint "POST /api/v1/sanitize" {
-  description = "Demonstrates input parsing and dictionary normalization."
-
-  request {
-    body {
-      field "tags" {
-        type     = list(string)
-        required = true
-      }
-      field "prefix" {
-        type    = string
-        default = "tag"
-      }
-    }
-  }
+  description = "Demonstrates string trimming and list deduplication in Starlark."
 
   pipeline {
     starlark "format_tags" {
       source = <<-STARLARK
         def execute(ctx):
-          prefix = ctx.request.body.get("prefix", "tag")
-          raw_tags = ctx.request.body.get("tags", [])
-          cleaned = [prefix + ":" + t.strip().lower() for t in raw_tags if len(t.strip()) > 0]
-          return {
-            "count": len(cleaned),
-            "tags": cleaned
-          }
+            body = ctx.request.body or {}
+            prefix = body.get("prefix", "tag")
+            raw_tags = body.get("tags", [])
+
+            cleaned = list(set([
+                prefix + ":" + t.strip().lower()
+                for t in raw_tags
+                if len(t.strip()) > 0
+            ]))
+
+            return {
+                "count": len(cleaned),
+                "tags": cleaned
+            }
       STARLARK
     }
 

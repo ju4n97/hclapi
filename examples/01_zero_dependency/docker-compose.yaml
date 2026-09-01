@@ -1,9 +1,0 @@
-services:
-  hclapi:
-    image: ghcr.io/ju4n97/hclapi:latest
-    container_name: hclapi-01-api
-    volumes:
-      - ./main.hcl:/etc/hclapi/main.hcl:ro
-    ports:
-      - "8080:8080"
-    restart: unless-stopped

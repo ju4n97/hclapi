@@ -131,9 +131,7 @@ endpoint "GET /api/v1/todos/{id}" {
     respond {
       condition = steps.fetch.rows_affected == 0
       status    = 404
-      body = {
-        error = "Todo not found"
-      }
+      body      = problem(404, "Todo ${ctx.request.path.id} not found")
     }
 
     respond {
@@ -184,9 +182,7 @@ endpoint "PUT /api/v1/todos/{id}" {
     respond {
       condition = steps.update.rows_affected == 0
       status    = 404
-      body = {
-        error = "Todo not found"
-      }
+      body      = problem(404, "Todo ${ctx.request.path.id} not found")
     }
 
     respond {
@@ -225,9 +221,7 @@ endpoint "DELETE /api/v1/todos/{id}" {
     respond {
       condition = steps.delete.rows_affected == 0
       status    = 404
-      body = {
-        error = "Todo not found"
-      }
+      body      = problem(404, "Todo ${ctx.request.path.id} not found")
     }
 
     respond {

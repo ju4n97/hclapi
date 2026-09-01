@@ -9,14 +9,24 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/hashicorp/hcl/v2"
+
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/validator"
 )
 
 // pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
 var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
+
+type compiledRequestRules struct {
+	pathFields   []core.Field
+	queryFields  []core.Field
+	headerFields []core.Field
+	bodyFields   []core.Field
+}
 
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine struct {
@@ -31,6 +41,8 @@ type Engine struct {
 
 // New initializes an Engine by parsing manifests and registering route endpoints.
 func New(options core.Options) (*Engine, error) {
+	bootCtx := context.Background()
+
 	logger := options.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
@@ -41,15 +53,27 @@ func New(options core.Options) (*Engine, error) {
 		errorHandler = core.DefaultErrorHandler
 	}
 
-	manifest, err := parser.Parse(options.ConfigPath, eval.BaseContext())
+	evalCtx := eval.BaseContext()
+	manifest, err := parser.Parse(options.ConfigPath, evalCtx)
 	if err != nil {
 		return nil, fmt.Errorf("parse manifests: %w", err)
 	}
 
-	bootCtx := context.Background()
+	// Compile standalone schemas
+	schemasMap := make(map[string][]core.Field, len(manifest.Schemas))
+	for _, schemaBlock := range manifest.Schemas {
+		var fields []core.Field
+		for _, fieldBlock := range schemaBlock.Fields {
+			field, err := fieldBlock.ToField(evalCtx)
+			if err != nil {
+				return nil, fmt.Errorf("schema %q: %w", schemaBlock.Name, err)
+			}
+			fields = append(fields, field)
+		}
+		schemasMap[schemaBlock.Name] = fields
+	}
 
 	sqlManager := connsql.NewManager()
-
 	for _, connBlock := range manifest.Connections {
 		conn, err := connBlock.ToConnection()
 		if err != nil {
@@ -81,19 +105,84 @@ func New(options core.Options) (*Engine, error) {
 		logger:       logger,
 	}
 
+	// Compile endpoints and bind routes
 	for _, ep := range manifest.Endpoints {
 		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
 		if err != nil {
+			_ = sqlManager.Close()
 			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
 		}
 
-		e.bindRoute(ep.MethodAndPath, steps)
+		rules, err := e.compileRequestRules(ep.Request, schemasMap, evalCtx)
+		if err != nil {
+			_ = sqlManager.Close()
+			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
+		}
+
+		e.bindRoute(ep.MethodAndPath, steps, rules)
 	}
 
 	return e, nil
 }
 
-func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
+func (e *Engine) compileRequestRules(
+	req *parser.RequestBlock,
+	schemasMap map[string][]core.Field,
+	evalCtx *hcl.EvalContext,
+) (compiledRequestRules, error) {
+	var rules compiledRequestRules
+	if req == nil {
+		return rules, nil
+	}
+
+	compileFields := func(blocks []parser.FieldBlock) ([]core.Field, error) {
+		var fields []core.Field
+		for _, fieldBlock := range blocks {
+			field, err := fieldBlock.ToField(evalCtx)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, field)
+		}
+		return fields, nil
+	}
+
+	resolveTarget := func(targetName string, inline *parser.FieldGroupBlock, expr hcl.Expression) ([]core.Field, error) {
+		if inline != nil {
+			return compileFields(inline.Fields)
+		}
+		if expr != nil {
+			schemaRef, err := parser.ResolveSchemaRef(expr)
+			if err != nil {
+				return nil, fmt.Errorf("%s schema: %w", targetName, err)
+			}
+			fields, exists := schemasMap[schemaRef]
+			if !exists {
+				return nil, fmt.Errorf("unknown schema reference %q", "schema."+schemaRef)
+			}
+			return fields, nil
+		}
+		return nil, nil
+	}
+
+	var err error
+	if rules.pathFields, err = resolveTarget("path", req.PathInline, req.PathExpr); err != nil {
+		return rules, err
+	}
+	if rules.queryFields, err = resolveTarget("query", req.QueryInline, req.QueryExpr); err != nil {
+		return rules, err
+	}
+	if rules.headerFields, err = resolveTarget("headers", req.HeadersInline, req.HeadersExpr); err != nil {
+		return rules, err
+	}
+	if rules.bodyFields, err = resolveTarget("body", req.BodyInline, req.BodyExpr); err != nil {
+		return rules, err
+	}
+
+	return rules, nil
+}
+
+func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep, rules compiledRequestRules) {
 	var paramNames []string
 	matches := pathParamRegex.FindAllStringSubmatch(routePattern, -1)
 	for _, match := range matches {
@@ -133,6 +222,27 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 			return
 		}
 
+		invalidParams := e.validateRequest(hclapiCtx, rules)
+		if len(invalidParams) > 0 {
+			e.logger.WarnContext(
+				r.Context(),
+				"request schema validation failed",
+				"path",
+				r.URL.Path,
+				"invalid_count",
+				len(invalidParams),
+			)
+			e.errorHandler(w, r, core.ProblemDetailsError{
+				Type:          e.server.ProblemType("validation-error"),
+				Title:         "Unprocessable Entity",
+				Status:        http.StatusUnprocessableEntity,
+				Detail:        "Request payload failed schema validation constraints",
+				Instance:      r.URL.Path,
+				InvalidParams: invalidParams,
+			})
+			return
+		}
+
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
@@ -144,6 +254,60 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 			})
 		}
 	})
+}
+
+func (e *Engine) validateRequest(ctx *core.Context, rules compiledRequestRules) []core.InvalidParam {
+	var invalidParams []core.InvalidParam
+
+	// Validate and normalize path parameters
+	if len(rules.pathFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Path, rules.pathFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		} else {
+			validator.NormalizeStringMap(ctx.Request.Path, rules.pathFields)
+		}
+	}
+
+	// Validate and normalize query parameters
+	if len(rules.queryFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Query, rules.queryFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		} else {
+			validator.NormalizeStringMap(ctx.Request.Query, rules.queryFields)
+		}
+	}
+
+	// Validate headers
+	if len(rules.headerFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Headers, rules.headerFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		}
+	}
+
+	// Validate and normalize body
+	if len(rules.bodyFields) > 0 {
+		bodyMap, ok := ctx.Request.Body.(map[string]any)
+		if !ok {
+			if ctx.Request.Body == nil {
+				bodyMap = make(map[string]any)
+			} else {
+				invalidParams = append(invalidParams, core.InvalidParam{
+					Name:   "body",
+					Reason: "request body must be a JSON object",
+				})
+			}
+		}
+
+		if ok || ctx.Request.Body == nil {
+			if errs := validator.Validate(bodyMap, rules.bodyFields); len(errs) > 0 {
+				invalidParams = append(invalidParams, errs...)
+			} else {
+				ctx.Request.Body = validator.Normalize(bodyMap, rules.bodyFields)
+			}
+		}
+	}
+
+	return invalidParams
 }
 
 // Close gracefully closes all active connection pools.

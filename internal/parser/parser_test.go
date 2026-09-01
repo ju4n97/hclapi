@@ -378,14 +378,14 @@ endpoint "POST /users/{id}" {
 			t.Fatal("expected request block to be parsed")
 		}
 
-		if req.Path == nil || len(req.Path.Fields) != 1 || req.Path.Fields[0].Name != "id" {
-			t.Errorf("path field group mismatch: %+v", req.Path)
+		if req.PathInline == nil || len(req.PathInline.Fields) != 1 || req.PathInline.Fields[0].Name != "id" {
+			t.Errorf("path field group mismatch: %+v", req.PathInline)
 		}
-		if req.Headers == nil || len(req.Headers.Fields) != 1 || req.Headers.Fields[0].Name != "x-api-key" {
-			t.Errorf("headers field group mismatch: %+v", req.Headers)
+		if req.HeadersInline == nil || len(req.HeadersInline.Fields) != 1 || req.HeadersInline.Fields[0].Name != "x-api-key" {
+			t.Errorf("headers field group mismatch: %+v", req.HeadersInline)
 		}
-		if req.Query == nil || len(req.Query.Fields) != 1 || req.Query.Fields[0].Name != "referrer" {
-			t.Errorf("query field group mismatch: %+v", req.Query)
+		if req.QueryInline == nil || len(req.QueryInline.Fields) != 1 || req.QueryInline.Fields[0].Name != "referrer" {
+			t.Errorf("query field group mismatch: %+v", req.QueryInline)
 		}
 		if req.BodyExpr == nil {
 			t.Errorf("expected body reference expression to be parsed")

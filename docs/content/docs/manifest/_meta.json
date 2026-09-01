@@ -21,13 +21,13 @@
   },
   {
     "type": "file",
-    "name": "endpoints",
-    "label": "endpoint"
+    "name": "types",
+    "label": "Types"
   },
   {
     "type": "file",
-    "name": "types",
-    "label": "Scalar types"
+    "name": "endpoints",
+    "label": "endpoint"
   },
   {
     "type": "dir",

@@ -10,12 +10,6 @@ Start the database:
 docker compose up -d
 ```
 
-Initialize the database tables:
-
-```sh
-docker exec -i hclapi-sqlserver-db /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Password123!' -C < init.sql
-```
-
 Then run the server:
 
 ```sh

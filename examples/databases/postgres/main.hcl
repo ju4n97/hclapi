@@ -255,7 +255,11 @@ endpoint "POST /api/v1/members/{id}/reward" {
 
     respond {
       status = 200
-      body   = { message = "Points awarded successfully", affected = steps.award.rows_affected }
+      body = {
+        message   = "Points awarded successfully",
+        member_id = ctx.request.path.id,
+        awarded   = ctx.request.body.bonus
+      }
     }
   }
 }

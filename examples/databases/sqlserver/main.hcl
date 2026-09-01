@@ -238,7 +238,7 @@ endpoint "DELETE /api/v1/members/{id}" {
 }
 
 endpoint "POST /api/v1/members/{id}/reward" {
-  description = "Executes a SQL Server stored procedure to award bonus points."
+  description = "Executes a non-returning SQL Server stored procedure to award bonus points."
 
   request {
     path {
@@ -253,7 +253,7 @@ endpoint "POST /api/v1/members/{id}/reward" {
   pipeline {
     sql "award" {
       connection = connection.sqlserver.main
-      query      = "EXEC award_member_points @id = @id, @bonus = @bonus"
+      query      = "EXEC award_member_points @id, @bonus"
       args = {
         id    = ctx.request.path.id
         bonus = ctx.request.body.bonus
@@ -262,7 +262,11 @@ endpoint "POST /api/v1/members/{id}/reward" {
 
     respond {
       status = 200
-      body   = { message = "Points awarded successfully", affected = steps.award.rows_affected }
+      body = {
+        status    = "Points awarded successfully"
+        member_id = ctx.request.path.id
+        awarded   = ctx.request.body.bonus
+      }
     }
   }
 }

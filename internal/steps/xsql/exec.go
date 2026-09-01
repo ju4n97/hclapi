@@ -41,7 +41,7 @@ func RewriteNamedQuery(query string, args map[string]any, d connsql.Dialect) (st
 	return rewritten, orderedArgs, nil
 }
 
-// ScanRows dynamically scans *sql.Rows into a slice of maps with type normalization and multi-result set support.
+// ScanRows dynamically scans *sql.Rows into a slice of maps with type normalization and error checking.
 func ScanRows(rows *sql.Rows) ([]map[string]any, error) {
 	var results []map[string]any
 
@@ -78,9 +78,18 @@ func ScanRows(rows *sql.Rows) ([]map[string]any, error) {
 			}
 		}
 
+		// Check for iteration or driver errors on the active result set
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("read rows: %w", err)
+		}
+
 		if !rows.NextResultSet() {
 			break
 		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rows: %w", err)
 	}
 
 	if results == nil {

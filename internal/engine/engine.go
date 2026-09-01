@@ -13,12 +13,12 @@ import (
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/validator"
 )
 
-// pathParamRegex matches both standard parameters ({id}) and Go 1.22+ catch-all wildcards ({filepath...}).
 var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
-// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
+// Engine is the central HTTP coordinator.
 type Engine struct {
 	options      core.Options
 	server       core.Server
@@ -29,7 +29,7 @@ type Engine struct {
 	logger       *slog.Logger
 }
 
-// New initializes an Engine by parsing manifests and registering route endpoints.
+// New initializes an Engine by parsing manifests, statically compiling services, and registering routes.
 func New(options core.Options) (*Engine, error) {
 	logger := options.Logger
 	if logger == nil {
@@ -41,21 +41,24 @@ func New(options core.Options) (*Engine, error) {
 		errorHandler = core.DefaultErrorHandler
 	}
 
-	manifest, err := parser.Parse(options.ConfigPath, eval.BaseContext())
+	evalCtx := eval.BaseContext()
+	manifest, err := parser.Parse(options.ConfigPath, evalCtx)
 	if err != nil {
 		return nil, fmt.Errorf("parse manifests: %w", err)
 	}
 
+	// Static compilation and reference verification pass
+	service, err := Compile(manifest, evalCtx)
+	if err != nil {
+		return nil, err
+	}
+
 	bootCtx := context.Background()
 
+	// Initialize database connection pools for compiled connections
 	sqlManager := connsql.NewManager()
 
-	for _, connBlock := range manifest.Connections {
-		conn, err := connBlock.ToConnection()
-		if err != nil {
-			return nil, fmt.Errorf("connection config %q: %w", connBlock.Name, err)
-		}
-
+	for _, conn := range service.Connections {
 		if connsql.IsSupportedDriver(conn.Driver) {
 			if err := sqlManager.Open(bootCtx, conn); err != nil {
 				_ = sqlManager.Close()
@@ -65,15 +68,9 @@ func New(options core.Options) (*Engine, error) {
 		}
 	}
 
-	serverConfig, err := manifest.Server.ToServer()
-	if err != nil {
-		_ = sqlManager.Close()
-		return nil, fmt.Errorf("server config: %w", err)
-	}
-
 	e := &Engine{
 		options:      options,
-		server:       serverConfig,
+		server:       service.Server,
 		mux:          http.NewServeMux(),
 		sqlManager:   sqlManager,
 		goSteps:      make(map[string]core.StepHandler),
@@ -81,19 +78,15 @@ func New(options core.Options) (*Engine, error) {
 		logger:       logger,
 	}
 
-	for _, ep := range manifest.Endpoints {
-		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
-		if err != nil {
-			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
-		}
-
-		e.bindRoute(ep.MethodAndPath, steps)
+	// Bind compiled endpoints to the HTTP router
+	for _, ep := range service.Endpoints {
+		e.bindRoute(ep.MethodAndPath, ep.Steps, ep.Rules)
 	}
 
 	return e, nil
 }
 
-func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
+func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep, reqRules CompiledRequestRules) {
 	var paramNames []string
 	matches := pathParamRegex.FindAllStringSubmatch(routePattern, -1)
 	for _, match := range matches {
@@ -133,6 +126,29 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 			return
 		}
 
+		// Ingress Schema Validation and normalization
+		invalidParams := e.validateRequest(hclapiCtx, reqRules)
+		if len(invalidParams) > 0 {
+			e.logger.WarnContext(
+				r.Context(),
+				"request schema validation failed",
+				"path",
+				r.URL.Path,
+				"invalid_count",
+				len(invalidParams),
+			)
+			e.errorHandler(w, r, core.ProblemDetailsError{
+				Type:          e.server.ProblemType("validation-error"),
+				Title:         "Unprocessable Entity",
+				Status:        http.StatusUnprocessableEntity,
+				Detail:        "Request payload failed schema validation constraints",
+				Instance:      r.URL.Path,
+				InvalidParams: invalidParams,
+			})
+			return
+		}
+
+		// Execute pipeline
 		if err := executor.Execute(w, hclapiCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
@@ -146,7 +162,57 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep) {
 	})
 }
 
-// Close gracefully closes all active connection pools.
+func (e *Engine) validateRequest(ctx *core.Context, rules CompiledRequestRules) []core.InvalidParam {
+	var invalidParams []core.InvalidParam
+
+	if len(rules.PathFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Path, rules.PathFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		} else {
+			validator.NormalizeStringMap(ctx.Request.Path, rules.PathFields)
+		}
+	}
+
+	if len(rules.QueryFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Query, rules.QueryFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		} else {
+			validator.NormalizeStringMap(ctx.Request.Query, rules.QueryFields)
+		}
+	}
+
+	if len(rules.HeaderFields) > 0 {
+		if errs := validator.ValidateStringMap(ctx.Request.Headers, rules.HeaderFields); len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		}
+	}
+
+	if len(rules.BodyFields) > 0 {
+		bodyMap, ok := ctx.Request.Body.(map[string]any)
+		if !ok {
+			if ctx.Request.Body == nil {
+				bodyMap = make(map[string]any)
+			} else {
+				invalidParams = append(invalidParams, core.InvalidParam{
+					Name:   "body",
+					Reason: "request body must be a JSON object",
+				})
+			}
+		}
+
+		if ok || ctx.Request.Body == nil {
+			if errs := validator.Validate(bodyMap, rules.BodyFields); len(errs) > 0 {
+				invalidParams = append(invalidParams, errs...)
+			} else {
+				ctx.Request.Body = validator.Normalize(bodyMap, rules.BodyFields)
+			}
+		}
+	}
+
+	return invalidParams
+}
+
+// Close gracefully closes all active database and cache connection pools.
 func (e *Engine) Close() error {
 	if e.sqlManager != nil {
 		return e.sqlManager.Close()

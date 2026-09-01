@@ -1,0 +1,125 @@
+# Types and schema constraints
+
+hclapi features a strongly typed schema and configuration system. Types are verified at boot time during manifest parsing and enforced at request ingress before pipeline execution.
+
+## Schema data types
+
+Used inside `schema` and `request` field definitions (`field "<name>" { type = <type> }`):
+
+| Signature          | JSON representation             | Description                                          | Example               |
+| :----------------- | :------------------------------ | :--------------------------------------------------- | :-------------------- |
+| **`string`**       | `"hello"`                       | Text strings (supports regex `pattern` and `format`) | `type = string`       |
+| **`int`**          | `42`                            | 64-bit signed integer                                | `type = int`          |
+| **`float`**        | `3.14159`                       | 64-bit floating-point number                         | `type = float`        |
+| **`bool`**         | `true`, `false`                 | Boolean truth value                                  | `type = bool`         |
+| **`any`**          | Any primitive, array, or object | Free-form untyped payload                            | `type = any`          |
+| **`list(<type>)`** | `["admin", "member"]`           | Array of uniform elements                            | `type = list(string)` |
+| **`map(<type>)`**  | `{"k1": "v1"}`                  | String-keyed dictionary with uniform values          | `type = map(int)`     |
+
+### Examples
+
+```hcl
+schema "product" {
+  field "sku" { 
+    type = string, 
+    required = true 
+  }
+  field "price" { 
+    type = float,  
+    required = true, 
+    min = 0.01 
+  }
+  field "tags" { 
+    type = list(string), 
+    default = []
+  }
+  field "metadata" { 
+    type = map(any) 
+  }
+}
+```
+
+## Scalar configuration types
+
+hclapi provides specialized scalar types that parse human-readable strings into typed units at startup and fail fast on invalid syntax.
+
+### Duration
+
+Backed by Go's `time.Duration`.
+
+| Suffix     | Unit         | Example   |
+| :--------- | :----------- | :-------- |
+| `ns`       | Nanoseconds  | `"500ns"` |
+| `us`, `µs` | Microseconds | `"100µs"` |
+| `ms`       | Milliseconds | `"250ms"` |
+| `s`        | Seconds      | `"30s"`   |
+| `m`        | Minutes      | `"15m"`   |
+| `h`        | Hours        | `"1h30m"` |
+
+Units can be combined (e.g. `"1h30m"`, `"2m45s"`).
+
+#### Usage in manifests:
+
+```hcl
+server {
+  read_timeout = "30s"
+  idle_timeout = "2m"
+}
+
+connection "postgres" "main" {
+  pool {
+    conn_max_lifetime = "1h"
+    idle_timeout      = "10m"
+  }
+}
+```
+
+### ByteSize
+
+Backed by a 64-bit integer representing byte quantities. Both decimal (1,000-based) and binary (1,024-based) units are accepted case-insensitively.
+
+| Suffix    | Standard | Bytes               |
+| :-------- | :------- | :------------------ |
+| `B`       | Byte     | `1`                 |
+| `KB`, `K` | Kilobyte | `1,000`             |
+| `KiB`     | Kibibyte | `1,024`             |
+| `MB`, `M` | Megabyte | `1,000,000`         |
+| `MiB`     | Mebibyte | `1,048,576`         |
+| `GB`, `G` | Gigabyte | `1,000,000,000`     |
+| `GiB`     | Gibibyte | `1,073,741,824`     |
+| `TB`, `T` | Terabyte | `1,000,000,000,000` |
+| `TiB`     | Tebibyte | `1,099,511,627,776` |
+
+Fractional quantities and raw integer bytes are both supported:
+
+```hcl
+server {
+  max_body_size = "25MB"    # 25,000,000 bytes
+  max_body_size = "2.5MiB"  # 2,621,440 bytes
+  max_body_size = "1048576" # 1,048,576 raw integer bytes
+}
+```
+
+## Compile-time diagnostics
+
+Invalid type or scalar formats fail fast during `hclapi serve` boot:
+
+```hcl
+server {
+  read_timeout = "100years"
+}
+```
+
+```text
+error: server: invalid read_timeout: invalid duration "100years": time: unknown unit "years" in duration "100years"
+```
+
+```hcl
+server {
+  max_body_size = "10XB"
+}
+```
+
+```text
+error: server: invalid max_body_size: invalid byte size "10XB": unknown unit "XB"
+```

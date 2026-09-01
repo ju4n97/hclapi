@@ -1,12 +1,12 @@
-name: Deploy website
+name: Deploy documentation
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "www/**"
-      - ".github/workflows/deploy-www.yml"
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "docs/**"
+  #     - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -32,11 +32,11 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: www
+        working-directory: docs
         run: bun install --frozen-lockfile
 
-      - name: Build website
-        working-directory: www
+      - name: Build documentation
+        working-directory: docs
         run: bun run build
 
       - name: Setup GitHub Pages
@@ -45,7 +45,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: www/dist
+          path: docs/dist
 
   deploy:
     needs: build

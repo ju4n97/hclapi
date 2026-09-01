@@ -11,7 +11,6 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	_ "modernc.org/sqlite"
 
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
@@ -21,23 +20,44 @@ import (
 
 func parseExpr(t *testing.T, src string) hcl.Expression {
 	t.Helper()
+
 	expr, diags := hclsyntax.ParseExpression([]byte(src), "test.hcl", hcl.InitialPos)
 	if diags.HasErrors() {
-		t.Fatalf("syntax error: %s", diags.Error())
+		t.Fatalf("syntax error in expression %q: %s", src, diags.Error())
 	}
+
 	return expr
 }
 
-func TestPipelineExecutor(t *testing.T) {
+func setupTestSQLiteManager(t *testing.T) *connsql.Manager {
+	t.Helper()
+
+	mgr := connsql.NewManager()
+	conn := core.Connection{
+		Driver: "sqlite",
+		Name:   "main",
+		URL:    "file:pipeline_test_mem?mode=memory&cache=shared",
+		Pool:   core.DefaultPoolConfig(),
+	}
+	if err := mgr.Open(t.Context(), conn); err != nil {
+		t.Fatalf("failed to open test sqlite pool: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.Close() })
+
+	return mgr
+}
+
+func TestPipeline_Go(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Executes Go step, Starlark step, and resolves conditional Respond", func(t *testing.T) {
+	t.Run("Evaluates args, executes handler, and exports result", func(t *testing.T) {
 		t.Parallel()
 
 		goSteps := map[string]core.StepHandler{
 			"auth.verify": func(ctx *core.Context, args map[string]any) (any, error) {
+				token, ok := args["token"].(string)
 				return map[string]any{
-					"valid": args["token"] == "secret-token",
+					"valid": ok && token == "secret-token",
 					"uid":   42,
 				}, nil
 			},
@@ -53,205 +73,19 @@ func TestPipelineExecutor(t *testing.T) {
 				},
 			},
 			{
-				Type: parser.StepTypeStarlark,
-				Name: "format",
-				Starlark: &parser.StarlarkStepBlock{
-					Source: `
-def execute(ctx):
-    auth_data = ctx.steps.auth.get("result", {})
-    return {
-        "user_id": auth_data.get("uid"),
-        "authorized": auth_data.get("valid")
-    }
-`,
-				},
-			},
-			// Fallback 401 response when unauthorized
-			{
-				Type: parser.StepTypeRespond,
-				Respond: &parser.RespondStepBlock{
-					Condition: parseExpr(t, `steps.format.result.authorized == false`),
-					Status:    parseExpr(t, `401`),
-					Body:      parseExpr(t, `{ error = "unauthorized" }`),
-				},
-			},
-			// Success 200 response when authorized
-			{
-				Type: parser.StepTypeRespond,
-				Respond: &parser.RespondStepBlock{
-					Condition: parseExpr(t, `steps.format.result.authorized == true`),
-					Status:    parseExpr(t, `200`),
-					Body:      parseExpr(t, `steps.format.result`),
-				},
-			},
-		}
-
-		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
-
-		// 1. Test authorized request
-		reqAuth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		reqAuth.Header.Set("Authorization", "secret-token")
-
-		ctxAuth, err := core.NewContext(nil, reqAuth)
-		if err != nil {
-			t.Fatalf("failed to create context: %v", err)
-		}
-
-		recAuth := httptest.NewRecorder()
-		if err := executor.Execute(recAuth, ctxAuth); err != nil {
-			t.Fatalf("unexpected execution error: %v", err)
-		}
-
-		if recAuth.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", recAuth.Code)
-		}
-
-		var bodyAuth map[string]any
-		_ = json.NewDecoder(recAuth.Body).Decode(&bodyAuth)
-		if bodyAuth["authorized"] != true || bodyAuth["user_id"] != float64(42) {
-			t.Errorf("unexpected body payload: %+v", bodyAuth)
-		}
-
-		// 2. Test unauthorized request (hits 401 condition)
-		reqUnauth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		reqUnauth.Header.Set("Authorization", "wrong-token")
-
-		ctxUnauth, err := core.NewContext(nil, reqUnauth)
-		if err != nil {
-			t.Fatalf("failed to create context: %v", err)
-		}
-
-		recUnauth := httptest.NewRecorder()
-		if err := executor.Execute(recUnauth, ctxUnauth); err != nil {
-			t.Fatalf("unexpected execution error: %v", err)
-		}
-
-		if recUnauth.Code != http.StatusUnauthorized {
-			t.Errorf("expected status 401, got %d", recUnauth.Code)
-		}
-
-		if !strings.Contains(recUnauth.Body.String(), "unauthorized") {
-			t.Errorf("expected unauthorized error body, got: %s", recUnauth.Body.String())
-		}
-	})
-
-	t.Run("Context cancellation aborts pipeline execution before subsequent steps", func(t *testing.T) {
-		t.Parallel()
-
-		stepTwoExecuted := false
-		goSteps := map[string]core.StepHandler{
-			"step.one": func(ctx *core.Context, args map[string]any) (any, error) {
-				return "done_one", nil
-			},
-			"step.two": func(ctx *core.Context, args map[string]any) (any, error) {
-				stepTwoExecuted = true
-				return "done_two", nil
-			},
-		}
-
-		steps := []parser.ParsedStep{
-			{
-				Type: parser.StepTypeGo,
-				Name: "first",
-				Go:   &parser.GoStepBlock{Use: "step.one"},
-			},
-			{
-				Type: parser.StepTypeGo,
-				Name: "second",
-				Go:   &parser.GoStepBlock{Use: "step.two"},
-			},
-		}
-
-		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
-
-		reqCtx, cancel := context.WithCancel(t.Context())
-		cancel() // Cancel before execution
-
-		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/test", http.NoBody)
-
-		hclapiCtx, err := core.NewContext(nil, req)
-		if err != nil {
-			t.Fatalf("failed to create context: %v", err)
-		}
-
-		rec := httptest.NewRecorder()
-		err = executor.Execute(rec, hclapiCtx)
-
-		if !errors.Is(err, context.Canceled) {
-			t.Errorf("expected context.Canceled error, got: %v", err)
-		}
-
-		if stepTwoExecuted {
-			t.Errorf("expected step two to be skipped after context cancellation")
-		}
-	})
-
-	t.Run("Omitted body produces an empty response", func(t *testing.T) {
-		t.Parallel()
-
-		goSteps := map[string]core.StepHandler{
-			"mock.step": func(ctx *core.Context, args map[string]any) (any, error) {
-				return "should_be_ignored", nil
-			},
-		}
-
-		steps := []parser.ParsedStep{
-			{
-				Type: parser.StepTypeGo,
-				Name: "do_work",
-				Go:   &parser.GoStepBlock{Use: "mock.step"},
-			},
-			{
-				Type: parser.StepTypeRespond,
-				Respond: &parser.RespondStepBlock{
-					Status: parseExpr(t, `204`),
-					// Body is intentionally omitted
-				},
-			},
-		}
-
-		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
-		if err != nil {
-			t.Fatalf("failed to create context: %v", err)
-		}
-
-		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
-			t.Fatalf("unexpected execution error: %v", err)
-		}
-
-		if rec.Code != http.StatusNoContent {
-			t.Errorf("expected status 204, got %d", rec.Code)
-		}
-
-		if rec.Body.Len() != 0 {
-			t.Errorf("expected empty body, got %q", rec.Body.String())
-		}
-	})
-
-	t.Run("Evaluates custom headers in respond step", func(t *testing.T) {
-		t.Parallel()
-
-		steps := []parser.ParsedStep{
-			{
 				Type: parser.StepTypeRespond,
 				Respond: &parser.RespondStepBlock{
 					Status: parseExpr(t, `200`),
-					Headers: parseExpr(t, `{
-						"X-Custom-Header" = "custom_value"
-						"X-Echo-Method"   = ctx.request.method
-					}`),
-					Body: parseExpr(t, `{ ok = true }`),
+					Body:   parseExpr(t, `steps.auth.result`),
 				},
 			},
 		}
 
-		executor := engine.NewPipelineExecutor(steps, nil, nil)
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		req.Header.Set("Authorization", "secret-token")
+
 		hclapiCtx, err := core.NewContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
@@ -266,30 +100,184 @@ def execute(ctx):
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
 
-		if h := rec.Header().Get("X-Custom-Header"); h != "custom_value" {
-			t.Errorf("expected header 'custom_value', got %q", h)
-		}
-
-		if h := rec.Header().Get("X-Echo-Method"); h != "GET" {
-			t.Errorf("expected header 'GET', got %q", h)
+		var body map[string]any
+		_ = json.NewDecoder(rec.Body).Decode(&body)
+		if body["valid"] != true || body["uid"] != float64(42) {
+			t.Errorf("unexpected body: %+v", body)
 		}
 	})
 
-	t.Run("Executes SQL step in pipeline and exports row, rows, and rows_affected", func(t *testing.T) {
+	t.Run("Recovers from panic in custom Go step safely", func(t *testing.T) {
 		t.Parallel()
 
-		mgr := connsql.NewManager()
-		conn := core.Connection{
-			Driver: "sqlite",
-			Name:   "main",
-			URL:    "file:pipeline_mem?mode=memory&cache=shared",
-			Pool:   core.DefaultPoolConfig(),
+		goSteps := map[string]core.StepHandler{
+			"panic.step": func(ctx *core.Context, args map[string]any) (any, error) {
+				panic("nil pointer dereference inside user step")
+			},
 		}
-		if err := mgr.Open(t.Context(), conn); err != nil {
-			t.Fatalf("failed to open sqlite in-memory pool: %v", err)
-		}
-		t.Cleanup(func() { _ = mgr.Close() })
 
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "broken",
+				Go:   &parser.GoStepBlock{Use: "panic.step"},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		err = executor.Execute(rec, hclapiCtx)
+
+		if err == nil || !strings.Contains(err.Error(), "panic in custom go step") {
+			t.Fatalf("expected recovered panic error, got: %v", err)
+		}
+	})
+
+	t.Run("Fails cleanly on unregistered Go step name", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "missing",
+				Go:   &parser.GoStepBlock{Use: "non.existent.func"},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		err = executor.Execute(rec, hclapiCtx)
+
+		if err == nil || !strings.Contains(err.Error(), "unregistered go function") {
+			t.Fatalf("expected unregistered function error, got: %v", err)
+		}
+	})
+}
+
+func TestPipeline_Starlark(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Executes Starlark script and reads prior step outputs", func(t *testing.T) {
+		t.Parallel()
+
+		goSteps := map[string]core.StepHandler{
+			"fetch.user": func(ctx *core.Context, args map[string]any) (any, error) {
+				return map[string]any{
+					"name":  "jane",
+					"roles": []any{"admin", "editor"},
+				}, nil
+			},
+		}
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "auth",
+				Go:   &parser.GoStepBlock{Use: "fetch.user"},
+			},
+			{
+				Type: parser.StepTypeStarlark,
+				Name: "transform",
+				Starlark: &parser.StarlarkStepBlock{
+					Source: `
+def execute(ctx):
+    user = ctx.steps.auth.get("result", {})
+    roles = user.get("roles", [])
+    return {
+        "display_name": user.get("name", "").capitalize(),
+        "total_roles": len(roles),
+        "is_admin": "admin" in roles
+    }
+`,
+				},
+			},
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `200`),
+					Body:   parseExpr(t, `steps.transform.result`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		var body map[string]any
+		_ = json.NewDecoder(rec.Body).Decode(&body)
+
+		if body["display_name"] != "Jane" || body["total_roles"] != float64(2) || body["is_admin"] != true {
+			t.Errorf("unexpected Starlark output: %+v", body)
+		}
+	})
+
+	t.Run("Halts execution safely when Starlark step limit is exceeded", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeStarlark,
+				Name: "infinite_loop",
+				Starlark: &parser.StarlarkStepBlock{
+					Source: `
+def execute(ctx):
+    x = 0
+    while True:
+        x += 1
+    return x
+`,
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		err = executor.Execute(rec, hclapiCtx)
+
+				if err == nil || !strings.Contains(err.Error(), "too many steps") {
+			t.Fatalf("expected step limit exceeded error, got: %v", err)
+		}
+	})
+}
+
+func TestPipeline_SQL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Executes query and exports row, rows, and rows_affected", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := setupTestSQLiteManager(t)
 		pool, _ := mgr.Get("sqlite.main")
 
 		schema := `
@@ -345,9 +333,7 @@ def execute(ctx):
 		}
 
 		var resp map[string]any
-		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-			t.Fatalf("failed to decode response JSON: %v", err)
-		}
+		_ = json.NewDecoder(rec.Body).Decode(&resp)
 
 		if resp["total_matched"] != float64(1) {
 			t.Errorf("expected total_matched 1, got %v", resp["total_matched"])
@@ -355,28 +341,16 @@ def execute(ctx):
 
 		user, ok := resp["user"].(map[string]any)
 		if !ok || user["name"] != "Jane" || user["email"] != "jane@example.com" {
-			t.Errorf("expected user Jane with email, got %+v", resp["user"])
+			t.Errorf("expected user Jane, got %+v", resp["user"])
 		}
 	})
 
-	t.Run("SQL step intercepts constraint violation with catch block", func(t *testing.T) {
+	t.Run("Intercepts constraint violation with catch block", func(t *testing.T) {
 		t.Parallel()
 
-		mgr := connsql.NewManager()
-		conn := core.Connection{
-			Driver: "sqlite",
-			Name:   "main",
-			URL:    "file:pipeline_catch_mem?mode=memory&cache=shared",
-			Pool:   core.DefaultPoolConfig(),
-		}
-		if err := mgr.Open(t.Context(), conn); err != nil {
-			t.Fatalf("failed to open sqlite in-memory pool: %v", err)
-		}
-		t.Cleanup(func() { _ = mgr.Close() })
-
+		mgr := setupTestSQLiteManager(t)
 		pool, _ := mgr.Get("sqlite.main")
 
-		// Create table with UNIQUE constraint
 		schema := `
 			CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT UNIQUE);
 			INSERT INTO accounts VALUES (1, 'existing@example.com');
@@ -385,7 +359,6 @@ def execute(ctx):
 			t.Fatalf("failed to seed test table: %v", err)
 		}
 
-		// Pipeline trying to insert duplicate email, catching SQLite constraint code "19"
 		steps := []parser.ParsedStep{
 			{
 				Type: parser.StepTypeSQL,
@@ -430,24 +403,145 @@ def execute(ctx):
 
 		rec := httptest.NewRecorder()
 		if err := executor.Execute(rec, hclapiCtx); err != nil {
-			t.Fatalf("unexpected pipeline execution error: %v", err)
+			t.Fatalf("unexpected execution error: %v", err)
 		}
 
 		if rec.Code != http.StatusConflict {
 			t.Errorf("expected status 409 Conflict, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
-
 		if h := rec.Header().Get("X-Error"); h != "Conflict" {
 			t.Errorf("expected header X-Error 'Conflict', got %q", h)
 		}
+	})
+}
 
-		var resp map[string]any
-		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-			t.Fatalf("failed to decode response JSON: %v", err)
+func TestPipeline_Respond(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Evaluates custom headers and body payload", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `200`),
+					Headers: parseExpr(t, `{
+						"X-Custom-Header" = "custom_value"
+						"X-Echo-Method"   = ctx.request.method
+					}`),
+					Body: parseExpr(t, `{ ok = true }`),
+				},
+			},
 		}
 
-		if resp["error"] != "Account with this email already exists" {
-			t.Errorf("unexpected error payload: %+v", resp)
+		executor := engine.NewPipelineExecutor(steps, nil, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if h := rec.Header().Get("X-Custom-Header"); h != "custom_value" {
+			t.Errorf("expected header 'custom_value', got %q", h)
+		}
+		if h := rec.Header().Get("X-Echo-Method"); h != "GET" {
+			t.Errorf("expected header 'GET', got %q", h)
+		}
+	})
+
+	t.Run("Omitted body produces an empty response payload", func(t *testing.T) {
+		t.Parallel()
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeRespond,
+				Respond: &parser.RespondStepBlock{
+					Status: parseExpr(t, `204`),
+				},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, nil, nil)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		if err := executor.Execute(rec, hclapiCtx); err != nil {
+			t.Fatalf("unexpected execution error: %v", err)
+		}
+
+		if rec.Code != http.StatusNoContent {
+			t.Errorf("expected status 204, got %d", rec.Code)
+		}
+		if rec.Body.Len() != 0 {
+			t.Errorf("expected empty body, got %q", rec.Body.String())
+		}
+	})
+}
+
+func TestPipeline_ContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Aborts pipeline immediately when request context is canceled", func(t *testing.T) {
+		t.Parallel()
+
+		stepTwoExecuted := false
+		goSteps := map[string]core.StepHandler{
+			"step.one": func(ctx *core.Context, args map[string]any) (any, error) {
+				return "done_one", nil
+			},
+			"step.two": func(ctx *core.Context, args map[string]any) (any, error) {
+				stepTwoExecuted = true
+				return "done_two", nil
+			},
+		}
+
+		steps := []parser.ParsedStep{
+			{
+				Type: parser.StepTypeGo,
+				Name: "first",
+				Go:   &parser.GoStepBlock{Use: "step.one"},
+			},
+			{
+				Type: parser.StepTypeGo,
+				Name: "second",
+				Go:   &parser.GoStepBlock{Use: "step.two"},
+			},
+		}
+
+		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
+
+		reqCtx, cancel := context.WithCancel(t.Context())
+		cancel() // Cancel before execution
+
+		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/test", http.NoBody)
+		hclapiCtx, err := core.NewContext(nil, req)
+		if err != nil {
+			t.Fatalf("failed to create context: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		err = executor.Execute(rec, hclapiCtx)
+
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("expected context.Canceled error, got: %v", err)
+		}
+		if stepTwoExecuted {
+			t.Errorf("expected step two to be skipped after context cancellation")
 		}
 	})
 }

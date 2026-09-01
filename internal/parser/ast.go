@@ -21,14 +21,40 @@ type Manifest struct {
 
 // ServerBlock represents the raw HCL server syntax block.
 type ServerBlock struct {
-	Host         string   `hcl:"host,optional"`
-	Port         int      `hcl:"port,optional"`
-	ReadTimeout  *string  `hcl:"read_timeout,optional"`
-	WriteTimeout *string  `hcl:"write_timeout,optional"`
-	IdleTimeout  *string  `hcl:"idle_timeout,optional"`
-	MaxBodySize  *string  `hcl:"max_body_size,optional"`
-	ErrorBaseURL *string  `hcl:"error_base_url,optional"`
-	Remain       hcl.Body `hcl:",remain"`
+	Host         string              `hcl:"host,optional"`
+	Port         int                 `hcl:"port,optional"`
+	ReadTimeout  *string             `hcl:"read_timeout,optional"`
+	WriteTimeout *string             `hcl:"write_timeout,optional"`
+	IdleTimeout  *string             `hcl:"idle_timeout,optional"`
+	MaxBodySize  *string             `hcl:"max_body_size,optional"`
+	ErrorBaseURL *string             `hcl:"error_base_url,optional"`
+	OpenAPI      *ServerOpenAPIBlock `hcl:"openapi,block"`
+	Remain       hcl.Body            `hcl:",remain"`
+}
+
+// ServerOpenAPIBlock represents the global openapi {} metadata block in server.
+type ServerOpenAPIBlock struct {
+	Title       *string             `hcl:"title,optional"`
+	Version     *string             `hcl:"version,optional"`
+	Description *string             `hcl:"description,optional"`
+	Servers     hcl.Expression      `hcl:"servers,optional"`
+	Tags        hcl.Expression      `hcl:"tags,optional"`
+	Contact     *ServerContactBlock `hcl:"contact,block"`
+	License     *ServerLicenseBlock `hcl:"license,block"`
+	Remain      hcl.Body            `hcl:",remain"`
+}
+
+// ServerContactBlock represents the contact {} metadata block in openapi block.
+type ServerContactBlock struct {
+	Name  *string `hcl:"name,optional"`
+	Email *string `hcl:"email,optional"`
+	URL   *string `hcl:"url,optional"`
+}
+
+// ServerLicenseBlock represents the license {} metadata block in openapi block.
+type ServerLicenseBlock struct {
+	Name *string `hcl:"name,optional"`
+	URL  *string `hcl:"url,optional"`
 }
 
 // ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
@@ -73,6 +99,40 @@ func (s *ServerBlock) ToServer() (core.Server, error) {
 	}
 	if s.ErrorBaseURL != nil {
 		srv.ErrorBaseURL = *s.ErrorBaseURL
+	}
+	if s.OpenAPI != nil {
+		if s.OpenAPI.Title != nil {
+			srv.OpenAPI.Title = *s.OpenAPI.Title
+		}
+		if s.OpenAPI.Version != nil {
+			srv.OpenAPI.Version = *s.OpenAPI.Version
+		}
+		if s.OpenAPI.Description != nil {
+			srv.OpenAPI.Description = *s.OpenAPI.Description
+		}
+		if s.OpenAPI.Contact != nil {
+			contact := &core.OpenAPIContact{}
+			if s.OpenAPI.Contact.Name != nil {
+				contact.Name = *s.OpenAPI.Contact.Name
+			}
+			if s.OpenAPI.Contact.Email != nil {
+				contact.Email = *s.OpenAPI.Contact.Email
+			}
+			if s.OpenAPI.Contact.URL != nil {
+				contact.URL = *s.OpenAPI.Contact.URL
+			}
+			srv.OpenAPI.Contact = contact
+		}
+		if s.OpenAPI.License != nil {
+			license := &core.OpenAPILicense{}
+			if s.OpenAPI.License.Name != nil {
+				license.Name = *s.OpenAPI.License.Name
+			}
+			if s.OpenAPI.License.URL != nil {
+				license.URL = *s.OpenAPI.License.URL
+			}
+			srv.OpenAPI.License = license
+		}
 	}
 
 	return srv.WithDefaults(), nil
@@ -304,11 +364,22 @@ func (r *RequestBlock) Decode(evalCtx *hcl.EvalContext) error {
 
 // EndpointBlock represents a single HTTP route declaration block.
 type EndpointBlock struct {
-	MethodAndPath string        `hcl:"name,label"`
-	Description   *string       `hcl:"description,attr"`
-	Request       *RequestBlock `hcl:"request,block"`
-	Pipeline      PipelineBlock `hcl:"pipeline,block"`
-	Remain        hcl.Body      `hcl:",remain"`
+	MethodAndPath string                `hcl:"name,label"`
+	Description   *string               `hcl:"description,attr"`
+	Request       *RequestBlock         `hcl:"request,block"`
+	Pipeline      *PipelineBlock        `hcl:"pipeline,block"`
+	OpenAPI       *EndpointOpenAPIBlock `hcl:"openapi,block"`
+	Remain        hcl.Body              `hcl:",remain"`
+}
+
+// OpenAPIEndpointBlock represents the endpoint.openapi {} metadata block in endpoint.
+type EndpointOpenAPIBlock struct {
+	UI           *string  `hcl:"ui,optional"`
+	Format       *string  `hcl:"format,optional"`
+	SpecURL      *string  `hcl:"spec_url,optional"`
+	Template     *string  `hcl:"template,optional"`
+	TemplateFile *string  `hcl:"template_file,optional"`
+	Remain       hcl.Body `hcl:",remain"`
 }
 
 // PipelineBlock encapsulates the raw HCL body of pipeline steps to preserve definition order.

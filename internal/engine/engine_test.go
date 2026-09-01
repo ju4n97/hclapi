@@ -288,3 +288,112 @@ endpoint "POST /api/v1/users" {
 		}
 	})
 }
+
+func TestEngine_OpenAPIRoutes(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manifestContent := `
+server {
+  openapi {
+    title   = "Store API"
+    version = "1.0.0"
+  }
+}
+
+endpoint "GET /docs" {
+  openapi {
+    ui = "scalar"
+  }
+}
+
+endpoint "GET /openapi.json" {
+  openapi {
+    format = "json"
+  }
+}
+
+endpoint "GET /openapi.yaml" {
+  openapi {
+    format = "yaml"
+  }
+}
+
+endpoint "GET /ping" {
+  description = "Health check"
+  pipeline {
+    respond {
+      status = 200
+      body   = { ok = true }
+    }
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
+		t.Fatalf("failed to write test manifest: %v", err)
+	}
+
+	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
+	if err != nil {
+		t.Fatalf("failed to initialize engine: %v", err)
+	}
+
+	t.Run("Serves interactive Scalar documentation at /docs", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+			t.Errorf("expected text/html, got %q", ct)
+		}
+		if !strings.Contains(rec.Body.String(), "scalar") {
+			t.Errorf("expected Scalar CDN reference in html response")
+		}
+	})
+
+	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json [1.2, 1.3]", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Errorf("expected application/json, got %q", ct)
+		}
+
+		var doc map[string]any
+		if err := json.NewDecoder(rec.Body).Decode(&doc); err != nil {
+			t.Fatalf("failed to parse JSON response: %v", err)
+		}
+		if doc["openapi"] != "3.1.0" {
+			t.Errorf("expected openapi 3.1.0, got %v", doc["openapi"])
+		}
+	})
+
+	t.Run("Serves raw OpenAPI 3.1 YAML at /openapi.yaml", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.yaml", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/yaml") {
+			t.Errorf("expected application/yaml, got %q", ct)
+		}
+		if !strings.Contains(rec.Body.String(), "openapi: 3.1.0") {
+			t.Errorf("expected yaml header in response")
+		}
+	})
+}

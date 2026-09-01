@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/ju4n97/hclapi/internal/core"
@@ -136,10 +137,83 @@ func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
 	return conn, nil
 }
 
-// SchemaBlock represents a request body schema definition block.
+// FieldBlock defines a single field's data type, presence, defaults, and validation constraints.
+type FieldBlock struct {
+	Name        string         `hcl:"name,label"`
+	Type        hcl.Expression `hcl:"type,attr"`
+	Required    bool           `hcl:"required,optional"`
+	Default     hcl.Expression `hcl:"default,optional"`
+	Description *string        `hcl:"description,optional"`
+	Enum        hcl.Expression `hcl:"enum,optional"`
+	Format      *string        `hcl:"format,optional"`
+	Pattern     *string        `hcl:"pattern,optional"`
+	MinLength   *int           `hcl:"min_length,optional"`
+	MaxLength   *int           `hcl:"max_length,optional"`
+	Min         *float64       `hcl:"min,optional"`
+	Max         *float64       `hcl:"max,optional"`
+	MinItems    *int           `hcl:"min_items,optional"`
+	MaxItems    *int           `hcl:"max_items,optional"`
+	UniqueItems bool           `hcl:"unique_items,optional"`
+	Remain      hcl.Body       `hcl:",remain"`
+}
+
+// FieldGroupBlock represents a collection of field validation rules (for path, query, headers, or inline body).
+type FieldGroupBlock struct {
+	Fields []FieldBlock `hcl:"field,block"`
+	Remain hcl.Body     `hcl:",remain"`
+}
+
+// SchemaBlock represents a reusable request payload schema definition block.
 type SchemaBlock struct {
-	Name   string   `hcl:"name,label"`
-	Remain hcl.Body `hcl:",remain"`
+	Name        string       `hcl:"name,label"`
+	Description *string      `hcl:"description,optional"`
+	Fields      []FieldBlock `hcl:"field,block"`
+	Remain      hcl.Body     `hcl:",remain"`
+}
+
+// RequestBlock represents parameter and body validation rules for an endpoint.
+type RequestBlock struct {
+	Path       *FieldGroupBlock `hcl:"path,block"`
+	Query      *FieldGroupBlock `hcl:"query,block"`
+	Headers    *FieldGroupBlock `hcl:"headers,block"`
+	Remain     hcl.Body         `hcl:",remain"`
+	BodyExpr   hcl.Expression   // Populated if `body = schema.name` attribute is used
+	BodyInline *FieldGroupBlock // Populated if inline `body { field ... }` block is used
+}
+
+// DecodeBody decodes the body attribute expression or inline body block from the request body remainder.
+func (r *RequestBlock) DecodeBody(ctx *hcl.EvalContext) error {
+	if r == nil || r.Remain == nil {
+		return nil
+	}
+
+	content, _, diags := r.Remain.PartialContent(&hcl.BodySchema{
+		Attributes: []hcl.AttributeSchema{
+			{Name: "body", Required: false},
+		},
+		Blocks: []hcl.BlockHeaderSchema{
+			{Type: "body"},
+		},
+	})
+	if diags.HasErrors() {
+		return fmt.Errorf("request body: %w", diags)
+	}
+
+	if attr, ok := content.Attributes["body"]; ok {
+		r.BodyExpr = attr.Expr
+	}
+
+	for _, block := range content.Blocks {
+		if block.Type == "body" {
+			var inline FieldGroupBlock
+			if err := gohcl.DecodeBody(block.Body, ctx, &inline); err.HasErrors() {
+				return fmt.Errorf("inline body block: %w", err)
+			}
+			r.BodyInline = &inline
+		}
+	}
+
+	return nil
 }
 
 // EndpointBlock represents a single HTTP route declaration block.
@@ -149,11 +223,6 @@ type EndpointBlock struct {
 	Request       *RequestBlock `hcl:"request,block"`
 	Pipeline      PipelineBlock `hcl:"pipeline,block"`
 	Remain        hcl.Body      `hcl:",remain"`
-}
-
-// RequestBlock represents the request validation block.
-type RequestBlock struct {
-	Remain hcl.Body `hcl:",remain"`
 }
 
 // PipelineBlock encapsulates the raw HCL body of pipeline steps to preserve definition order.

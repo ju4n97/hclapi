@@ -1,0 +1,195 @@
+# schema
+
+Declares structural, type, and semantic validation rules for incoming requests. Validation runs during request ingress before the pipeline begins execution.
+
+## Declaration
+
+```hcl
+schema "user_create" {
+  field "email" {
+    type        = string
+    required    = true
+    format      = "email"
+    description = "Primary user login and notification email"
+  }
+
+  field "account_type" {
+    type     = string
+    required = true
+    enum     = ["individual", "business"]
+  }
+
+  field "username" {
+    type       = string
+    required   = true
+    min_length = 3
+    max_length = 30
+    pattern    = "^[a-zA-Z0-9_-]+$"
+  }
+
+  field "age" {
+    type     = int
+    required = false
+    min      = 18
+    max      = 120
+  }
+
+  field "role" {
+    type    = string
+    default = "member"
+  }
+
+  field "tags" {
+    type         = list(string)
+    required     = false
+    min_items    = 1
+    max_items    = 10
+    unique_items = true
+  }
+}
+```
+
+The schema is referenced in endpoint definitions as `schema.<name>`.
+
+## Field attributes & constraints
+
+All field constraints map 1:1 to OpenAPI 3.1 / JSON Schema standards:
+
+| Attribute      | Type     | Applicable types         | Default  | Description                                                                           |
+| :------------- | :------- | :----------------------- | :------- | :------------------------------------------------------------------------------------ |
+| `type`         | `type`   | All                      | required | Expected data type (`string`, `int`, `float`, `bool`, `any`, `list(...)`, `map(...)`) |
+| `required`     | `bool`   | All                      | `false`  | If `true`, rejects the request with HTTP 422 if the field is missing                  |
+| `default`      | `any`    | Optional fields          | `null`   | Fallback value injected automatically if field is absent                              |
+| `description`  | `string` | All                      | `null`   | Human-readable explanation exported to OpenAPI documentation                          |
+| `enum`         | `list`   | `string`, `int`, `float` | `null`   | Restricts allowed values to an explicit list                                          |
+| `format`       | `string` | `string`                 | `null`   | Standard OpenAPI format constraint (see below)                                        |
+| `pattern`      | `string` | `string`                 | `null`   | Regular expression pattern the string must match                                      |
+| `min_length`   | `int`    | `string`                 | `null`   | Minimum string character length                                                       |
+| `max_length`   | `int`    | `string`                 | `null`   | Maximum string character length                                                       |
+| `min`          | `number` | `int`, `float`           | `null`   | Minimum numeric value (inclusive)                                                     |
+| `max`          | `number` | `int`, `float`           | `null`   | Maximum numeric value (inclusive)                                                     |
+| `min_items`    | `int`    | `list`                   | `null`   | Minimum number of items in a list                                                     |
+| `max_items`    | `int`    | `list`                   | `null`   | Maximum number of items in a list                                                     |
+| `unique_items` | `bool`   | `list`                   | `false`  | If `true`, requires all elements in the list to be unique                             |
+
+## Built-in format validators
+
+| Format        | Description                       | Example valid value                      |
+| :------------ | :-------------------------------- | :--------------------------------------- |
+| `"email"`     | RFC 5322 email address            | `"jane@example.com"`                     |
+| `"uuid"`      | UUID v4 / v7 identifier           | `"f47ac10b-58cc-4372-a567-0e02b2c3d479"` |
+| `"uri"`       | RFC 3986 absolute URI             | `"https://api.example.com/callback"`     |
+| `"date-time"` | RFC 3339 / ISO 8601 timestamp     | `"2026-08-31T20:00:00Z"`                 |
+| `"date"`      | RFC 3339 full-date (`YYYY-MM-DD`) | `"2026-08-31"`                           |
+| `"ipv4"`      | Dotted-decimal IPv4 address       | `"192.168.1.1"`                          |
+| `"ipv6"`      | Colon-separated IPv6 address      | `"2001:0db8:85a3::8a2e:0370:7334"`       |
+| `"hostname"`  | RFC 1123 Hostname / FQDN          | `"api.service.internal"`                 |
+
+## Binding schemas to endpoints
+
+### Named schema reference
+
+```hcl
+endpoint "POST /api/v1/users" {
+  request {
+    body = schema.user_create
+  }
+
+  pipeline {
+    sql "insert_user" {
+      connection = connection.postgres.main
+      query      = "INSERT INTO users (email, name, role) VALUES (@email, @name, @role) RETURNING id"
+      args = {
+        email = ctx.request.body.email
+        name  = ctx.request.body.username
+        role  = ctx.request.body.role # Automatically receives default "member" if omitted
+      }
+    }
+
+    respond {
+      status = 201
+      body   = steps.insert_user.row
+    }
+  }
+}
+```
+
+### Inline parameter validation (Path, Query, Headers)
+
+```hcl
+endpoint "GET /api/v1/search" {
+  request {
+    headers {
+      field "x-api-key" {
+        type     = string
+        required = true
+        format   = "uuid"
+      }
+    }
+    query {
+      field "q" {
+        type       = string
+        required   = true
+        min_length = 2
+      }
+      field "limit" {
+        type    = int
+        default = 20
+        min     = 1
+        max     = 100
+      }
+      field "sort" {
+        type    = string
+        default = "desc"
+        enum    = ["asc", "desc"]
+      }
+    }
+  }
+
+  pipeline {
+    respond {
+      status = 200
+      body = {
+        query = ctx.request.query.q
+        limit = ctx.request.query.limit
+        sort  = ctx.request.query.sort
+      }
+    }
+  }
+}
+```
+
+## Validation failure responses (HTTP 422)
+
+When an incoming payload violates schema constraints, execution halts immediately before the pipeline runs. The engine returns an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details object detailing every failed constraint:
+
+```http
+HTTP/1.1 422 Unprocessable Entity
+Content-Type: application/problem+json
+
+{
+  "type": "urn:hclapi:error:validation-error",
+  "title": "Unprocessable Entity",
+  "status": 422,
+  "detail": "Request payload failed schema validation constraints",
+  "instance": "/api/v1/users",
+  "invalid_params": [
+    {
+      "name": "email",
+      "reason": "must be a valid email format"
+    },
+    {
+      "name": "account_type",
+      "reason": "must be one of: [\"individual\", \"business\"]"
+    },
+    {
+      "name": "username",
+      "reason": "length must be at least 3 characters"
+    },
+    {
+      "name": "age",
+      "reason": "must be greater than or equal to 18"
+    }
+  ]
+}
+```

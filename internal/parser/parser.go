@@ -51,6 +51,7 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 
 			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
 			mergedManifest.Connections = append(mergedManifest.Connections, fileManifest.Connections...)
+			mergedManifest.Schemas = append(mergedManifest.Schemas, fileManifest.Schemas...)
 			if fileManifest.Server != nil {
 				mergedManifest.Server = fileManifest.Server
 			}
@@ -60,6 +61,24 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Validate unique schema names across files
+	seenSchemas := make(map[string]bool, len(mergedManifest.Schemas))
+	for _, schema := range mergedManifest.Schemas {
+		if seenSchemas[schema.Name] {
+			return nil, fmt.Errorf("duplicate schema declaration %q", "schema."+schema.Name)
+		}
+		seenSchemas[schema.Name] = true
+	}
+
+	// Decode request body attributes/blocks on all endpoints
+	for i := range mergedManifest.Endpoints {
+		if mergedManifest.Endpoints[i].Request != nil {
+			if err := mergedManifest.Endpoints[i].Request.DecodeBody(evalCtx); err != nil {
+				return nil, fmt.Errorf("endpoint %q: %w", mergedManifest.Endpoints[i].MethodAndPath, err)
+			}
+		}
 	}
 
 	// Validate unique connection keys (<driver>.<name>)

@@ -231,6 +231,272 @@ endpoint "GET /bad" {
 	})
 }
 
+func TestParse_SchemasAndRequests(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Parses standalone schema with fields and constraints", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"schema.hcl": `
+schema "user_create" {
+  description = "User creation payload"
+
+  field "email" {
+    type        = string
+    required    = true
+    format      = "email"
+    description = "Primary email address"
+  }
+
+  field "account_type" {
+    type     = string
+    required = true
+    enum     = ["individual", "business"]
+  }
+
+  field "username" {
+    type       = string
+    required   = true
+    min_length = 3
+    max_length = 30
+    pattern    = "^[a-zA-Z0-9_-]+$"
+  }
+
+  field "age" {
+    type     = int
+    required = false
+    min      = 18
+    max      = 120
+  }
+
+  field "tags" {
+    type         = list(string)
+    required     = false
+    min_items    = 1
+    max_items    = 10
+    unique_items = true
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		if len(manifest.Schemas) != 1 {
+			t.Fatalf("expected 1 schema block, got %d", len(manifest.Schemas))
+		}
+
+		schema := manifest.Schemas[0]
+		if schema.Name != "user_create" || *schema.Description != "User creation payload" {
+			t.Errorf("unexpected schema name/description: %+v", schema)
+		}
+		if len(schema.Fields) != 5 {
+			t.Fatalf("expected 5 fields, got %d", len(schema.Fields))
+		}
+
+		// Field 0: email
+		if schema.Fields[0].Name != "email" || !schema.Fields[0].Required || *schema.Fields[0].Format != "email" {
+			t.Errorf("field 0 mismatch: %+v", schema.Fields[0])
+		}
+
+		// Field 1: account_type with enum
+		if schema.Fields[1].Name != "account_type" || schema.Fields[1].Enum == nil {
+			t.Errorf("field 1 mismatch: %+v", schema.Fields[1])
+		}
+
+		// Field 2: username with bounds and pattern
+		if schema.Fields[2].Name != "username" || *schema.Fields[2].MinLength != 3 || *schema.Fields[2].MaxLength != 30 ||
+			*schema.Fields[2].Pattern != "^[a-zA-Z0-9_-]+$" {
+			t.Errorf("field 2 mismatch: %+v", schema.Fields[2])
+		}
+
+		// Field 3: age with numeric bounds
+		if schema.Fields[3].Name != "age" || *schema.Fields[3].Min != 18 || *schema.Fields[3].Max != 120 {
+			t.Errorf("field 3 mismatch: %+v", schema.Fields[3])
+		}
+
+		// Field 4: tags with array bounds
+		if schema.Fields[4].Name != "tags" || *schema.Fields[4].MinItems != 1 || *schema.Fields[4].MaxItems != 10 ||
+			!schema.Fields[4].UniqueItems {
+			t.Errorf("field 4 mismatch: %+v", schema.Fields[4])
+		}
+	})
+
+	t.Run("Parses endpoint request with path, query, headers, and body reference", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"endpoint.hcl": `
+endpoint "POST /users/{id}" {
+  request {
+    path {
+      field "id" {
+        type     = int
+        required = true
+      }
+    }
+    headers {
+      field "x-api-key" {
+        type     = string
+        required = true
+        format   = "uuid"
+      }
+    }
+    query {
+      field "referrer" {
+        type     = string
+        required = false
+      }
+    }
+    body = schema.user_create
+  }
+
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		if len(manifest.Endpoints) != 1 {
+			t.Fatalf("expected 1 endpoint, got %d", len(manifest.Endpoints))
+		}
+
+		req := manifest.Endpoints[0].Request
+		if req == nil {
+			t.Fatal("expected request block to be parsed")
+		}
+
+		if req.Path == nil || len(req.Path.Fields) != 1 || req.Path.Fields[0].Name != "id" {
+			t.Errorf("path field group mismatch: %+v", req.Path)
+		}
+		if req.Headers == nil || len(req.Headers.Fields) != 1 || req.Headers.Fields[0].Name != "x-api-key" {
+			t.Errorf("headers field group mismatch: %+v", req.Headers)
+		}
+		if req.Query == nil || len(req.Query.Fields) != 1 || req.Query.Fields[0].Name != "referrer" {
+			t.Errorf("query field group mismatch: %+v", req.Query)
+		}
+		if req.BodyExpr == nil {
+			t.Errorf("expected body reference expression to be parsed")
+		}
+	})
+
+	t.Run("Parses endpoint request with inline body block", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"inline.hcl": `
+endpoint "POST /webhooks" {
+  request {
+    body {
+      field "event" {
+        type     = string
+        required = true
+      }
+      field "payload" {
+        type     = any
+        required = true
+      }
+    }
+  }
+
+  pipeline {
+    respond {
+      status = 200
+    }
+  }
+}
+`,
+		})
+
+		manifest, err := parser.Parse(dir, eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected parse error: %v", err)
+		}
+
+		req := manifest.Endpoints[0].Request
+		if req == nil || req.BodyInline == nil || len(req.BodyInline.Fields) != 2 {
+			t.Fatalf("expected inline body with 2 fields, got: %+v", req)
+		}
+		if req.BodyInline.Fields[0].Name != "event" || req.BodyInline.Fields[1].Name != "payload" {
+			t.Errorf("inline body fields mismatch: %+v", req.BodyInline.Fields)
+		}
+	})
+
+	t.Run("Rejects duplicate schema declarations across files", func(t *testing.T) {
+		t.Parallel()
+
+		dir := writeManifestTree(t, map[string]string{
+			"schema1.hcl": `
+schema "user" {
+  field "name" {
+    type = string
+  }
+}
+`,
+			"schema2.hcl": `
+schema "user" {
+  field "email" {
+    type = string
+  }
+}
+`,
+		})
+
+		_, err := parser.Parse(dir, eval.BaseContext())
+		if err == nil {
+			t.Fatal("expected error on duplicate schema name, got nil")
+		}
+		if !strings.Contains(err.Error(), `duplicate schema declaration "schema.user"`) {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+}
+
+func TestParse_BootTimeEvaluation(t *testing.T) {
+	t.Setenv("APP_USER_PATTERN", "^[a-z0-9_]+$")
+
+	dir := writeManifestTree(t, map[string]string{
+		"schema.hcl": `
+schema "account" {
+  field "username" {
+    type        = string
+    pattern     = env("APP_USER_PATTERN")
+    description = format("Minimum length is %d", 3)
+  }
+}
+`,
+	})
+
+	manifest, err := parser.Parse(dir, eval.BaseContext())
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	if len(manifest.Schemas) != 1 || len(manifest.Schemas[0].Fields) != 1 {
+		t.Fatalf("expected 1 schema with 1 field, got: %+v", manifest.Schemas)
+	}
+
+	field := manifest.Schemas[0].Fields[0]
+	if field.Pattern == nil || *field.Pattern != "^[a-z0-9_]+$" {
+		t.Errorf("expected pattern from env() '^[a-z0-9_]+$', got: %v", field.Pattern)
+	}
+	if field.Description == nil || *field.Description != "Minimum length is 3" {
+		t.Errorf("expected description from format() 'Minimum length is 3', got: %v", field.Description)
+	}
+}
+
 func TestDecodePipelineSteps(t *testing.T) {
 	t.Parallel()
 

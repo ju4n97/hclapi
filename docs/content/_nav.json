@@ -23,5 +23,10 @@
     "text": "CLI reference",
     "link": "/cli/hclapi",
     "activeMatch": "^/cli/"
+  },
+  {
+    "text": "OpenAPI",
+    "link": "/openapi/overview",
+    "activeMatch": "^/openapi/"
   }
 ]

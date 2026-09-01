@@ -32,6 +32,18 @@ Start the hclapi HTTP server.
 
 **--verbose, -v**: Enable verbose debug logging.
 
+#### openapi
+
+Export the compiled OpenAPI 3.1 specification for your manifests.
+
+**--config, -c, --manifests, -m**="": Path to .hcl file or directory containing manifests. (default: ".")
+
+**--format, -f**="": Output format: json or yaml. (default: "json")
+
+**--output, -o**="": Path to output file (defaults to stdout).
+
+**--pretty**: Pretty-print JSON output.
+
 #### version, v
 
 Show detailed version information.

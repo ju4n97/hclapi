@@ -1,0 +1,124 @@
+# Interactive renderers
+
+`hclapi` embeds 4 interactive documentation UI renderers directly inside the single binary. Renderers are served by declaring an `endpoint` with an `openapi {}` block.
+
+## 1. Scalar (Default)
+
+A modern, fast, and clean interactive API reference featuring a dark/light mode toggle, integrated interactive request client, and code snippet generation in 15+ languages.
+
+```hcl
+endpoint "GET /docs" {
+  description = "Interactive API reference portal."
+  auth        = []
+
+  openapi {
+    ui = "scalar"
+  }
+}
+```
+
+## 2. Stoplight Elements
+
+A clean, responsive, Stripe-like documentation UI with a two-column layout, sidebar navigation, and integrated request testing.
+
+```hcl
+endpoint "GET /docs/elements" {
+  openapi {
+    ui = "elements"
+  }
+}
+```
+
+## 3. Swagger UI
+
+The classic, widely recognized interactive OpenAPI testing interface.
+
+```hcl
+endpoint "GET /swagger" {
+  openapi {
+    ui = "swagger"
+  }
+}
+```
+
+## 4. Redoc
+
+A 3-column documentation layout designed for deep technical reading.
+
+```hcl
+endpoint "GET /redoc" {
+  openapi {
+    ui = "redoc"
+  }
+}
+```
+
+## Custom HTML templates
+
+To completely customize your documentation portal, omit `ui` and provide your own HTML template via an inline heredoc or an external file.
+
+### Inline heredoc:
+
+```hcl
+endpoint "GET /docs" {
+  openapi {
+    template = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>{{ .Title }} - Developer Hub</title>
+          <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+        </head>
+        <body>
+          <div id="scalar" data-spec-url="{{ .SpecURL }}"></div>
+        </body>
+      </html>
+    HTML
+  }
+}
+```
+
+### External template file:
+
+```hcl
+endpoint "GET /docs" {
+  openapi {
+    template_file = "./custom-portal.html" # Resolved relative to the manifest directory
+  }
+}
+```
+
+## Template variables
+
+All HTML templates (built-in and custom) have access to the following data context:
+
+| Variable             | Description                   | Example value               |
+| :------------------- | :---------------------------- | :-------------------------- |
+| `{{ .Title }}`       | Configured API title          | `"Acme Storefront API"`     |
+| `{{ .Version }}`     | Configured API version        | `"1.2.0"`                   |
+| `{{ .Description }}` | Rendered Markdown description | `"Production API service."` |
+| `{{ .SpecURL }}`     | Route path to the JSON spec   | `"/openapi.json"`           |
+| `{{ .SpecYAMLURL }}` | Route path to the YAML spec   | `"/openapi.yaml"`           |
+
+## Protecting documentation with Basic Auth
+
+Since documentation UIs are explicit `endpoint` blocks, you can restrict access to internal API portals using standard authentication guards:
+
+```hcl
+# 1. Define Basic Auth guard
+auth "basic_admin" {
+  type     = "basic"
+  username = env("ADMIN_USER")
+  password = env("ADMIN_PASS")
+}
+
+# 2. Protect Swagger UI with Basic Auth
+endpoint "GET /admin/swagger" {
+  description = "Internal Swagger UI for engineering team."
+  auth        = [auth.basic_admin]
+
+  openapi {
+    ui = "swagger"
+  }
+}
+```

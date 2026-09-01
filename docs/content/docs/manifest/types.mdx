@@ -20,21 +20,21 @@ Used inside `schema` and `request` field definitions (`field "<name>" { type = <
 
 ```hcl
 schema "product" {
-  field "sku" { 
-    type = string, 
-    required = true 
+  field "sku" {
+    type = string,
+    required = true
   }
-  field "price" { 
-    type = float,  
-    required = true, 
-    min = 0.01 
+  field "price" {
+    type = float,
+    required = true,
+    min = 0.01
   }
-  field "tags" { 
-    type = list(string), 
+  field "tags" {
+    type = list(string),
     default = []
   }
-  field "metadata" { 
-    type = map(any) 
+  field "metadata" {
+    type = map(any)
   }
 }
 ```

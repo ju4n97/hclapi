@@ -1,4 +1,4 @@
-package engine
+package compiler
 
 import (
 	"fmt"
@@ -18,11 +18,26 @@ type CompiledRequestRules struct {
 	BodyFields   []core.Field
 }
 
+// CompiledOpenAPIHandler holds configuration for an endpoint that serves documentation or raw specifications.
+type CompiledOpenAPIHandler struct {
+	UI           string
+	Format       string
+	SpecURL      string
+	Template     string
+	TemplateFile string
+	BaseDir      string
+	Title        string
+	Version      string
+	Description  string
+}
+
 // CompiledEndpoint represents a fully verified and compiled HTTP route.
 type CompiledEndpoint struct {
 	MethodAndPath string
+	Description   string
 	Steps         []parser.ParsedStep
 	Rules         CompiledRequestRules
+	OpenAPI       *CompiledOpenAPIHandler
 }
 
 // CompiledService represents the entire statically compiled and verified manifest tree.
@@ -62,7 +77,7 @@ func Compile(manifest *parser.Manifest, evalCtx *hcl.EvalContext) (*CompiledServ
 	}
 
 	// Compile and validate endpoints and pipeline steps
-	endpoints, err := compileEndpoints(manifest.Endpoints, connIndex, schemasMap, evalCtx)
+	endpoints, err := compileEndpoints(manifest.Endpoints, connIndex, schemasMap, serverConfig, evalCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +139,7 @@ func compileEndpoints(
 	blocks []parser.EndpointBlock,
 	connIndex map[string]bool,
 	schemasMap map[string][]core.Field,
+	serverConfig core.Server,
 	evalCtx *hcl.EvalContext,
 ) ([]CompiledEndpoint, error) {
 	seenRoutes := make(map[string]bool, len(blocks))
@@ -135,11 +151,56 @@ func compileEndpoints(
 		}
 		seenRoutes[ep.MethodAndPath] = true
 
-		steps, err := parser.DecodePipelineSteps(&ep.Pipeline)
+		desc := ""
+		if ep.Description != nil {
+			desc = *ep.Description
+		}
+
+		hasPipeline := ep.Pipeline != nil && ep.Pipeline.Body != nil
+		hasOpenAPI := ep.OpenAPI != nil
+
+		if !hasPipeline && !hasOpenAPI {
+			return nil, fmt.Errorf("endpoint %q: must declare either a pipeline or an openapi block", ep.MethodAndPath)
+		}
+		if hasPipeline && hasOpenAPI {
+			return nil, fmt.Errorf("endpoint %q: cannot declare both pipeline and openapi blocks", ep.MethodAndPath)
+		}
+
+		if hasOpenAPI {
+			handler := &CompiledOpenAPIHandler{
+				UI:          "scalar",
+				Title:       serverConfig.OpenAPI.Title,
+				Version:     serverConfig.OpenAPI.Version,
+				Description: serverConfig.OpenAPI.Description,
+			}
+			if ep.OpenAPI.UI != nil {
+				handler.UI = *ep.OpenAPI.UI
+			}
+			if ep.OpenAPI.Format != nil {
+				handler.Format = *ep.OpenAPI.Format
+			}
+			if ep.OpenAPI.SpecURL != nil {
+				handler.SpecURL = *ep.OpenAPI.SpecURL
+			}
+			if ep.OpenAPI.Template != nil {
+				handler.Template = *ep.OpenAPI.Template
+			}
+			if ep.OpenAPI.TemplateFile != nil {
+				handler.TemplateFile = *ep.OpenAPI.TemplateFile
+			}
+
+			endpoints = append(endpoints, CompiledEndpoint{
+				MethodAndPath: ep.MethodAndPath,
+				Description:   desc,
+				OpenAPI:       handler,
+			})
+			continue
+		}
+
+		steps, err := parser.DecodePipelineSteps(ep.Pipeline)
 		if err != nil {
 			return nil, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
 		}
-
 		if len(steps) == 0 {
 			return nil, fmt.Errorf("endpoint %q: pipeline must declare at least one step", ep.MethodAndPath)
 		}
@@ -155,6 +216,7 @@ func compileEndpoints(
 
 		endpoints = append(endpoints, CompiledEndpoint{
 			MethodAndPath: ep.MethodAndPath,
+			Description:   desc,
 			Steps:         steps,
 			Rules:         rules,
 		})
@@ -174,7 +236,7 @@ func validatePipelineSteps(route string, steps []parser.ParsedStep, connIndex ma
 			seenStepNames[step.Name] = true
 		}
 
-		// Statically verify SQL connection references exist
+		// Verify SQL connection references exist
 		if step.Type == parser.StepTypeSQL && step.SQL != nil {
 			connRef, err := parser.ResolveConnectionRef(step.SQL.Connection)
 			if err != nil {

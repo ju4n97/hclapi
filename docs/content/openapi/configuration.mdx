@@ -1,0 +1,84 @@
+# OpenAPI configuration
+
+OpenAPI document metadata, target servers, tags, and endpoint handler options are configured using standard HCL blocks.
+
+## Global specification metadata (`server.openapi {}`)
+
+Declared inside `server {}` to configure the global document header:
+
+```hcl
+server {
+  host = "0.0.0.0"
+  port = 8080
+
+  openapi {
+    title   = "Acme Storefront API"
+    version = "1.2.0"
+
+    description = <<-MARKDOWN
+      ## Overview
+      Production customer account and order management API service.
+
+      ### Authentication
+      Most endpoints require a valid API key passed via the `X-API-Key` header.
+    MARKDOWN
+
+    servers = [
+      {
+        url         = "https://api.example.com/v1"
+        description = "Production cluster"
+      },
+      {
+        url         = "http://localhost:8080"
+        description = "Local development server"
+      }
+    ]
+
+    tags = [
+      {
+        name        = "users"
+        description = "Customer accounts, authentication, and profiles"
+      },
+      {
+        name        = "orders"
+        description = "Order checkout, cart mutations, and payment history"
+      }
+    ]
+
+    contact {
+      name  = "API Engineering"
+      email = "support@example.com"
+      url   = "https://example.com/developers"
+    }
+
+    license {
+      name = "MIT"
+      url  = "https://opensource.org/licenses/MIT"
+    }
+  }
+}
+```
+
+## Global metadata attributes (`server.openapi`)
+
+| Attribute     | Type           | Default               | Description                                                          |
+| :------------ | :------------- | :-------------------- | :------------------------------------------------------------------- |
+| `title`       | `string`       | `"API Documentation"` | Human-readable title in OpenAPI `info.title`                         |
+| `version`     | `string`       | `"1.0.0"`             | API version in OpenAPI `info.version`                                |
+| `description` | `string`       | `""`                  | Multi-line Markdown description in OpenAPI `info.description`        |
+| `servers`     | `list(object)` | `[]`                  | List of deployment servers (`url`, `description`)                    |
+| `tags`        | `list(object)` | `[]`                  | List of category tags for operation grouping (`name`, `description`) |
+| `contact`     | `block`        | `null`                | Contact information (`name`, `email`, `url`)                         |
+| `license`     | `block`        | `null`                | Legal license information (`name`, `url`)                            |
+
+## Endpoint handler attributes (`endpoint.openapi`)
+
+Declared inside an `endpoint` block to serve a documentation UI or raw specification:
+
+| Attribute       | Type     | Default      | Description                                                            |
+| :-------------- | :------- | :----------- | :--------------------------------------------------------------------- |
+| `ui`            | `string` | `"scalar"`   | Built-in UI renderer: `"scalar"`, `"elements"`, `"swagger"`, `"redoc"` |
+| `format`        | `string` | `null`       | Raw specification output format: `"json"` or `"yaml"`                  |
+| `spec_url`      | `string` | Auto-derived | URL path to the OpenAPI specification to load                          |
+| `template`      | `string` | `""`         | Custom HTML template string (heredoc)                                  |
+| `template_file` | `string` | `""`         | Path to custom HTML template file relative to manifest                 |

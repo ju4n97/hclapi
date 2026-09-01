@@ -2,6 +2,42 @@ package core
 
 import "time"
 
+// OpenAPIServer defines a target server deployment in the OpenAPI spec.
+type OpenAPIServer struct {
+	URL         string
+	Description string
+}
+
+// OpenAPITag defines an operation category tag.
+type OpenAPITag struct {
+	Name        string
+	Description string
+}
+
+// OpenAPIContact defines API contact details.
+type OpenAPIContact struct {
+	Name  string
+	Email string
+	URL   string
+}
+
+// OpenAPILicense defines API licensing information.
+type OpenAPILicense struct {
+	Name string
+	URL  string
+}
+
+// OpenAPIConfig holds global OpenAPI 3.1 document header metadata.
+type OpenAPIConfig struct {
+	Title       string
+	Version     string
+	Description string
+	Servers     []OpenAPIServer
+	Tags        []OpenAPITag
+	Contact     *OpenAPIContact
+	License     *OpenAPILicense
+}
+
 // Server defines the resolved HTTP server configuration.
 type Server struct {
 	Host         string
@@ -10,7 +46,8 @@ type Server struct {
 	WriteTimeout Duration
 	IdleTimeout  Duration
 	MaxBodySize  ByteSize
-	ErrorBaseURL string
+	ErrorBaseURL string // TODO: validate introducing a new block to put stuff like this
+	OpenAPI      OpenAPIConfig
 }
 
 // DefaultServer returns baseline production configuration values.
@@ -22,6 +59,10 @@ func DefaultServer() Server {
 		WriteTimeout: Duration(15 * time.Second),
 		IdleTimeout:  Duration(60 * time.Second),
 		MaxBodySize:  ByteSize(10 * 1024 * 1024),
+		OpenAPI: OpenAPIConfig{
+			Title:   "API Documentation",
+			Version: "1.0.0",
+		},
 	}
 }
 
@@ -45,6 +86,12 @@ func (s Server) WithDefaults() Server {
 	}
 	if s.MaxBodySize == 0 {
 		s.MaxBodySize = def.MaxBodySize
+	}
+	if s.OpenAPI.Title == "" {
+		s.OpenAPI.Title = def.OpenAPI.Title
+	}
+	if s.OpenAPI.Version == "" {
+		s.OpenAPI.Version = def.OpenAPI.Version
 	}
 	return s
 }

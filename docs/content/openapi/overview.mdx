@@ -1,0 +1,94 @@
+# OpenAPI overview
+
+`hclapi` statically analyzes your manifest Abstract Syntax Tree (AST) at boot time to compile a strict, 100% compliant **OpenAPI 3.1** specification.
+
+You don't need to maintain separate YAML files, write code annotations, or run external generators. The HCL manifest is the API contract.
+
+Additionally, no hidden routes are mounted behind your back. If an OpenAPI endpoint or interactive documentation portal is served by your application, it's explicitly declared as an `endpoint` block.
+
+## What is automatically derived
+
+Because `hclapi` manifests are statically typed, the compiler maps every part of your manifest directly into OpenAPI 3.1:
+
+| Manifest element                     | OpenAPI 3.1 element                                              |
+| :----------------------------------- | :--------------------------------------------------------------- |
+| `endpoint "POST /api/v1/users/{id}"` | `paths["/api/v1/users/{id}"]["post"]`                            |
+| `description = "..."`                | `operation.description` and `operation.summary`                  |
+| `{id}` and `{filepath...}`           | `parameters` with `in: path`, `required: true`                   |
+| `request.query` fields               | `parameters` with `in: query` (with types, defaults, and bounds) |
+| `request.headers` fields             | `parameters` with `in: header` (with format constraints)         |
+| `request.body` / `schema`            | `requestBody.content["application/json"].schema`                 |
+| `respond { status = 200 }`           | `responses["200"]`                                               |
+| `catch "23505" { status = 409 }`     | `responses["409"]` (Conflict)                                    |
+| Schema validation engine             | `responses["422"]` (Unprocessable Entity)                        |
+| Request body size enforcement        | `responses["413"]` (Payload Too Large)                           |
+
+## Explicit endpoint declaration
+
+You control the exact paths, renderers, and access guards for your documentation by declaring explicit `endpoint` blocks:
+
+```hcl
+# Public interactive documentation portal using Scalar
+endpoint "GET /docs" {
+  description = "Public interactive API documentation."
+  auth        = []
+
+  openapi {
+    ui = "scalar"
+  }
+}
+
+# Raw OpenAPI 3.1 JSON specification
+endpoint "GET /openapi.json" {
+  openapi {
+    format = "json"
+  }
+}
+
+# Raw OpenAPI 3.1 YAML specification
+endpoint "GET /openapi.yaml" {
+  openapi {
+    format = "yaml"
+  }
+}
+
+# Internal Swagger UI protected by Basic Auth
+endpoint "GET /admin/swagger" {
+  description = "Internal Swagger UI for engineering team."
+  auth        = [auth.basic_admin]
+
+  openapi {
+    ui = "swagger"
+  }
+}
+```
+
+## Static CLI export
+
+You can export the compiled OpenAPI document directly from your terminal or CI/CD pipeline without starting the HTTP server:
+
+```sh
+# Export JSON to stdout
+hclapi openapi -c ./api
+
+# Export JSON to file
+hclapi openapi -c ./api -o ./openapi.json
+
+# Export YAML to stdout
+hclapi openapi -c ./api --format=yaml
+
+# Export YAML to file
+hclapi openapi -c ./api --format=yaml -o ./openapi.yaml
+```
+
+The exported specification can be fed directly into an OpenAPI SDK generator or client generator.
+
+## SDK options
+
+| Languages                                    | Recommendation                                                                                                                                                         |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript / JavaScript                      | [openapi-typescript](https://github.com/openapi-ts/openapi-typescript), [hey-api](https://github.com/hey-api/openapi-ts), [Orval](https://github.com/orval-labs/orval) |
+| Python, Go, Java, C# / .NET, PHP, Ruby, Rust | [OpenAPI Generator](https://github.com/OpenAPITools/openapi-generator)                                                                                                 |
+| Go                                           | [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen)                                                                                                           |
+| Python                                       | [datamodel-code-generator](https://github.com/koxudaxi/datamodel-code-generator)                                                                                       |
+| Rust                                         | [Progenitor](https://github.com/oxidecomputer/progenitor)                                                                                                              |

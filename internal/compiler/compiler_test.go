@@ -1,4 +1,4 @@
-package engine_test
+package compiler_test
 
 import (
 	"os"
@@ -7,14 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/engine"
+	"github.com/ju4n97/hclapi/internal/compiler"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
 func writeManifest(t *testing.T, content string) *parser.Manifest {
 	t.Helper()
-
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "manifest.hcl")
 
@@ -39,6 +38,12 @@ server {
   port          = 9000
   read_timeout  = "30s"
   max_body_size = "25MB"
+
+  openapi {
+    title       = "Store API"
+    version     = "2.0.0"
+    description = "Production API"
+  }
 }
 
 connection "postgres" "primary" {
@@ -54,6 +59,12 @@ schema "user_create" {
     type     = string
     required = true
     format   = "email"
+  }
+}
+
+endpoint "GET /docs" {
+  openapi {
+    ui = "scalar"
   }
 }
 
@@ -83,7 +94,7 @@ endpoint "POST /api/v1/users" {
 }
 `)
 
-	service, err := engine.Compile(manifest, eval.BaseContext())
+	service, err := compiler.Compile(manifest, eval.BaseContext())
 	if err != nil {
 		t.Fatalf("unexpected compilation error: %v", err)
 	}
@@ -97,6 +108,9 @@ endpoint "POST /api/v1/users" {
 	}
 	if service.Server.MaxBodySize.Bytes() != 25*1000*1000 {
 		t.Errorf("expected max_body_size 25MB, got %d", service.Server.MaxBodySize.Bytes())
+	}
+	if service.Server.OpenAPI.Title != "Store API" || service.Server.OpenAPI.Version != "2.0.0" {
+		t.Errorf("unexpected openapi title/version: %+v", service.Server.OpenAPI)
 	}
 
 	// Verify Connections compilation
@@ -112,9 +126,27 @@ endpoint "POST /api/v1/users" {
 		t.Fatalf("expected 1 schema 'user_create', got: %+v", service.Schemas)
 	}
 
-	// Verify Endpoints compilation
-	if len(service.Endpoints) != 1 || service.Endpoints[0].MethodAndPath != "POST /api/v1/users" {
-		t.Fatalf("expected 1 endpoint, got: %+v", service.Endpoints)
+	// Verify Endpoints compilation (1 docs endpoint + 1 API endpoint)
+	if len(service.Endpoints) != 2 {
+		t.Fatalf("expected 2 endpoints, got %d", len(service.Endpoints))
+	}
+
+	// Docs endpoint
+	docsEp := service.Endpoints[0]
+	if docsEp.OpenAPI == nil || docsEp.OpenAPI.UI != "scalar" {
+		t.Errorf("expected scalar openapi handler, got: %+v", docsEp.OpenAPI)
+	}
+	if docsEp.OpenAPI.Title != "Store API" {
+		t.Errorf("expected inherited title 'Store API', got %q", docsEp.OpenAPI.Title)
+	}
+
+	// API endpoint
+	apiEp := service.Endpoints[1]
+	if len(apiEp.Rules.HeaderFields) != 1 || apiEp.Rules.HeaderFields[0].Name != "x-api-key" {
+		t.Errorf("header rules mismatch: %+v", apiEp.Rules.HeaderFields)
+	}
+	if len(apiEp.Rules.BodyFields) != 1 || apiEp.Rules.BodyFields[0].Name != "email" {
+		t.Errorf("body rules mismatch: %+v", apiEp.Rules.BodyFields)
 	}
 }
 
@@ -154,6 +186,27 @@ endpoint "GET /api/v1/empty" {
 }
 `,
 			expectError: `endpoint "GET /api/v1/empty": pipeline must declare at least one step`,
+		},
+		{
+			name: "Rejects endpoint with both pipeline and openapi blocks",
+			manifest: `
+endpoint "GET /api/v1/invalid" {
+  openapi { ui = "scalar" }
+  pipeline {
+    respond { status = 200 }
+  }
+}
+`,
+			expectError: `endpoint "GET /api/v1/invalid": cannot declare both pipeline and openapi blocks`,
+		},
+		{
+			name: "Rejects endpoint without pipeline or openapi block",
+			manifest: `
+endpoint "GET /api/v1/missing-handler" {
+  description = "Missing handler"
+}
+`,
+			expectError: `endpoint "GET /api/v1/missing-handler": must declare either a pipeline or an openapi block`,
 		},
 		{
 			name: "Rejects duplicate step names within a pipeline",
@@ -258,7 +311,7 @@ connection "postgres" "main" {
 			t.Parallel()
 
 			manifest := writeManifest(t, tt.manifest)
-			_, err := engine.Compile(manifest, eval.BaseContext())
+			_, err := compiler.Compile(manifest, eval.BaseContext())
 			if err == nil {
 				t.Fatalf("expected compilation error containing %q, got nil", tt.expectError)
 			}

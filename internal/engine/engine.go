@@ -8,10 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 
+	"github.com/ju4n97/hclapi/internal/compiler"
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
 	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/openapi"
 	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/validator"
 )
@@ -48,7 +51,7 @@ func New(options core.Options) (*Engine, error) {
 	}
 
 	// Static compilation and reference verification pass
-	service, err := Compile(manifest, evalCtx)
+	service, err := compiler.Compile(manifest, evalCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -78,26 +81,101 @@ func New(options core.Options) (*Engine, error) {
 		logger:       logger,
 	}
 
+	var specJSON []byte
+	var specYAML []byte
+	hasOpenAPI := false
+	for _, endpoint := range service.Endpoints {
+		if endpoint.OpenAPI != nil {
+			hasOpenAPI = true
+			break
+		}
+	}
+	if hasOpenAPI {
+		specJSON, err = openapi.GenerateJSON(service, true)
+		if err != nil {
+			return nil, fmt.Errorf("generate OpenAPI 3.1 JSON: %w", err)
+		}
+		specYAML, err = openapi.GenerateYAML(service)
+		if err != nil {
+			return nil, fmt.Errorf("generate OpenAPI 3.1 YAML: %w", err)
+		}
+	}
+
 	// Bind compiled endpoints to the HTTP router
-	for _, ep := range service.Endpoints {
-		e.bindRoute(ep.MethodAndPath, ep.Steps, ep.Rules)
+	for _, endpoint := range service.Endpoints {
+		if endpoint.OpenAPI != nil {
+			e.bindOpenAPIRoute(endpoint, specJSON, specYAML)
+		} else {
+			e.bindRoute(endpoint)
+		}
 	}
 
 	return e, nil
 }
 
-func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep, reqRules CompiledRequestRules) {
+func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, specYAML []byte) {
+	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+		handler := endpoint.OpenAPI
+
+		if strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml") {
+			w.Header().Set("Content-Type", "application/yaml")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(specYAML)
+			return
+		}
+
+		if strings.EqualFold(handler.Format, "json") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(specJSON)
+			return
+		}
+
+		// Interactive documentation UI
+		specURL := handler.SpecURL
+		if specURL == "" {
+			specURL = "/openapi"
+		}
+
+		data := openapi.TemplateData{
+			Title:       handler.Title,
+			Version:     handler.Version,	
+			Description: handler.Description,	
+			SpecURL:     specURL + ".json",
+			SpecYAMLURL: specURL + ".yaml",
+		}
+
+		htmlBytes, err := openapi.RenderHTML(handler.UI, data, handler.Template, handler.TemplateFile, handler.BaseDir)
+		if err != nil {
+			e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
+			e.errorHandler(w, r, core.ProblemDetailsError{
+				Type:     e.server.ProblemType("internal-error"),
+				Title:    "Documentation Render Error",
+				Status:   http.StatusInternalServerError,
+				Detail:   err.Error(),
+				Instance: r.URL.Path,
+			})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(htmlBytes)
+	})
+}
+
+func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	var paramNames []string
-	matches := pathParamRegex.FindAllStringSubmatch(routePattern, -1)
+	matches := pathParamRegex.FindAllStringSubmatch(endpoint.MethodAndPath, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
 			paramNames = append(paramNames, match[1])
 		}
 	}
 
-	executor := NewPipelineExecutor(steps, e.goSteps, e.sqlManager)
+	executor := NewPipelineExecutor(endpoint.Steps, e.goSteps, e.sqlManager)
 
-	e.mux.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
+	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
 		hclapiCtx, err := core.NewContext(w, r,
 			core.WithPathParams(paramNames),
 			core.WithServer(e.server),
@@ -127,7 +205,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep, reqRu
 		}
 
 		// Ingress Schema Validation and normalization
-		invalidParams := e.validateRequest(hclapiCtx, reqRules)
+		invalidParams := e.validateRequest(hclapiCtx, endpoint.Rules)
 		if len(invalidParams) > 0 {
 			e.logger.WarnContext(
 				r.Context(),
@@ -162,7 +240,7 @@ func (e *Engine) bindRoute(routePattern string, steps []parser.ParsedStep, reqRu
 	})
 }
 
-func (e *Engine) validateRequest(ctx *core.Context, rules CompiledRequestRules) []core.InvalidParam {
+func (e *Engine) validateRequest(ctx *core.Context, rules compiler.CompiledRequestRules) []core.InvalidParam {
 	var invalidParams []core.InvalidParam
 
 	if len(rules.PathFields) > 0 {

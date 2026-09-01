@@ -14,6 +14,7 @@ import (
 
 func writeManifest(t *testing.T, content string) *parser.Manifest {
 	t.Helper()
+
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "manifest.hcl")
 
@@ -87,6 +88,7 @@ endpoint "POST /api/v1/users" {
 		t.Fatalf("unexpected compilation error: %v", err)
 	}
 
+	// Verify Server compilation
 	if service.Server.Host != "0.0.0.0" || service.Server.Port != 9000 {
 		t.Errorf("unexpected server host/port: %+v", service.Server)
 	}
@@ -97,14 +99,20 @@ endpoint "POST /api/v1/users" {
 		t.Errorf("expected max_body_size 25MB, got %d", service.Server.MaxBodySize.Bytes())
 	}
 
+	// Verify Connections compilation
 	if len(service.Connections) != 1 || service.Connections[0].Driver != "postgres" {
 		t.Fatalf("expected 1 postgres connection, got: %+v", service.Connections)
 	}
-
-	if len(service.Schemas) != 1 || len(service.Schemas["user_create"]) != 1 {
-		t.Fatalf("expected 1 schema 'user_create' with 1 field, got: %+v", service.Schemas)
+	if service.Connections[0].Pool.MaxOpenConns != 50 {
+		t.Errorf("expected max_open_conns 50, got %d", service.Connections[0].Pool.MaxOpenConns)
 	}
 
+	// Verify Schemas compilation
+	if len(service.Schemas) != 1 || len(service.Schemas["user_create"]) != 1 {
+		t.Fatalf("expected 1 schema 'user_create', got: %+v", service.Schemas)
+	}
+
+	// Verify Endpoints compilation
 	if len(service.Endpoints) != 1 || service.Endpoints[0].MethodAndPath != "POST /api/v1/users" {
 		t.Fatalf("expected 1 endpoint, got: %+v", service.Endpoints)
 	}

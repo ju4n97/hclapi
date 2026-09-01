@@ -10,6 +10,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/eval"
 )
 
 // Manifest represents the root collection of merged HCL route definitions.
@@ -155,6 +156,67 @@ type FieldBlock struct {
 	MaxItems    *int           `hcl:"max_items,optional"`
 	UniqueItems bool           `hcl:"unique_items,optional"`
 	Remain      hcl.Body       `hcl:",remain"`
+}
+
+// ToField maps the AST FieldBlock into a pure domain core.Field with defaults applied.
+func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (core.Field, error) {
+	fieldType := "any"
+	if f.Type != nil {
+		typeVal, err := eval.Any(f.Type, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q type: %w", f.Name, err)
+		}
+		if typeVal != nil {
+			fieldType = fmt.Sprintf("%v", typeVal)
+		}
+	}
+
+	var enumList []any
+	if f.Enum != nil {
+		rawEnum, err := eval.Any(f.Enum, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q enum: %w", f.Name, err)
+		}
+		if list, ok := rawEnum.([]any); ok {
+			enumList = list
+		}
+	}
+
+	var defaultVal any
+	if f.Default != nil {
+		rawDefault, err := eval.Any(f.Default, nil)
+		if err != nil {
+			return core.Field{}, fmt.Errorf("field %q default: %w", f.Name, err)
+		}
+		defaultVal = rawDefault
+	}
+
+	field := core.Field{
+		Name:        f.Name,
+		Type:        fieldType,
+		Required:    f.Required,
+		Default:     defaultVal,
+		Enum:        enumList,
+		UniqueItems: f.UniqueItems,
+		MinLength:   f.MinLength,
+		MaxLength:   f.MaxLength,
+		Min:         f.Min,
+		Max:         f.Max,
+		MinItems:    f.MinItems,
+		MaxItems:    f.MaxItems,
+	}
+
+	if f.Description != nil {
+		field.Description = *f.Description
+	}
+	if f.Format != nil {
+		field.Format = *f.Format
+	}
+	if f.Pattern != nil {
+		field.Pattern = *f.Pattern
+	}
+
+	return field, nil
 }
 
 // FieldGroupBlock represents a collection of field validation rules (for path, query, headers, or inline body).

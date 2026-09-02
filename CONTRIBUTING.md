@@ -18,11 +18,12 @@ It's recommended that you read this documentation before contributing to have fu
 ## Project structure
 
 ```text
-cmd/hclapi/                     CLI entrypoint and subcommands (serve, docs)
+cmd/hclapi/                     CLI entrypoint and subcommands (serve, openapi, version)
 hclapi.go                       Public library API for embedding in Go
 internal/
   core/                         Domain models (Context, Server, Connection, ProblemDetailsError)
   parser/                       HCL manifest parsing and AST definitions
+  compiler/                     Static analysis, AST validation, and route compilation
   eval/                         HCL expression evaluation and built-in functions
   connectors/connsql/           Database connection pools, drivers, and dialects
   steps/                        Individual step runners (xgo, xstarlark, xsql, xrespond)
@@ -54,12 +55,78 @@ This project uses [Taskfile](https://taskfile.dev) to manage common tasks:
 # Run linters
 task lint
 
+# Format code and documentation
+task fmt
+
 # Run fast unit tests (in-memory SQLite, no Docker needed)
 task test
 
+# Run tests with the Go race detector
+task test:race
+
 # Run integration tests against real databases (requires Docker)
-task test-integration
+task test:integration
+
+# Fast local compilation for current OS/Arch
+task build
+
+# Compile matrix binaries across all supported platforms (requires goreleaser)
+task build:all
 ```
+
+## Release process
+
+Releases are fully automated via GitHub Actions and [GoReleaser](https://goreleaser.com).
+
+### Versioning convention
+
+`hclapi` adheres to [Semantic Versioning 2.0.0](https://semver.org/). All release tags must start with a lowercase `v` prefix (e.g., `v0.1.0`, `v0.2.0`).
+
+### 1. Pre-release verification
+
+Before publishing a release, ensure all verifications pass cleanly on `main`:
+
+```bash
+task lint
+task test
+task test:race
+task test:integration
+```
+
+### 2. Local dry run (optional)
+
+Simulate the full release lifecycle locally without publishing to GitHub or registries:
+
+```bash
+task release:dry-run
+```
+
+### 3. Publishing a release
+
+To publish a release, create and push an annotated Git tag to `origin`.
+
+Using the helper task:
+
+```bash
+task tag -- v0.1.0
+```
+
+Or using manual Git commands:
+
+```bash
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+### 4. Automated pipeline execution
+
+Pushing the tag triggers the `.github/workflows/release.yml` workflow, which automatically:
+
+1. Compiles static binaries for all supported platforms (Linux, macOS, Windows, FreeBSD on `amd64` and `arm64`).
+2. Bundles documentation files (`README.md`, `LICENSE`, etc.) into `.tar.gz` and `.zip` archives.
+3. Computes cryptographic SHA-256 digests into `checksums.txt`.
+4. Builds and pushes multi-architecture OCI container images (`linux/amd64` and `linux/arm64`) to GitHub Container Registry (`ghcr.io/ju4n97/hclapi`).
+5. Generates the categorized release changelog and attaches all artifacts to the new GitHub release.
 
 ## Using AI
 

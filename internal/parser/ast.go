@@ -372,7 +372,7 @@ type EndpointBlock struct {
 	Remain        hcl.Body              `hcl:",remain"`
 }
 
-// OpenAPIEndpointBlock represents the endpoint.openapi {} metadata block in endpoint.
+// EndpointOpenAPIBlock represents the endpoint.openapi {} metadata block in endpoint.
 type EndpointOpenAPIBlock struct {
 	UI           *string  `hcl:"ui,optional"`
 	Format       *string  `hcl:"format,optional"`
@@ -390,6 +390,7 @@ type PipelineBlock struct {
 // StepType defines the runner category for a pipeline step.
 type StepType string
 
+// StepType constants represent the runner category for a pipeline step.
 const (
 	StepTypeGo       StepType = "go"
 	StepTypeStarlark StepType = "starlark"

@@ -29,6 +29,10 @@ tasks:
     desc: Run full release lifecycle locally without publishing (includes archives, checksums, & docker)
     cmd: goreleaser release --snapshot --clean --skip=publish
 
+  tag:
+    desc: Validate and push an annotated release tag (e.g. task tag -- v0.1.0)
+    cmd: ./scripts/tag.sh {{.CLI_ARGS}}
+
   clean:
     desc: Clean up build artifacts
     cmds:

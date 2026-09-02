@@ -182,7 +182,7 @@ func problemFunc(ctx *core.Context) function.Function {
 		Type: function.StaticReturnType(cty.DynamicPseudoType),
 		Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
 			if len(args) == 0 {
-				return cty.NilVal, fmt.Errorf("problem() requires at least 1 argument")
+				return cty.NilVal, errors.New("problem() requires at least 1 argument")
 			}
 
 			// Mode 1: Object / Map passed as single argument: problem({ status = 404, detail = "..." })
@@ -190,7 +190,7 @@ func problemFunc(ctx *core.Context) function.Function {
 				objMap := ctyToAny(args[0])
 				m, ok := objMap.(map[string]any)
 				if !ok {
-					return cty.NilVal, fmt.Errorf("problem() argument must be an object map")
+					return cty.NilVal, errors.New("problem() argument must be an object map")
 				}
 
 				status := 500
@@ -214,11 +214,12 @@ func problemFunc(ctx *core.Context) function.Function {
 					typeURI = errorBaseURL + slug
 				}
 				if customType, ok := m["type"].(string); ok && customType != "" {
-					if strings.Contains(customType, "://") || strings.HasPrefix(customType, "urn:") {
+					switch {
+					case strings.Contains(customType, "://") || strings.HasPrefix(customType, "urn:"):
 						typeURI = customType
-					} else if errorBaseURL != "" {
+					case errorBaseURL != "":
 						typeURI = errorBaseURL + customType
-					} else {
+					default:
 						typeURI = core.ProblemType(customType)
 					}
 				}
@@ -241,13 +242,13 @@ func problemFunc(ctx *core.Context) function.Function {
 
 			// Mode 2: Positional arguments: problem(status, detail, [type])
 			if len(args) < 2 {
-				return cty.NilVal, fmt.Errorf(
+				return cty.NilVal, errors.New(
 					"problem() positional syntax requires status and detail (e.g. problem(404, \"not found\"))",
 				)
 			}
 
 			if !args[0].Type().Equals(cty.Number) {
-				return cty.NilVal, fmt.Errorf("problem() status must be a number")
+				return cty.NilVal, errors.New("problem() status must be a number")
 			}
 
 			bf := args[0].AsBigFloat()
@@ -272,11 +273,13 @@ func problemFunc(ctx *core.Context) function.Function {
 
 			if len(args) > 2 && !args[2].IsNull() {
 				custom := fmt.Sprintf("%v", ctyToAny(args[2]))
-				if strings.Contains(custom, "://") || strings.HasPrefix(custom, "urn:") {
+
+				switch {
+				case strings.Contains(custom, "://") || strings.HasPrefix(custom, "urn:"):
 					typeURI = custom
-				} else if errorBaseURL != "" {
+				case errorBaseURL != "":
 					typeURI = errorBaseURL + custom
-				} else {
+				default:
 					typeURI = core.ProblemType(custom)
 				}
 			}

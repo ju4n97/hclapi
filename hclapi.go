@@ -36,7 +36,7 @@ type ByteSize = core.ByteSize
 // Server defines the resolved HTTP server configuration.
 type Server = core.Server
 
-// ProblemDetails represents an RFC 9457 compliant error object.
+// ProblemDetailsError represents an RFC 9457 compliant error object.
 type ProblemDetailsError = core.ProblemDetailsError
 
 // InvalidParam represents a single field validation failure.

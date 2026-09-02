@@ -3,40 +3,47 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  allow-parallel-runners: true
 
 linters:
   default: none
   enable:
     # Correctness
-    - govet        # Run the Go vet analyzers; catch invalid constructs and suspicious code.
-    - staticcheck  # Find correctness issues and common concurrency, API, and logic bugs.
-    - errcheck     # Require explicit handling of returned errors.
-    - errorlint    # Enforce correct error wrapping and inspection semantics.
-    - bodyclose    # Ensure HTTP response bodies are closed on all paths.
-    - nilerr       # Catch cases where an error is checked but nil is returned instead.
+    - govet        # Run official Go vet analyzers.
+    - staticcheck  # Advanced static analysis for bugs and performance.
+    - errcheck     # Ensure returned errors are handled.
+    - errorlint    # Enforce Go 1.13+ error wrapping (errors.Is/As, %w).
+    - bodyclose    # Ensure HTTP response bodies are closed.
+    - nilerr       # Catch returning nil when err is non-nil.
 
-    # Dead code and redundant operations
-    - ineffassign  # Catch assignments whose values are never subsequently used.
-    - unused       # Catch unused declarations and other unreachable code.
-    - unconvert    # Catch conversions that do not change the resulting type.
+    # Dead code & redundancy
+    - ineffassign  # Detect unused variable assignments.
+    - unused       # Detect unused constants, vars, funcs, and types.
+    - unconvert    # Remove redundant type conversions.
 
     # Code quality
-    - gocritic     # Catch suspicious constructs and common implementation mistakes.
-    - copyloopvar  # Catch loop-variable captures that can lead to incorrect behavior.
-    - perfsprint   # Catch avoidable formatting overhead in string construction.
+    - gocritic     # Catch stylistic issues and code smells.
+    - copyloopvar  # Catch loop variable capture bugs.
+    - perfsprint   # Optimize fmt.Sprintf calls into faster string ops.
 
-    # Idiomatic style and documentation
-    - revive       # Enforce Go initialisms, doc structure, and clean error flow.
-    - godot        # Ensure top-level declarations and doc comments end with a period.
+    # Style & docs
+    - revive       # Fast, idiomatic style and anti-pattern linter.
+    - godot        # Enforce trailing periods on doc comments.
+
+  exclusions:
+    rules:
+      # Allow unchecked deferred Close calls globally
+      - linters:
+          - errcheck
+        text: "Error return value of `.*\\.Close` is not checked"
 
   settings:
-    errcheck:      
+    errcheck:
       exclude-functions:
-        # Deferred SQL cleanup
+        # Ignored SQL cleanup
         - (*database/sql.Rows).Close
         - (*database/sql.Tx).Rollback
-
-        # Intentionally ignored output
+        # Ignored stdout/stderr writes
         - fmt.Fprintf(os.Stdout)
         - fmt.Fprintf(os.Stderr)
         - fmt.Fprint(os.Stdout)
@@ -45,17 +52,70 @@ linters:
         - fmt.Fprintln(os.Stderr)
 
     revive:
+      severity: warning
       rules:
-        # Enforce canonical initialisms (ID, URL, HTTP, JSON, API, SQL)
-        - name: var-naming
+        # Naming & conventions
+        - name: var-naming              # Enforce camelCase, standard initialisms, and no package stutter.
+          severity: warning
+        - name: error-naming            # Require Err prefix for values and Error suffix for types.
+          severity: warning
+        - name: receiver-naming         # Enforce consistent receiver names per type.
+          severity: warning
+        - name: time-naming             # Enforce standard naming for time.Duration values.
+          severity: warning
+        - name: unexported-return       # Prevent exported functions from returning unexported types.
+          severity: warning
+        - name: redefines-builtin-id    # Prevent shadowing Go built-in identifiers.
+          severity: warning
+        - name: exported                # Require godoc comments on exported declarations.
           severity: warning
 
-        # Enforce lowercase error strings without trailing punctuation
-        - name: error-strings
+        # Concurrency & context
+        - name: context-as-argument     # Require ctx context.Context as the first parameter.
+          severity: warning
+        - name: context-keys-type       # Disallow basic types for context keys.
+          severity: warning
+        - name: atomic                  # Catch incorrect sync/atomic usage.
+          severity: warning
+        - name: waitgroup-by-value      # Disallow passing sync.WaitGroup by value.
           severity: warning
 
-        # Enforce clean guard-clause return flow without redundant else blocks
-        - name: if-return
+        # Error handling & control flow
+        - name: error-return            # Require error as the last return parameter.
+          severity: warning
+        - name: error-strings           # Require lowercase error strings without trailing punctuation.
+          severity: warning
+        - name: errorf                  # Prefer fmt.Errorf(...) over errors.New(fmt.Sprintf(...)).
+          severity: warning
+        - name: indent-error-flow       # Enforce early returns over nested if/else error blocks.
+          severity: warning
+        - name: if-return               # Remove redundant else blocks after return statements.
+          severity: warning
+        - name: superfluous-else        # Remove redundant else blocks after terminal statements.
+          severity: warning
+        - name: deep-exit               # Disallow os.Exit and log.Fatal outside main().
+          severity: warning
+
+        # Correctness & safety
+        - name: modifies-value-receiver # Disallow mutating value receivers.
+          severity: warning
+        - name: modifies-parameter      # Disallow reassigning function parameters.
+          severity: warning
+        - name: unreachable-code        # Detect dead code after terminal statements.
+          severity: warning
+        - name: constant-logical-expr   # Detect constant boolean expressions.
+          severity: warning
+        - name: empty-block             # Detect empty control-flow blocks.
+          severity: warning
+
+        # Syntax cleanliness
+        - name: increment-decrement     # Enforce i++ and i-- syntax over i += 1.
+          severity: warning
+        - name: range                   # Remove redundant blank identifiers in range loops.
+          severity: warning
+        - name: blank-imports           # Require explanatory comments on blank imports.
+          severity: warning
+        - name: dot-imports             # Disallow dot imports.
           severity: warning
 
     godot:

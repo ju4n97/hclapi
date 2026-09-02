@@ -81,22 +81,27 @@ changelog:
       - '(?i)^bump\s+'
       - '(?i)^dependabot'
       - '(?i)^wip'
-      - '(?i).*(lint|format|test case|tests task|make tests|shields to readme|docs deployment|rspress|vitepress).*'
+      - '(?i)^docs(\(.*\))?:'
+      - '(?i)^test(\(.*\))?:'
+      - '(?i)^tests(\(.*\))?:'
+      - '(?i)^ci(\(.*\))?:'
+      - '(?i)^chore(\(.*\))?:'
+      - '(?i)^style(\(.*\))?:'
   groups:
     - title: "Features and enhancements"
-      regexp: '(?i)^.*(feat|implement|add|introduce|extend|enhance|export|create|integrate|allow|expose|provide|enable|propagate|watch|standardize|support|define|register|bootstrap|scaffold|setup|serve|parse|pool).*$'
+      regexp: '(?i)^feat(\(.*\))?!?:'
       order: 1
 
     - title: "Bug fixes and stability"
-      regexp: '(?i)^.*(fix|bug|prevent|resolve|harden|correct|patch|repair|avoid|recover|handle|check\s+for|ensure|validate|sanitize|leak|panic|crash|timeout|close).*$'
+      regexp: '(?i)^fix(\(.*\))?!?:'
       order: 2
 
     - title: "Performance improvements"
-      regexp: '(?i)^.*(perf|optimize|speed|fast|cache|reduce|parallel|concurrent|async|realloc|alloc|memory|latency|throughput).*$'
+      regexp: '(?i)^perf(\(.*\))?!?:'
       order: 3
 
     - title: "Refactoring and maintenance"
-      regexp: '(?i)^.*(refactor|improve|simplify|rework|normalize|decouple|cleanup|clean|remove|delete|deprecate|rename|move|sync|align|upgrade|update|reorganize|structure).*$'
+      regexp: '(?i)^refactor(\(.*\))?!?:'
       order: 4
 
     - title: "Other changes"

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -34,6 +33,13 @@ type openMeteoResponse struct {
 }
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("server terminated", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -44,7 +50,7 @@ func main() {
 		Logger:       logger,
 	})
 	if err != nil {
-		log.Fatalf("Fatal: engine initialization failed: %v", err)
+		return fmt.Errorf("engine initialization: %w", err)
 	}
 	defer engine.Close()
 
@@ -68,12 +74,15 @@ func main() {
 			coords.lon,
 		)
 
-		req, _ := http.NewRequestWithContext(
+		req, err := http.NewRequestWithContext(
 			ctx.Context(),
 			http.MethodGet,
 			url,
 			http.NoBody,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
@@ -94,7 +103,7 @@ func main() {
 		}, nil
 	})
 	if err != nil {
-		log.Fatalf("Fatal: step registration failed: %v", err)
+		return fmt.Errorf("step registration: %w", err)
 	}
 
 	mux := http.NewServeMux()
@@ -117,20 +126,27 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
+	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("Server listening on %s", server.Addr)
+		logger.Info("server listening", "addr", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("HTTP server error: %v", err)
+			errCh <- err
 		}
 	}()
 
-	<-stop
-	log.Println("Shutting down server...")
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("http server: %w", err)
+	case <-stop:
+		logger.Info("shutting down server...")
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Forced shutdown: %v", err)
+		return fmt.Errorf("forced shutdown: %w", err)
 	}
+
+	return nil
 }

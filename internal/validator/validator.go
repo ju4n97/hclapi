@@ -155,7 +155,7 @@ func checkStringConstraints(val string, field core.Field) string {
 	if field.Pattern != "" {
 		matched, err := regexp.MatchString(field.Pattern, val)
 		if err != nil || !matched {
-			return fmt.Sprintf("must match pattern %s", field.Pattern)
+			return "must match pattern " + field.Pattern
 		}
 	}
 	if field.Format != "" {

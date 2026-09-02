@@ -10,6 +10,7 @@ import (
 // ByteSize represents a quantity of bytes that can be unmarshaled from text.
 type ByteSize int64
 
+// ByteSize constants represent byte sizes.
 const (
 	B   ByteSize = 1
 	KB  ByteSize = 1000 * B

@@ -73,8 +73,31 @@ dockers_v2:
 
 changelog:
   sort: asc
+  use: github
+  abbrev: 7
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
+      - '(?i)^merge\s+'
+      - '(?i)^bump\s+'
+      - '(?i)^dependabot'
+      - '(?i)^wip'
+      - '(?i).*(lint|format|test case|tests task|make tests|shields to readme|docs deployment|rspress|vitepress).*'
+  groups:
+    - title: "Features and enhancements"
+      regexp: '(?i)^.*(feat|implement|add|introduce|extend|enhance|export|create|integrate|allow|expose|provide|enable|propagate|watch|standardize|support|define|register|bootstrap|scaffold|setup|serve|parse|pool).*$'
+      order: 1
+
+    - title: "Bug fixes and stability"
+      regexp: '(?i)^.*(fix|bug|prevent|resolve|harden|correct|patch|repair|avoid|recover|handle|check\s+for|ensure|validate|sanitize|leak|panic|crash|timeout|close).*$'
+      order: 2
+
+    - title: "Performance improvements"
+      regexp: '(?i)^.*(perf|optimize|speed|fast|cache|reduce|parallel|concurrent|async|realloc|alloc|memory|latency|throughput).*$'
+      order: 3
+
+    - title: "Refactoring and maintenance"
+      regexp: '(?i)^.*(refactor|improve|simplify|rework|normalize|decouple|cleanup|clean|remove|delete|deprecate|rename|move|sync|align|upgrade|update|reorganize|structure).*$'
+      order: 4
+
+    - title: "Other changes"
+      order: 999

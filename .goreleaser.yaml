@@ -50,6 +50,7 @@ archives:
       - LICENSE*
       - CONTRIBUTING.md*
       - SECURITY.md*
+      - man/hclapi.1*
 
 nfpms:
   - id: packages

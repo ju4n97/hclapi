@@ -25,19 +25,60 @@ Download and install the latest binary for Windows:
 irm https://raw.githubusercontent.com/ju4n97/hclapi/main/scripts/install.ps1 | iex
 ```
 
+## Linux package managers
+
+Direct package installations include the `hclapi` binary in `/usr/bin` and system man pages in `/usr/share/man/man1/hclapi.1`.
+
+### Debian / Ubuntu (`.deb`)
+
+Download the `.deb` package from the [releases page](https://github.com/ju4n97/hclapi/releases/latest) and install via `dpkg`:
+
+```bash
+# Example for x86_64 / amd64
+curl -fsSLO https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_0.1.0_linux_amd64.deb
+sudo dpkg -i hclapi_0.1.0_linux_amd64.deb
+```
+
+### Fedora / RHEL / Rocky Linux (`.rpm`)
+
+Download the `.rpm` package from the [releases page](https://github.com/ju4n97/hclapi/releases/latest) and install via `rpm`:
+
+```bash
+# Example for x86_64 / amd64
+curl -fsSLO https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_0.1.0_linux_amd64.rpm
+sudo rpm -i hclapi_0.1.0_linux_amd64.rpm
+```
+
+### Arch Linux (`.pkg.tar.zst`)
+
+Download the native Arch package from the [releases page](https://github.com/ju4n97/hclapi/releases/latest) and install via `pacman`:
+
+```bash
+# Example for x86_64 / amd64
+curl -fsSLO https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_0.1.0_linux_amd64.pkg.tar.zst
+sudo pacman -U hclapi_0.1.0_linux_amd64.pkg.tar.zst
+```
+
+### Alpine Linux (`.apk`)
+
+```bash
+curl -fsSLO https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_0.1.0_linux_amd64.apk
+apk add --allow-untrusted hclapi_0.1.0_linux_amd64.apk
+```
+
 ## Precompiled binaries
 
 Download a precompiled archive directly from the [GitHub releases](https://github.com/ju4n97/hclapi/releases/latest) page:
 
-| Operating system | Architecture            | Archive format |
-| :--------------- | :---------------------- | :------------- |
-| **Linux**        | 64-bit (`amd64`)        | `.tar.gz`      |
-| **Linux**        | ARM64 (`arm64`)         | `.tar.gz`      |
-| **macOS**        | Apple Silicon (`arm64`) | `.tar.gz`      |
-| **macOS**        | Intel (`amd64`)         | `.tar.gz`      |
-| **Windows**      | 64-bit (`amd64`)        | `.zip`         |
-| **Windows**      | ARM64 (`arm64`)         | `.zip`         |
-| **FreeBSD**      | 64-bit (`amd64`)        | `.tar.gz`      |
+| Operating system | Architecture            | Archive format | Package format                         |
+| :--------------- | :---------------------- | :------------- | :------------------------------------- |
+| **Linux**        | 64-bit (`amd64`)        | `.tar.gz`      | `.deb`, `.rpm`, `.apk`, `.pkg.tar.zst` |
+| **Linux**        | ARM64 (`arm64`)         | `.tar.gz`      | `.deb`, `.rpm`, `.apk`                 |
+| **macOS**        | Apple Silicon (`arm64`) | `.tar.gz`      | —                                      |
+| **macOS**        | Intel (`amd64`)         | `.tar.gz`      | —                                      |
+| **Windows**      | 64-bit (`amd64`)        | `.zip`         | —                                      |
+| **Windows**      | ARM64 (`arm64`)         | `.zip`         | —                                      |
+| **FreeBSD**      | 64-bit (`amd64`)        | `.tar.gz`      | —                                      |
 
 ### Manual installation (Linux and macOS)
 
@@ -54,14 +95,18 @@ curl -fsSL "$RELEASE_URL" | tar -xz
 sudo install -m 0755 hclapi /usr/local/bin/hclapi
 ```
 
-## Docker container
+## Container (Docker and Podman)
 
 `hclapi` is published as a minimal, distroless multi-architecture OCI image on GitHub Container Registry (supporting `linux/amd64` and `linux/arm64`).
 
 ### Pull the image
 
 ```bash
+# Docker
 docker pull ghcr.io/ju4n97/hclapi:latest
+
+# Podman
+podman pull ghcr.io/ju4n97/hclapi:latest
 ```
 
 ### Start the HTTP server
@@ -69,7 +114,11 @@ docker pull ghcr.io/ju4n97/hclapi:latest
 Mount your local directory containing `.hcl` manifests into the container and bind port `8080`:
 
 ```bash
-docker run --rm -p 8080:8080 -v "$(pwd):/app" ghcr.io/ju4n97/hclapi:latest serve -c /app
+# Docker
+docker run --rm -p 8080:8080 -v "$(pwd):/app:ro" ghcr.io/ju4n97/hclapi:latest serve -c /app
+
+# Podman (includes :z for SELinux volume relabeling)
+podman run --rm -p 8080:8080 -v "$(pwd):/app:ro,z" ghcr.io/ju4n97/hclapi:latest serve -c /app
 ```
 
 ### Export OpenAPI specification
@@ -77,12 +126,12 @@ docker run --rm -p 8080:8080 -v "$(pwd):/app" ghcr.io/ju4n97/hclapi:latest serve
 Generate an OpenAPI 3.1 JSON specification to stdout:
 
 ```bash
-docker run --rm  -v "$(pwd):/app" ghcr.io/ju4n97/hclapi:latest openapi -c /app --pretty
+docker run --rm -v "$(pwd):/app:ro" ghcr.io/ju4n97/hclapi:latest openapi -c /app --pretty
 ```
 
-## Docker compose
+## Docker Compose
 
-Run `hclapi` alongside PostgreSQL and Redis in a local development environment:
+Run `hclapi` alongside PostgreSQL and Valkey in a local development environment:
 
 ```yaml title="docker-compose.yaml"
 services:
@@ -95,15 +144,15 @@ services:
     command: ["serve", "-c", "/app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/hclapi_db?sslmode=disable
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://valkey:6379/0
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_started
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -118,8 +167,8 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
+  valkey:
+    image: valkey/valkey:9.1.2-alpine
     ports:
       - "6379:6379"
 
@@ -164,19 +213,11 @@ Check that `hclapi` is installed:
 hclapi version
 ```
 
-Example output:
-
-```text
-hclapi version 0.1.0 (commit: e708e91, branch: main, built: 2026-09-02T15:25:48Z, linux/amd64)
-```
-
 Display CLI usage instructions:
 
 ```bash
 hclapi --help
 ```
-
----
 
 ## Verify artifact integrity (optional)
 
@@ -220,4 +261,34 @@ Add the following to `~/.config/fish/completions/hclapi.fish`:
 
 ```fish
 complete -c hclapi -f -a '(hclapi --generate-shell-completion (commandline -cop))'
+```
+
+## Man pages
+
+Manual pages provide complete offline reference documentation directly in your terminal.
+
+:::info
+Linux package installations like `.deb`, `.rpm`, and `.pkg.tar.zst` install man pages automatically.
+:::
+
+### Manual installation (Linux and macOS)
+
+If you installed `hclapi` via precompiled binary or `go install`, you can install the man page manually:
+
+```bash
+# 1. Create the system man directory
+sudo mkdir -p /usr/local/share/man/man1
+
+# 2. Download the manual page
+sudo curl -fsSL https://raw.githubusercontent.com/ju4n97/hclapi/main/man/hclapi.1 \
+  -o /usr/local/share/man/man1/hclapi.1
+
+# 3. Update the system man database (optional)
+sudo mandb 2>/dev/null || true
+```
+
+### View manual
+
+```bash
+man hclapi
 ```

@@ -1,0 +1,51 @@
+.nh
+.TH hclapi 8
+
+.SH NAME
+hclapi \- Declarative API runtime that turns HCL manifests into structured HTTP services.
+
+
+.SH SYNOPSIS
+hclapi
+
+.PP
+\fBUsage\fP:
+
+.EX
+hclapi [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
+.EE
+
+
+.SH COMMANDS
+.SH serve
+Start the hclapi HTTP server.
+
+.PP
+\fB--config, -c, --manifests, -m\fP="": Path to .hcl file, or directory containing manifests. (default: ".")
+
+.PP
+\fB--host, -h\fP="": Host address to bind the server (overrides manifest).
+
+.PP
+\fB--port, -p\fP="": Port to bind the server (overrides manifest). (default: 0)
+
+.PP
+\fB--verbose, -v\fP: Enable verbose debug logging.
+
+.SH openapi
+Export the compiled OpenAPI 3.1 specification for your manifests.
+
+.PP
+\fB--config, -c, --manifests, -m\fP="": Path to .hcl file or directory containing manifests. (default: ".")
+
+.PP
+\fB--format, -f\fP="": Output format: json or yaml. (default: "json")
+
+.PP
+\fB--output, -o\fP="": Path to output file (defaults to stdout).
+
+.PP
+\fB--pretty\fP: Pretty-print JSON output.
+
+.SH version, v
+Show detailed version information.

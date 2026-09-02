@@ -37,9 +37,29 @@ if [[ ! "$TAG" =~ $SEMVER_REGEX ]]; then
   err "Invalid version format: '${CLR_BOLD}${TAG}${CLR_RESET}'.\nTag must follow Semantic Versioning with a leading 'v' (e.g. v0.1.0, v1.0.0-rc.1)."
 fi
 
-# Validation: Working directory clean
-if ! git diff-index --quiet HEAD --; then
-  err "Working directory contains uncommitted changes. Commit or stash them before releasing."
+# Resolve Task runner binary
+TASK_CMD=""
+if command -v task >/dev/null 2>&1; then
+  TASK_CMD="task"
+elif command -v go-task >/dev/null 2>&1; then
+  TASK_CMD="go-task"
+elif [[ -x "$HOME/go/bin/task" ]]; then
+  TASK_CMD="$HOME/go/bin/task"
+elif [[ -x "$HOME/.local/bin/task" ]]; then
+  TASK_CMD="$HOME/.local/bin/task"
+elif [[ -x "/usr/bin/go-task" ]]; then
+  TASK_CMD="/usr/bin/go-task"
+fi
+
+# Auto-generate CLI documentation and man pages
+if [ "$SKIP_CHECKS" = false ]; then
+  info "Synchronizing CLI documentation and man pages..."
+  "$TASK_CMD" gen
+fi
+
+# Validation: Working directory clean (checks if docs or code were modified)
+if [[ -n "$(git status --porcelain)" ]]; then
+  err "Working directory has uncommitted changes or generated documentation was out of date.\nReview and commit the changes:\n  git commit -am 'docs(cli): update generated CLI reference and man page'\nbefore releasing."
 fi
 
 # Validation: Current Git branch
@@ -70,25 +90,11 @@ if git ls-remote --tags origin | grep -q "refs/tags/${TAG}$"; then
   err "Tag '${CLR_BOLD}${TAG}${CLR_RESET}' already exists on remote 'origin'."
 fi
 
-# Automated test and lint verification
+# Automated test and lint verification suite
 if [ "$SKIP_CHECKS" = false ]; then
   echo
-  info "Executing pre-release test and lint verification:"
+  info "Executing pre-release test and lint verification suite:"
   
-  # Resolve Task runner binary across OS packaging variations (task, go-task, ~/go/bin)
-  TASK_CMD=""
-  if command -v task >/dev/null 2>&1; then
-    TASK_CMD="task"
-  elif command -v go-task >/dev/null 2>&1; then
-    TASK_CMD="go-task"
-  elif [[ -x "$HOME/go/bin/task" ]]; then
-    TASK_CMD="$HOME/go/bin/task"
-  elif [[ -x "$HOME/.local/bin/task" ]]; then
-    TASK_CMD="$HOME/.local/bin/task"
-  elif [[ -x "/usr/bin/go-task" ]]; then
-    TASK_CMD="/usr/bin/go-task"
-  fi
-
   if [[ -n "$TASK_CMD" ]]; then
     step "1/4 Running linters ($TASK_CMD lint)..."
     "$TASK_CMD" lint

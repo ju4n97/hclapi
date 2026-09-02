@@ -69,6 +69,12 @@ tasks:
     desc: Format documentation Markdown files
     cmd: bunx prettier@latest --write docs/content
 
+  gen:
+    desc: Run all generators
+    cmds:
+      - task: gen:docs
+      - task: gen:man
+
   gen:docs:
     desc: Generate CLI markdown documentation
     cmds:

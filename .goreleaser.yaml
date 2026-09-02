@@ -51,6 +51,28 @@ archives:
       - CONTRIBUTING.md*
       - SECURITY.md*
 
+nfpms:
+  - id: packages
+    package_name: hclapi
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: "https://github.com/ju4n97/hclapi"
+    maintainer: "Juan <https://github.com/ju4n97>"
+    description: "Declarative API runtime that turns HCL manifests into structured HTTP services."
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+      - apk
+      - archlinux
+    bindir: /usr/bin
+    section: default
+    priority: optional
+    contents:
+      - src: ./man/hclapi.1
+        dst: /usr/share/man/man1/hclapi.1
+        file_info:
+          mode: 0644
+
 checksum:
   name_template: "checksums.txt"
   algorithm: sha256
@@ -75,6 +97,7 @@ changelog:
   sort: asc
   use: github
   abbrev: 7
+  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (by @{{ . }}){{ end }}"
   filters:
     exclude:
       - '(?i)^merge\s+'

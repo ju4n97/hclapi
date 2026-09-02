@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> `hclapi` is in early development (`v0.1.x`) and follows documentation-driven development. [Some documented features haven't been implemented yet](https://github.com/ju4n97/hclapi/issues). Bugs and breaking changes are to be expected. Feedback and issue reports are welcome.
+
 # hclapi
 
 [![Go Reference](https://img.shields.io/badge/Go_Reference-pkg.go.dev-FFB000?style=flat-square&labelColor=3A2A00&color=FFB000)](https://pkg.go.dev/github.com/ju4n97/hclapi)
@@ -13,20 +16,19 @@ Manifests are parsed and validated at boot time and executed directly at runtime
 
 ## Supported connectors
 
-`hclapi` connects natively to databases and caches using zero-CGO pure Go drivers:
+`hclapi` connects natively to databases and storage layers using zero-CGO pure Go drivers:
 
-| Category              | Driver          | Supported engines                             |
-| :-------------------- | :-------------- | :-------------------------------------------- |
-| **Relational SQL**    | `"postgres"`    | PostgreSQL, Supabase, TimescaleDB, AWS Aurora |
-|                       | `"sqlite"`      | SQLite3, Turso, LibSQL                        |
-|                       | `"mysql"`       | MySQL, MariaDB, PlanetScale, TiDB             |
-|                       | `"sqlserver"`   | Microsoft SQL Server, Azure SQL               |
-|                       | `"oracle"`      | Oracle Database 11g - 23ai                    |
-|                       | `"cockroachdb"` | CockroachDB Dedicated & Serverless            |
-| **Analytical SQL**    | `"clickhouse"`  | ClickHouse Cloud & Self-Hosted                |
-|                       | `"duckdb"`      | DuckDB Embedded Columnar                      |
-| **Key-Value / Cache** | `"redis"`       | Redis, Valkey, AWS ElastiCache                |
-| **Blob Storage**      | `"s3"`          | Amazon S3, Cloudflare R2, MinIO, GCS          |
+| Category              | Driver          | Supported engines                             | Status        |
+| :-------------------- | :-------------- | :-------------------------------------------- | :------------ |
+| **Relational SQL**    | `"postgres"`    | PostgreSQL, Supabase, TimescaleDB, AWS Aurora | `Available`   |
+|                       | `"sqlite"`      | SQLite3, Turso, LibSQL                        | `Available`   |
+|                       | `"mysql"`       | MySQL, MariaDB, PlanetScale, TiDB             | `Available`   |
+|                       | `"sqlserver"`   | Microsoft SQL Server, Azure SQL               | `Available`   |
+|                       | `"oracle"`      | Oracle Database 11g – 23ai                    | `Available`   |
+|                       | `"cockroachdb"` | CockroachDB Dedicated & Serverless            | `Available`   |
+| **Analytical SQL**    | `"clickhouse"`  | ClickHouse Cloud & Self-Hosted                | `Available`   |
+|                       | `"duckdb"`      | DuckDB Embedded Columnar                      | `Available`   |
+| **Key-Value / Cache** | `"redis"`       | Redis, Valkey, AWS ElastiCache                | `In-progress` |
 
 ## Example
 

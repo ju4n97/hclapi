@@ -3,16 +3,15 @@
 
 # hclapi
 
-[![Go Reference](https://img.shields.io/badge/Go_Reference-pkg.go.dev-FFB000?style=flat-square&labelColor=3A2A00&color=FFB000)](https://pkg.go.dev/github.com/ju4n97/hclapi)
-[![Release](https://img.shields.io/github/v/release/ju4n97/hclapi?style=flat-square&label=Release&labelColor=3A2A00&color=FFB000)](https://github.com/ju4n97/hclapi/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/ju4n97/hclapi/ci.yaml?style=flat-square&label=CI&labelColor=3A2A00&color=FFB000)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
-[![License](https://img.shields.io/github/license/ju4n97/hclapi?style=flat-square&labelColor=3A2A00&color=FFB000)](LICENSE)
+[![Go Reference](https://img.shields.io/badge/Go_Reference-pkg.go.dev-007D9C?style=flat-square)](https://pkg.go.dev/github.com/ju4n97/hclapi)
+[![Release](https://img.shields.io/github/v/release/ju4n97/hclapi?style=flat-square&label=Release)](https://github.com/ju4n97/hclapi/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/ju4n97/hclapi/ci.yaml?style=flat-square&label=CI)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
 
 `hclapi` is a declarative backend runtime distributed as a single lightweight static binary. It compiles HashiCorp Configuration Language (HCL) manifests, SQL queries, and sandboxed Starlark scripts into structured HTTP services with native connection pooling, schema validation, and automatic OpenAPI 3.1 documentation.
 
 Manifests are parsed and validated at boot time and executed directly at runtime. `hclapi` doesn't generate or compile Go code.
 
-[Documentation](https://ju4n97.github.io/hclapi/) · [Quickstart](https://ju4n97.github.io/hclapi/quickstart.html) · [Why hclapi](https://ju4n97.github.io/hclapi/why.html) · [Patterns](https://ju4n97.github.io/hclapi/patterns.html) · [Examples](./examples)
+[Documentation](https://ju4n97.github.io/hclapi/) · [Quickstart](https://ju4n97.github.io/hclapi/docs/quickstart.html) · [Why hclapi](https://ju4n97.github.io/hclapi/docs/why.html) · [Patterns](https://ju4n97.github.io/hclapi/docs/patterns.html) · [Examples](./examples)
 
 ## Supported connectors
 
@@ -158,7 +157,7 @@ go install github.com/ju4n97/hclapi/cmd/hclapi@latest
 
 _(Linux `.deb`, `.rpm`, `.apk`, and `.pkg.tar.zst` packages are available on the [releases page](https://github.com/ju4n97/hclapi/releases/latest))._
 
-See the [Installation guide](https://ju4n97.github.io/hclapi/installation.html) for package manager setup and verification.
+See the [Installation guide](https://ju4n97.github.io/hclapi/docs/installation.html) for package manager setup and verification.
 
 ## Embedding in Go
 
@@ -201,16 +200,16 @@ func main() {
 }
 ```
 
-See [Go integration](https://ju4n97.github.io/hclapi/go/README.html) for custom error handlers, logging, and registering native Go steps.
+See [Go integration](https://ju4n97.github.io/hclapi/guides/go.html) for custom error handlers, logging, and registering native Go steps.
 
 ## Documentation
 
 Full reference documentation covering the request lifecycle, manifest block syntax, and patterns is available at: [ju4n97.github.io/hclapi](https://ju4n97.github.io/hclapi/)
 
-- [Request lifecycle](https://ju4n97.github.io/hclapi/concepts/lifecycle.html)
-- [Execution context](https://ju4n97.github.io/hclapi/concepts/context.html)
-- [Pipelines and steps](https://ju4n97.github.io/hclapi/concepts/pipelines.html)
-- [Manifest structure and merging](https://ju4n97.github.io/hclapi/manifest/structure.html)
+- [Request lifecycle](https://ju4n97.github.io/hclapi/docs/concepts/lifecycle.html)
+- [Execution context](https://ju4n97.github.io/hclapi/docs/concepts/context.html)
+- [Pipelines and steps](https://ju4n97.github.io/hclapi/docs/concepts/pipelines.html)
+- [Manifest structure and merging](https://ju4n97.github.io/hclapi/docs/manifest/structure.html)
 - [OpenAPI configuration](https://ju4n97.github.io/hclapi/openapi/overview.html)
 
 ## Contributing

@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+
+project_name: hclapi
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: hclapi
+    main: ./cmd/hclapi
+    binary: hclapi
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=netgo,osusergo
+    ldflags:
+      - -s -w
+      - -X {{ .ModulePath }}/internal/version.version={{ .Version }}
+      - -X {{ .ModulePath }}/internal/version.branch={{ .Branch }}
+      - -X {{ .ModulePath }}/internal/version.shortCommit={{ .ShortCommit }}
+      - -X {{ .ModulePath }}/internal/version.fullCommit={{ .FullCommit }}
+      - -X {{ .ModulePath }}/internal/version.date={{ .Date }}
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: freebsd
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - README.md*
+      - LICENSE*
+      - CONTRIBUTING.md*
+      - SECURITY.md*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+dockers_v2:
+  - images:
+      - ghcr.io/ju4n97/hclapi
+    tags:
+      - "{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'

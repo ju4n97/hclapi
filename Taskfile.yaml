@@ -8,56 +8,87 @@ tasks:
     desc: List available tasks
     cmd: task --list
 
-  cli-docs:
-    desc: Generate CLI reference
-    cmds: 
-      - go run -tags docs ./cmd/hclapi
-      - bunx prettier@latest --write docs/content/cli
+  build:
+    desc: Fast local build for current OS/Arch
+    cmd: >
+      go build -trimpath -tags "netgo,osusergo"
+      -ldflags "-s -w
+      -X {{.MODULE}}/internal/version.version=dev
+      -X {{.MODULE}}/internal/version.fullCommit=$(git rev-parse HEAD 2>/dev/null || echo none)
+      -X {{.MODULE}}/internal/version.date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+      -o bin/hclapi ./cmd/hclapi
+    vars:
+      MODULE:
+        sh: go list -m
 
-  cli-man:
-    desc: Generate man pages
-    cmd: go run -tags man ./cmd/hclapi
+  build:all:
+    desc: Compile matrix binaries for all platforms via GoReleaser
+    cmd: goreleaser build --snapshot --clean
 
-  docs-serve:
-    desc: Serve website
-    dir: docs
-    cmd: bun run dev
+  release:dry-run:
+    desc: Run full release lifecycle locally without publishing (includes archives, checksums, & docker)
+    cmd: goreleaser release --snapshot --clean --skip=publish
 
-  docs-build:
-    desc: Build website
-    dir: docs
-    cmd: bun run build
+  clean:
+    desc: Clean up build artifacts
+    cmds:
+      - rm -rf dist/
+      - rm -rf bin/
 
   test:
-    desc: Run tests
+    desc: Run unit tests
     cmd: go test ./...
 
-  test-race:
-    desc: Run tests with race detector
+  test:race:
+    desc: Run tests with data race detector
     env:
       CGO_ENABLED: 1
     cmd: go test -race -count=1 -timeout=30s ./...
 
-  test-integration:
-    desc: Run containerized integration tests agains real services
+  test:integration:
+    desc: Run integration tests against real services
     cmd: go test -v -tags=integration -run="^TestIntegration" -timeout=5m ./...
 
   lint:
-    desc: Lint code
+    desc: Run linters
     cmd: golangci-lint run
 
   fmt:
-    desc: Format code
+    desc: Format all code and documentation
+    cmds:
+      - task: fmt:go
+      - task: fmt:docs
+
+  fmt:go:
+    desc: Format Go source files
     cmd: golangci-lint fmt
 
-  fmt-docs:
-    desc: Format docs
+  fmt:docs:
+    desc: Format documentation Markdown files
     cmd: bunx prettier@latest --write docs/content
 
-  update:
-    desc: Update dependencies
-    cmds: 
+  gen:docs:
+    desc: Generate CLI markdown documentation
+    cmds:
+      - go run -tags docs ./cmd/hclapi
+      - bunx prettier@latest --write docs/content/cli
+
+  gen:man:
+    desc: Generate CLI man pages
+    cmd: go run -tags man ./cmd/hclapi
+
+  docs:dev:
+    desc: Start local documentation server
+    dir: docs
+    cmd: bun run dev
+
+  docs:build:
+    desc: Build production documentation site
+    dir: docs
+    cmd: bun run build
+
+  deps:update:
+    desc: Update Go dependencies to latest versions and tidy
+    cmds:
       - go get -u ./...
       - go mod tidy
-
-    

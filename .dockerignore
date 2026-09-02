@@ -1,0 +1,10 @@
+.git
+.github
+dist/
+bin/
+docs/
+node_modules/
+*.md
+*.mdx
+.goreleaser.yaml
+Taskfile.yml

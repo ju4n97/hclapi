@@ -113,7 +113,7 @@ err := engine.RegisterStep("namespace.function_name", handler)
 
 ### Context data access
 
-`*hclapi.Context` is the Go equivalent of [`ctx`](../concepts/context.md).
+`*hclapi.Context` is the Go equivalent of [`ctx`](../docs/concepts/context.mdx).
 
 | Field                 | Type                         | Description                          |
 | :-------------------- | :--------------------------- | :----------------------------------- |
@@ -275,7 +275,7 @@ slog.Info("server configuration loaded",
 )
 ```
 
-`srvConfig` reflects the same values [`server`](../manifest/server.md) resolves after CLI flags and environment variables are applied.
+`srvConfig` reflects the same values [`server`](../docs/manifest/server.mdx) resolves after CLI flags and environment variables are applied.
 
 ## Custom error handlers
 

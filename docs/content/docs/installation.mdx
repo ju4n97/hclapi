@@ -1,37 +1,223 @@
 ---
 title: Installation
-description: Install hclapi from a precompiled binary or the Go toolchain and verify the installation.
+description: Install hclapi on Linux, macOS, Windows, or run it with Docker and Docker Compose.
 ---
 
 # Installation
 
-hclapi is distributed as a single, cross-platform binary.
+`hclapi` is distributed as a single, statically compiled binary with zero runtime dependencies.
+
+## Quick install
+
+### Linux and macOS
+
+Download and install the latest binary matching your operating system and CPU architecture into `/usr/local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ju4n97/hclapi/main/scripts/install.sh | bash
+```
+
+### Windows (PowerShell)
+
+Download and install the latest binary for Windows:
+
+```powershell
+irm https://raw.githubusercontent.com/ju4n97/hclapi/main/scripts/install.ps1 | iex
+```
 
 ## Precompiled binaries
 
-Download a binary for your platform from the [releases page](https://github.com/ju4n97/hclapi/releases).
+Download a precompiled archive directly from the [GitHub releases](https://github.com/ju4n97/hclapi/releases/latest) page:
 
-```sh
-curl -sSL https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_linux_amd64.tar.gz | tar -xz
-sudo mv hclapi /usr/local/bin/
+| Operating system | Architecture            | Archive format |
+| :--------------- | :---------------------- | :------------- |
+| **Linux**        | 64-bit (`amd64`)        | `.tar.gz`      |
+| **Linux**        | ARM64 (`arm64`)         | `.tar.gz`      |
+| **macOS**        | Apple Silicon (`arm64`) | `.tar.gz`      |
+| **macOS**        | Intel (`amd64`)         | `.tar.gz`      |
+| **Windows**      | 64-bit (`amd64`)        | `.zip`         |
+| **Windows**      | ARM64 (`arm64`)         | `.zip`         |
+| **FreeBSD**      | 64-bit (`amd64`)        | `.tar.gz`      |
+
+### Manual installation (Linux and macOS)
+
+```bash
+# 1. Detect platform
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')"
+
+# 2. Download and extract latest release
+RELEASE_URL="https://github.com/ju4n97/hclapi/releases/latest/download/hclapi_${OS}_${ARCH}.tar.gz"
+curl -fsSL "$RELEASE_URL" | tar -xz
+
+# 3. Move binary to your system PATH
+sudo install -m 0755 hclapi /usr/local/bin/hclapi
+```
+
+## Docker container
+
+`hclapi` is published as a minimal, distroless multi-architecture OCI image on GitHub Container Registry (supporting `linux/amd64` and `linux/arm64`).
+
+### Pull the image
+
+```bash
+docker pull ghcr.io/ju4n97/hclapi:latest
+```
+
+### Start the HTTP server
+
+Mount your local directory containing `.hcl` manifests into the container and bind port `8080`:
+
+```bash
+docker run --rm -p 8080:8080 -v "$(pwd):/app" ghcr.io/ju4n97/hclapi:latest serve -c /app
+```
+
+### Export OpenAPI specification
+
+Generate an OpenAPI 3.1 JSON specification to stdout:
+
+```bash
+docker run --rm  -v "$(pwd):/app" ghcr.io/ju4n97/hclapi:latest openapi -c /app --pretty
+```
+
+## Docker compose
+
+Run `hclapi` alongside PostgreSQL and Redis in a local development environment:
+
+```yaml title="docker-compose.yaml"
+services:
+  hclapi:
+    image: ghcr.io/ju4n97/hclapi:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app:ro
+    command: ["serve", "-c", "/app", "--host", "0.0.0.0", "--port", "8080"]
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/hclapi_db?sslmode=disable
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=hclapi_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+```
+
+Start the services:
+
+```bash
+docker compose up -d
 ```
 
 ## Build from source
 
-Requires the [Go toolchain](https://go.dev/doc/install).
+### Using Go install
 
-```sh
+Requires [Go 1.27+](https://go.dev/doc/install) installed:
+
+```bash
 go install github.com/ju4n97/hclapi/cmd/hclapi@latest
 ```
 
-## Verify
+_(Ensure `$GOPATH/bin` or `$HOME/go/bin` is in your system `$PATH`)_.
 
-```sh
+### Building locally from git
+
+Requires [Task](https://taskfile.dev) installed:
+
+```bash
+git clone https://github.com/ju4n97/hclapi.git
+cd hclapi
+task build
+# Binary is generated at bin/hclapi
+```
+
+## Verification
+
+Check that `hclapi` is installed:
+
+```bash
+hclapi version
+```
+
+Example output:
+
+```text
+hclapi version 0.1.0 (commit: e708e91, branch: main, built: 2026-09-02T15:25:48Z, linux/amd64)
+```
+
+Display CLI usage instructions:
+
+```bash
 hclapi --help
 ```
 
-## Check the installed version
+---
 
-```sh
-hclapi version
+## Verify artifact integrity (optional)
+
+All release assets include SHA-256 digests in `checksums.txt`:
+
+```bash
+# Download checksum file
+curl -fsSLO https://github.com/ju4n97/hclapi/releases/latest/download/checksums.txt
+
+# Verify checksums
+sha256sum --ignore-missing --check checksums.txt
+# (On macOS: shasum -a 256 --ignore-missing -c checksums.txt)
+```
+
+## Shell autocompletion
+
+`hclapi` supports dynamic command completion for subcommands and flags.
+
+### Bash
+
+Add dynamic completion to your `~/.bashrc`:
+
+```bash
+echo 'complete -o default -C hclapi hclapi' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Zsh
+
+Add the following to your `~/.zshrc`:
+
+```zsh
+autoload -Uz +X compinit && compinit
+autoload -Uz +X bashcompinit && bashcompinit
+complete -o default -C hclapi hclapi
+```
+
+### Fish
+
+Add the following to `~/.config/fish/completions/hclapi.fish`:
+
+```fish
+complete -c hclapi -f -a '(hclapi --generate-shell-completion (commandline -cop))'
 ```

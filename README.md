@@ -1,9 +1,8 @@
 # hclapi
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/ju4n97/hclapi.svg?style=flat)](https://pkg.go.dev/github.com/ju4n97/hclapi)
-[![Release](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml)
-[![CI](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml/badge.svg?style=flat)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Go Reference](https://img.shields.io/badge/Go_Reference-pkg.go.dev-FFB000?style=flat-square\&labelColor=3A2A00\&color=FFB000)](https://pkg.go.dev/github.com/ju4n97/hclapi)
+[![Release](https://img.shields.io/github/actions/workflow/status/ju4n97/hclapi/release.yaml?style=flat-square\&label=Release\&labelColor=3A2A00\&color=FFB000)](https://github.com/ju4n97/hclapi/actions/workflows/release.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/ju4n97/hclapi/ci.yaml?style=flat-square\&label=CI\&labelColor=3A2A00\&color=FFB000)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
 
 `hclapi` is a declarative backend runtime distributed as a single static binary. It compiles HashiCorp Configuration Language (HCL) manifests, SQL queries, and sandboxed Starlark scripts into production HTTP APIs with native connection pooling, schema validation, and OpenAPI documentation.
 

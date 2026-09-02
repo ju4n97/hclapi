@@ -39,13 +39,13 @@ internal/
 
 ## Git workflow
 
-`hclapi` uses trunk-based development. Keep changes small and focused, and avoid long-lived branches.
+`hclapi` uses trunk-based development. Keep pull requests focused on a single logical change. Merge commits are fine.
 
-Each pull request should contain one logical change. Don't mix unrelated refactors, formatting changes, dependency updates, or other cleanup into a PR unless they are part of the same change.
+### Conventional commits
 
-Keep commits focused and make commit messages describe what changed. Don't add unnecessary generated text or long explanations to commit messages.
+Commit messages should follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(parser): ...`, `fix(sql): ...`, `chore: ...`).
 
-Merge commits are fine.
+This is needed because release changelogs are generated automatically from commit prefixes.
 
 ## Development workflow
 
@@ -130,23 +130,27 @@ Pushing the tag triggers the `.github/workflows/release.yml` workflow, which aut
 
 ## Using AI
 
-AI tools can be used when contributing to `hclapi`, but they're not a substitute for understanding the project or making technical decisions.
+AI tools are fine to use for drafting code, writing tests, or exploring approaches. The main expectation is that all contributions fit the architecture and meet the same quality standards as manual work.
 
-Use them if they're useful to you. You can use them to write code, tests, investigate a problem, or explore possible solutions and validate ideas. Anything you contribute must still be reviewed and understood by you. Don't blindly submit generated code, and don't treat an LLM's output as an authority.
+**For code and verification:**
 
-For issues, comments, and PR descriptions, it's preferable to use your own words. Clear and direct is better than a generated summary that says more than necessary.
+Submitted code should be tested, verified, and well understood by the author.
 
-For project documentation, don't use AI to generate large amounts of text just for the sake of having more documentation. Documentation should be written from an actual understanding of the project and reviewed for correctness before it is contributed. Generated documentation that is inaccurate, redundant, or adds little value will likely be removed.
+**For communication:**
 
-PRs that are considered fully vibe-coded will likely be closed as well.
+Pull request descriptions, issue comments, and commit messages are best kept in plain, direct language. A few straightforward sentences explaining the change are more helpful for review than long generated summaries.
+
+**For documentation:**
+
+Documentation in `hclapi` is kept concise, accurate, and grounded in the actual codebase. Short, clear explanations are preferred over large blocks of generated text that add little practical context.
 
 ## Project configuration
 
-Keep the repository focused on the project itself. Don't add configuration that primarily exists to support your personal development environment, editor, AI tool, or workflow.
+The repository is kept focused on `hclapi` itself. Configuration files that only serve individual editors, personal workflows, or local AI tooling are best kept in local ignore rules rather than tracked in Git.
 
-This includes things such as `.vscode/`, `.zed/`, `.cursor/`, `CLAUDE.md`, `AGENTS.md`, or similar files.
+This includes directories and files such as `.vscode/`, `.zed/`, `.cursor/`, `CLAUDE.md`, `AGENTS.md`, or similar personal setup files.
 
-Add project configuration only when it provides a clear benefit to hclapi and its contributors as a whole.
+Project configuration is committed only when it provides a clear, shared benefit to everyone working on the codebase.
 
 ## License
 

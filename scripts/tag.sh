@@ -73,19 +73,47 @@ fi
 # Automated test and lint verification
 if [ "$SKIP_CHECKS" = false ]; then
   echo
-  info "Executing pre-release test and lint verification suite:"
+  info "Executing pre-release test and lint verification:"
   
-  step "1/4 Running linters (task lint)..."
-  task lint
-  
-  step "2/4 Running unit tests (task test)..."
-  task test
-  
-  step "3/4 Running race detector tests (task test:race)..."
-  task test:race
-  
-  step "4/4 Running database integration tests (task test:integration)..."
-  task test:integration
+  # Resolve Task runner binary across OS packaging variations (task, go-task, ~/go/bin)
+  TASK_CMD=""
+  if command -v task >/dev/null 2>&1; then
+    TASK_CMD="task"
+  elif command -v go-task >/dev/null 2>&1; then
+    TASK_CMD="go-task"
+  elif [[ -x "$HOME/go/bin/task" ]]; then
+    TASK_CMD="$HOME/go/bin/task"
+  elif [[ -x "$HOME/.local/bin/task" ]]; then
+    TASK_CMD="$HOME/.local/bin/task"
+  elif [[ -x "/usr/bin/go-task" ]]; then
+    TASK_CMD="/usr/bin/go-task"
+  fi
+
+  if [[ -n "$TASK_CMD" ]]; then
+    step "1/4 Running linters ($TASK_CMD lint)..."
+    "$TASK_CMD" lint
+    
+    step "2/4 Running unit tests ($TASK_CMD test)..."
+    "$TASK_CMD" test
+    
+    step "3/4 Running race detector tests ($TASK_CMD test:race)..."
+    "$TASK_CMD" test:race
+    
+    step "4/4 Running database integration tests ($TASK_CMD test:integration)..."
+    "$TASK_CMD" test:integration
+  else
+    step "1/4 Running linters (golangci-lint)..."
+    golangci-lint run
+    
+    step "2/4 Running unit tests (go test)..."
+    go test ./...
+    
+    step "3/4 Running race detector tests..."
+    CGO_ENABLED=1 go test -race -count=1 -timeout=30s ./...
+    
+    step "4/4 Running database integration tests..."
+    go test -v -tags=integration -run="^TestIntegration" -timeout=5m ./...
+  fi
   
   ok "All verification suites passed successfully."
 else

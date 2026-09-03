@@ -108,7 +108,7 @@ func TestFunctions_System(t *testing.T) {
 	t.Run("problem function builds RFC 9457 payload", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := &core.Context{
+		execCtx := &core.ExecutionContext{
 			Server: core.Server{
 				ErrorBaseURL: "https://docs.example.com/errors/",
 			},
@@ -116,7 +116,7 @@ func TestFunctions_System(t *testing.T) {
 		}
 
 		// Standard status and detail
-		res, err := eval.Any(parseExpr(t, `problem(404, "User not found")`), ctx)
+		res, err := eval.Any(parseExpr(t, `problem(404, "User not found")`), execCtx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -140,10 +140,10 @@ func TestFunctions_System(t *testing.T) {
 		}
 
 		// Default URN fallback without base URL
-		ctxNoBase := &core.Context{
+		execCtxNoBase := &core.ExecutionContext{
 			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items", http.NoBody),
 		}
-		resURN, err := eval.Any(parseExpr(t, `problem(400, "Invalid parameter", "invalid-param")`), ctxNoBase)
+		resURN, err := eval.Any(parseExpr(t, `problem(400, "Invalid parameter", "invalid-param")`), execCtxNoBase)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

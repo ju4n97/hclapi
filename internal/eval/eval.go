@@ -12,12 +12,12 @@ import (
 )
 
 // Bool evaluates an HCL expression to a boolean value.
-func Bool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error) {
+func Bool(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal bool) (bool, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
 
-	val, diags := expr.Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(execCtx))
 	if diags.HasErrors() {
 		return false, fmt.Errorf("evaluating boolean expression: %s", diags.Error())
 	}
@@ -30,12 +30,12 @@ func Bool(expr hcl.Expression, ctx *core.Context, defaultVal bool) (bool, error)
 }
 
 // Int evaluates an HCL expression to an integer.
-func Int(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
+func Int(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal int) (int, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
 
-	val, diags := expr.Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(execCtx))
 	if diags.HasErrors() {
 		return defaultVal, fmt.Errorf("evaluating integer expression: %s", diags.Error())
 	}
@@ -50,12 +50,12 @@ func Int(expr hcl.Expression, ctx *core.Context, defaultVal int) (int, error) {
 }
 
 // Map evaluates an HCL expression into a string-keyed dictionary.
-func Map(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
+func Map(expr hcl.Expression, execCtx *core.ExecutionContext) (map[string]any, error) {
 	if expr == nil {
 		return nil, nil
 	}
 
-	val, diags := expr.Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(execCtx))
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("evaluating map expression: %s", diags.Error())
 	}
@@ -69,12 +69,12 @@ func Map(expr hcl.Expression, ctx *core.Context) (map[string]any, error) {
 }
 
 // Any evaluates an arbitrary HCL expression into corresponding Go types.
-func Any(expr hcl.Expression, ctx *core.Context) (any, error) {
+func Any(expr hcl.Expression, execCtx *core.ExecutionContext) (any, error) {
 	if expr == nil {
 		return nil, nil
 	}
 
-	val, diags := expr.Value(buildEvalContext(ctx))
+	val, diags := expr.Value(buildEvalContext(execCtx))
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("evaluating expression: %s", diags.Error())
 	}

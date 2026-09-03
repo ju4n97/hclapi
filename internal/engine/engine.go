@@ -181,7 +181,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	executor := NewPipelineExecutor(endpoint.Steps, e.goSteps, e.sqlManager)
 
 	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
-		hclapiCtx, err := core.NewContext(w, r,
+		execCtx, err := core.NewExecutionContext(w, r,
 			core.WithPathParams(paramNames),
 			core.WithServer(e.server),
 		)
@@ -210,7 +210,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 		}
 
 		// Ingress Schema Validation and normalization
-		invalidParams := e.validateRequest(hclapiCtx, endpoint.Rules)
+		invalidParams := e.validateRequest(execCtx, endpoint.Rules)
 		if len(invalidParams) > 0 {
 			e.logger.WarnContext(
 				r.Context(),
@@ -232,7 +232,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 		}
 
 		// Execute pipeline
-		if err := executor.Execute(w, hclapiCtx); err != nil {
+		if err := executor.Execute(w, execCtx); err != nil {
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
 				Type:     e.server.ProblemType("pipeline-execution-failed"),
@@ -245,35 +245,35 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	})
 }
 
-func (e *Engine) validateRequest(ctx *core.Context, rules compiler.CompiledRequestRules) []core.InvalidParam {
+func (e *Engine) validateRequest(execCtx *core.ExecutionContext, rules compiler.CompiledRequestRules) []core.InvalidParam {
 	var invalidParams []core.InvalidParam
 
 	if len(rules.PathFields) > 0 {
-		if errs := validator.ValidateStringMap(ctx.Request.Path, rules.PathFields); len(errs) > 0 {
+		if errs := validator.ValidateStringMap(execCtx.Request.Path, rules.PathFields); len(errs) > 0 {
 			invalidParams = append(invalidParams, errs...)
 		} else {
-			validator.NormalizeStringMap(ctx.Request.Path, rules.PathFields)
+			validator.NormalizeStringMap(execCtx.Request.Path, rules.PathFields)
 		}
 	}
 
 	if len(rules.QueryFields) > 0 {
-		if errs := validator.ValidateStringMap(ctx.Request.Query, rules.QueryFields); len(errs) > 0 {
+		if errs := validator.ValidateStringMap(execCtx.Request.Query, rules.QueryFields); len(errs) > 0 {
 			invalidParams = append(invalidParams, errs...)
 		} else {
-			validator.NormalizeStringMap(ctx.Request.Query, rules.QueryFields)
+			validator.NormalizeStringMap(execCtx.Request.Query, rules.QueryFields)
 		}
 	}
 
 	if len(rules.HeaderFields) > 0 {
-		if errs := validator.ValidateStringMap(ctx.Request.Headers, rules.HeaderFields); len(errs) > 0 {
+		if errs := validator.ValidateStringMap(execCtx.Request.Headers, rules.HeaderFields); len(errs) > 0 {
 			invalidParams = append(invalidParams, errs...)
 		}
 	}
 
 	if len(rules.BodyFields) > 0 {
-		bodyMap, ok := ctx.Request.Body.(map[string]any)
+		bodyMap, ok := execCtx.Request.Body.(map[string]any)
 		if !ok {
-			if ctx.Request.Body == nil {
+			if execCtx.Request.Body == nil {
 				bodyMap = make(map[string]any)
 			} else {
 				invalidParams = append(invalidParams, core.InvalidParam{
@@ -283,11 +283,11 @@ func (e *Engine) validateRequest(ctx *core.Context, rules compiler.CompiledReque
 			}
 		}
 
-		if ok || ctx.Request.Body == nil {
+		if ok || execCtx.Request.Body == nil {
 			if errs := validator.Validate(bodyMap, rules.BodyFields); len(errs) > 0 {
 				invalidParams = append(invalidParams, errs...)
 			} else {
-				ctx.Request.Body = validator.Normalize(bodyMap, rules.BodyFields)
+				execCtx.Request.Body = validator.Normalize(bodyMap, rules.BodyFields)
 			}
 		}
 	}

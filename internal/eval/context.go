@@ -34,39 +34,40 @@ func BaseContext() *hcl.EvalContext {
 	return baseEvalContext
 }
 
-func buildEvalContext(ctx *core.Context) *hcl.EvalContext {
-	if ctx == nil {
+func buildEvalContext(execCtx *core.ExecutionContext) *hcl.EvalContext {
+	if execCtx == nil {
 		return baseEvalContext
 	}
 
 	var reqVal cty.Value
-	if ctx.Request != nil {
+	if execCtx.Request != nil {
 		reqVal = cty.ObjectVal(map[string]cty.Value{
-			"method":  cty.StringVal(ctx.Request.Method),
-			"path":    mapToCty(ctx.Request.Path),
-			"query":   mapToCty(ctx.Request.Query),
-			"headers": mapToCty(ctx.Request.Headers),
-			"body":    anyToCty(ctx.Request.Body),
+			"method":  cty.StringVal(execCtx.Request.Method),
+			"path":    mapToCty(execCtx.Request.Path),
+			"query":   mapToCty(execCtx.Request.Query),
+			"headers": mapToCty(execCtx.Request.Headers),
+			"body":    anyToCty(execCtx.Request.Body),
 		})
 	} else {
 		reqVal = cty.EmptyObjectVal
 	}
 
-	stepsDict := make(map[string]cty.Value, len(ctx.Steps))
-	for name, stepExports := range ctx.Steps {
+	steps := execCtx.SnapshotSteps()
+	stepsDict := make(map[string]cty.Value, len(steps))
+	for name, stepExports := range steps {
 		stepsDict[name] = anyToCty(stepExports)
 	}
 
 	childCtx := baseEvalContext.NewChild()
 
 	childCtx.Functions = map[string]function.Function{
-		"problem": problemFunc(ctx),
+		"problem": problemFunc(execCtx),
 	}
 
 	childCtx.Variables = map[string]cty.Value{
 		"ctx": cty.ObjectVal(map[string]cty.Value{
 			"request":         reqVal,
-			"timestamp_epoch": cty.NumberIntVal(ctx.TimestampEpoch),
+			"timestamp_epoch": cty.NumberIntVal(execCtx.TimestampEpoch),
 		}),
 		"steps": cty.ObjectVal(stepsDict),
 	}

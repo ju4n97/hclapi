@@ -9,11 +9,20 @@ import (
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine = engine.Engine
 
-// Context represents the state passed sequentially across a pipeline execution.
-type Context = core.Context
+// ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
+type ExecutionContext = core.ExecutionContext
 
-// ContextOption configures optional behavior during Context creation.
-type ContextOption = core.ContextOption
+// ExecutionContextOption configures optional behavior during ExecutionContext creation.
+type ExecutionContextOption = core.ExecutionContextOption
+
+// Step encapsulates the invocation state and arguments for a single Go step.
+type Step = core.Step
+
+// StepHandler defines the signature for custom native Go step callbacks.
+type StepHandler = core.StepHandler
+
+// Args represents evaluated arguments passed to a Go step from an HCL manifest.
+type Args = core.Args
 
 // RequestState represents normalized HTTP request metadata extracted at runtime.
 type RequestState = core.RequestState
@@ -21,20 +30,17 @@ type RequestState = core.RequestState
 // StepResult represents arbitrary step-specific outputs.
 type StepResult = core.StepResult
 
-// StepHandler defines the signature for custom native Go step callbacks.
-type StepHandler = core.StepHandler
-
 // Options defines the configuration options for the hclapi engine.
 type Options = core.Options
+
+// Server defines the resolved HTTP server configuration.
+type Server = core.Server
 
 // Duration wraps a time.Duration with universal text deserialization.
 type Duration = core.Duration
 
 // ByteSize represents a quantity of bytes that can be unmarshaled from text.
 type ByteSize = core.ByteSize
-
-// Server defines the resolved HTTP server configuration.
-type Server = core.Server
 
 // ProblemDetailsError represents an RFC 9457 compliant error object.
 type ProblemDetailsError = core.ProblemDetailsError

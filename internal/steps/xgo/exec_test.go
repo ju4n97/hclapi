@@ -1,6 +1,7 @@
 package xgo_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -15,12 +16,12 @@ func TestExecute(t *testing.T) {
 	t.Run("Successful execution", func(t *testing.T) {
 		t.Parallel()
 
-		handler := func(ctx *core.Context, args map[string]any) (any, error) {
-			name, _ := args["name"].(string)
+		handler := func(ctx context.Context, step *core.Step) (any, error) {
+			name := step.Args.GetOr("name", "")
 			return strings.ToUpper(name), nil
 		}
 
-		res, err := xgo.Execute(handler, &core.Context{}, map[string]any{"name": "hello"})
+		res, err := xgo.Execute(t.Context(), handler, &core.Step{Args: map[string]any{"name": "hello"}})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -32,11 +33,11 @@ func TestExecute(t *testing.T) {
 	t.Run("Standard error propagation", func(t *testing.T) {
 		t.Parallel()
 
-		handler := func(ctx *core.Context, args map[string]any) (any, error) {
+		handler := func(ctx context.Context, step *core.Step) (any, error) {
 			return nil, errors.New("db timeout")
 		}
 
-		_, err := xgo.Execute(handler, &core.Context{}, nil)
+		_, err := xgo.Execute(t.Context(), handler, &core.Step{})
 		if err == nil || err.Error() != "db timeout" {
 			t.Fatalf("expected 'db timeout', got %v", err)
 		}
@@ -45,11 +46,11 @@ func TestExecute(t *testing.T) {
 	t.Run("Panic is safely caught and converted to error", func(t *testing.T) {
 		t.Parallel()
 
-		handler := func(ctx *core.Context, args map[string]any) (any, error) {
+		handler := func(ctx context.Context, step *core.Step) (any, error) {
 			panic("nil pointer dereference inside user code")
 		}
 
-		_, err := xgo.Execute(handler, &core.Context{}, nil)
+		_, err := xgo.Execute(t.Context(), handler, &core.Step{})
 		if err == nil {
 			t.Fatalf("expected panic to be recovered as error, got nil")
 		}

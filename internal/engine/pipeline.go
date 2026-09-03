@@ -40,25 +40,25 @@ func NewPipelineExecutor(
 }
 
 // Execute walks through configured steps sequentially, updating context state.
-func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) error {
+func (p *PipelineExecutor) Execute(w http.ResponseWriter, execCtx *core.ExecutionContext) error {
 	for _, step := range p.steps {
-		if err := ctx.Context().Err(); err != nil {
+		if err := execCtx.Context().Err(); err != nil {
 			return fmt.Errorf("pipeline execution aborted: %w", err)
 		}
 
 		switch step.Type {
 		case parser.StepTypeGo:
-			if err := p.execGoStep(step, ctx); err != nil {
+			if err := p.execGoStep(step, execCtx); err != nil {
 				return err
 			}
 
 		case parser.StepTypeStarlark:
-			if err := p.execStarlarkStep(step, ctx); err != nil {
+			if err := p.execStarlarkStep(step, execCtx); err != nil {
 				return err
 			}
 
 		case parser.StepTypeSQL:
-			responded, err := p.execSQLStep(w, step, ctx)
+			responded, err := p.execSQLStep(w, step, execCtx)
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 			}
 
 		case parser.StepTypeRespond:
-			responded, err := p.execRespondStep(w, step, ctx)
+			responded, err := p.execRespondStep(w, step, execCtx)
 			if err != nil {
 				return err
 			}
@@ -83,12 +83,12 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, ctx *core.Context) err
 	return nil
 }
 
-func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context) error {
+func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, execCtx *core.ExecutionContext) error {
 	if step.Go == nil {
 		return fmt.Errorf("step %q: missing go configuration", step.Name)
 	}
 
-	args, err := eval.Map(step.Go.Args, ctx)
+	argsMap, err := eval.Map(step.Go.Args, execCtx)
 	if err != nil {
 		return fmt.Errorf("step %q args: %w", step.Name, err)
 	}
@@ -98,42 +98,45 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, ctx *core.Context)
 		return fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
 	}
 
-	res, err := xgo.Execute(handler, ctx, args)
+	stepObj := execCtx.NewStep(step.Name, core.Args(argsMap))
+
+	res, err := xgo.Execute(execCtx.Context(), handler, stepObj)
 	if err != nil {
 		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
 	if step.Name != "" {
-		ctx.Steps[step.Name] = map[string]any{
+		execCtx.SetStepResult(step.Name, map[string]any{
 			"result": res,
-		}
+		})
 	}
 
 	return nil
 }
 
-func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Context) error {
+func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *core.ExecutionContext) error {
 	if step.Starlark == nil {
 		return fmt.Errorf("step %q: missing starlark configuration", step.Name)
 	}
 
 	reqFields := starlark.StringDict{
-		"method":  starlark.String(ctx.Request.Method),
-		"path":    xstarlark.GoToStarlarkValue(ctx.Request.Path),
-		"query":   xstarlark.GoToStarlarkValue(ctx.Request.Query),
-		"headers": xstarlark.GoToStarlarkValue(ctx.Request.Headers),
-		"body":    xstarlark.GoToStarlarkValue(ctx.Request.Body),
+		"method":  starlark.String(execCtx.Request.Method),
+		"path":    xstarlark.GoToStarlarkValue(execCtx.Request.Path),
+		"query":   xstarlark.GoToStarlarkValue(execCtx.Request.Query),
+		"headers": xstarlark.GoToStarlarkValue(execCtx.Request.Headers),
+		"body":    xstarlark.GoToStarlarkValue(execCtx.Request.Body),
 	}
 
-	stepFields := make(starlark.StringDict, len(ctx.Steps))
-	for name, stepExports := range ctx.Steps {
+	steps := execCtx.SnapshotSteps()
+	stepFields := make(starlark.StringDict, len(steps))
+	for name, stepExports := range steps {
 		stepFields[name] = xstarlark.GoToStarlarkValue(stepExports)
 	}
 
 	starlarkCtx := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
 		"request":         starlarkstruct.FromStringDict(starlarkstruct.Default, reqFields),
 		"steps":           starlarkstruct.FromStringDict(starlarkstruct.Default, stepFields),
-		"timestamp_epoch": starlark.MakeInt64(ctx.TimestampEpoch),
+		"timestamp_epoch": starlark.MakeInt64(execCtx.TimestampEpoch),
 	})
 
 	res, err := xstarlark.Eval(step.Starlark.Source, starlarkCtx)
@@ -142,15 +145,15 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, ctx *core.Co
 	}
 
 	if step.Name != "" {
-		ctx.Steps[step.Name] = map[string]any{
+		execCtx.SetStepResult(step.Name, map[string]any{
 			"result": res,
-		}
+		})
 	}
 
 	return nil
 }
 
-func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.ParsedStep, ctx *core.Context) (bool, error) {
+func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.ParsedStep, execCtx *core.ExecutionContext) (bool, error) {
 	if step.SQL == nil {
 		return false, fmt.Errorf("step %q: missing sql configuration", step.Name)
 	}
@@ -165,12 +168,12 @@ func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.Parsed
 		return false, fmt.Errorf("step %q: unknown connection %q", step.Name, connRef)
 	}
 
-	args, err := eval.Map(step.SQL.Args, ctx)
+	args, err := eval.Map(step.SQL.Args, execCtx)
 	if err != nil {
 		return false, fmt.Errorf("step %q args: %w", step.Name, err)
 	}
 
-	res, err := xsql.Execute(ctx.Context(), pool, step.SQL.Query, args)
+	res, err := xsql.Execute(execCtx.Context(), pool, step.SQL.Query, args)
 	if err != nil {
 		// Attempt to intercept database constraint error codes with catch blocks
 		errCode := pool.Dialect.ExtractErrorCode(err)
@@ -179,7 +182,7 @@ func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.Parsed
 				if pool.Dialect.MatchErrorCode(errCode, catchBlock.Code) {
 					if err := writeResponse(
 						w,
-						ctx,
+						execCtx,
 						catchBlock.Status,
 						catchBlock.Headers,
 						catchBlock.Body,
@@ -196,11 +199,11 @@ func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.Parsed
 	}
 
 	if step.Name != "" {
-		ctx.Steps[step.Name] = map[string]any{
+		execCtx.SetStepResult(step.Name, map[string]any{
 			"rows":          res.Rows,
 			"row":           res.Row,
 			"rows_affected": res.RowsAffected,
-		}
+		})
 	}
 
 	return false, nil
@@ -209,13 +212,13 @@ func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.Parsed
 func (p *PipelineExecutor) execRespondStep(
 	w http.ResponseWriter,
 	step parser.ParsedStep,
-	ctx *core.Context,
+	execCtx *core.ExecutionContext,
 ) (bool, error) {
 	if step.Respond == nil {
 		return false, errors.New("step is missing respond configuration")
 	}
 
-	shouldRun, err := eval.Bool(step.Respond.Condition, ctx, true)
+	shouldRun, err := eval.Bool(step.Respond.Condition, execCtx, true)
 	if err != nil {
 		return false, fmt.Errorf("respond condition: %w", err)
 	}
@@ -223,7 +226,7 @@ func (p *PipelineExecutor) execRespondStep(
 		return false, nil
 	}
 
-	if err := writeResponse(w, ctx, step.Respond.Status, step.Respond.Headers, step.Respond.Body, http.StatusOK); err != nil {
+	if err := writeResponse(w, execCtx, step.Respond.Status, step.Respond.Headers, step.Respond.Body, http.StatusOK); err != nil {
 		return false, fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
@@ -233,18 +236,18 @@ func (p *PipelineExecutor) execRespondStep(
 // writeResponse evaluates dynamic status, headers, and body expressions and writes the finalized HTTP response.
 func writeResponse(
 	w http.ResponseWriter,
-	ctx *core.Context,
+	execCtx *core.ExecutionContext,
 	statusExpr, headersExpr, bodyExpr hcl.Expression,
 	defaultStatus int,
 ) error {
-	status, err := eval.Int(statusExpr, ctx, defaultStatus)
+	status, err := eval.Int(statusExpr, execCtx, defaultStatus)
 	if err != nil {
 		return fmt.Errorf("eval status: %w", err)
 	}
 
 	var headers map[string]string
 	if headersExpr != nil {
-		evaluatedHeaders, err := eval.Map(headersExpr, ctx)
+		evaluatedHeaders, err := eval.Map(headersExpr, execCtx)
 		if err != nil {
 			return fmt.Errorf("eval headers: %w", err)
 		}
@@ -258,7 +261,7 @@ func writeResponse(
 
 	var body any
 	if bodyExpr != nil {
-		evaluatedBody, err := eval.Any(bodyExpr, ctx)
+		evaluatedBody, err := eval.Any(bodyExpr, execCtx)
 		if err != nil {
 			return fmt.Errorf("eval body: %w", err)
 		}

@@ -1,18 +1,23 @@
 package xgo
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ju4n97/hclapi/internal/core"
 )
 
 // Execute runs a custom Go step safely, recovering from panics.
-func Execute(handler core.StepHandler, ctx *core.Context, args map[string]any) (res any, err error) {
+func Execute(ctx context.Context, handler core.StepHandler, step *core.Step) (res any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic in custom go step: %v", r)
+			stepName := "anonymous"
+			if step != nil && step.Name != "" {
+				stepName = step.Name
+			}
+			err = fmt.Errorf("panic in custom go step %q: %v", stepName, r)
 		}
 	}()
 
-	return handler(ctx, args)
+	return handler(ctx, step)
 }

@@ -3,7 +3,7 @@ title: go
 description: Invoke a native Go function registered on the hclapi engine.
 ---
 
-Invokes a native Go function registered on the engine. Use this step for logic that cannot be expressed in Starlark: proprietary business rules, third-party SDKs, outbound HTTP clients, or hardware cryptography.
+Invokes a native Go function registered on the engine. Use this step for logic that cannot be expressed in Starlark or SQL: proprietary business rules, third-party SDKs, outbound HTTP clients, or hardware cryptography.
 
 ## Declaration
 
@@ -18,31 +18,34 @@ go "<name>" {
 
 ## Attributes
 
-| Attribute | Type     | Required | Description                                |
-| :-------- | :------- | :------- | :----------------------------------------- |
-| `label`   | `string` | yes      | Step identifier                            |
-| `use`     | `string` | yes      | Function name registered on the `Engine`   |
-| `args`    | `map`    | no       | Evaluated arguments passed into `ctx.Args` |
+| Attribute | Type     | Required | Description                                 |
+| :-------- | :------- | :------- | :------------------------------------------ |
+| `label`   | `string` | yes      | Step identifier; written to `steps.<name>`  |
+| `use`     | `string` | yes      | Function name registered on the `Engine`    |
+| `args`    | `map`    | no       | Evaluated arguments passed into `step.Args` |
 
-## Registration
+## Registration in Go
 
 ```go
-engine.RegisterStep("services.weather_lookup", func(ctx *hclapi.Context) (any, error) {
-  city, ok := ctx.Args["city"].(string)
-  if !ok || len(city) == 0 {
-    return nil, errors.New("missing or invalid 'city' argument")
-  }
+engine.RegisterStep("services.weather_lookup", func(ctx context.Context, step *hclapi.Step) (any, error) {
+    city := step.Args.GetOr("city", "")
+    if city == "" {
+        return nil, errors.New("missing or empty 'city' argument")
+    }
 
-  return map[string]any{
-    "city":          strings.ToLower(strings.TrimSpace(city)),
-    "temperature_c": 22.5,
-    "condition":     "Sunny",
-  }, nil
+    // Access incoming request headers safely
+    authHeader := step.Request.Header("Authorization")
+
+    return map[string]any{
+        "city":          strings.ToLower(strings.TrimSpace(city)),
+        "temperature_c": 22.5,
+        "condition":     "Sunny",
+    }, nil
 })
 ```
 
-The return value is written to `steps.<name>.result`.
+The return value is exported under `steps.<name>.result`.
 
 :::warning Panic handling
-A panic in a registered function is recovered by the engine, converted to a 500 response, and does not terminate the server process.
+Panics in a registered function are automatically recovered by the engine, converted to an RFC 9457 500 error response, and don't terminate the server process.
 :::

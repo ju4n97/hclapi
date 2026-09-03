@@ -64,7 +64,7 @@ func TestContext(t *testing.T) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/42", http.NoBody)
 		req.Header.Set("Authorization", "Bearer token-123")
 
-		ctx, err := core.NewContext(nil, req, core.WithPathParams([]string{"id"}))
+		ctx, err := core.NewExecutionContext(nil, req, core.WithPathParams([]string{"id"}))
 		if err != nil {
 			t.Fatalf("failed to create core context: %v", err)
 		}

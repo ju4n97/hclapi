@@ -56,8 +56,8 @@ func run() error {
 
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 
-	err = engine.RegisterStep("services.get_weather", func(ctx *hclapi.Context, args map[string]any) (any, error) {
-		cityParam, ok := args["city"].(string)
+	err = engine.RegisterStep("services.get_weather", func(ctx context.Context, step *hclapi.Step) (any, error) {
+		cityParam, ok := step.Args.Get[string]("city")
 		if !ok || len(cityParam) == 0 {
 			return nil, errors.New("missing or invalid 'city' argument")
 		}
@@ -75,7 +75,7 @@ func run() error {
 		)
 
 		req, err := http.NewRequestWithContext(
-			ctx.Context(),
+			ctx,
 			http.MethodGet,
 			url,
 			http.NoBody,

@@ -3,8 +3,12 @@
 dist/
 bin/
 docs/
+logs/
+tmp/
 node_modules/
 *.md
 *.mdx
+.env*
+*.go
 .goreleaser.yaml
 Taskfile.yml

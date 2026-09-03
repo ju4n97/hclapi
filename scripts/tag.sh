@@ -51,6 +51,11 @@ elif [[ -x "/usr/bin/go-task" ]]; then
   TASK_CMD="/usr/bin/go-task"
 fi
 
+# Validation: Task runner available
+if [[ -z "$TASK_CMD" ]]; then
+  err "Task runner not found. Install Task (https://taskfile.dev/) before releasing."
+fi
+
 # Auto-generate CLI documentation and man pages
 if [ "$SKIP_CHECKS" = false ]; then
   info "Synchronizing CLI documentation and man pages..."
@@ -95,31 +100,17 @@ if [ "$SKIP_CHECKS" = false ]; then
   echo
   info "Executing pre-release test and lint verification suite:"
   
-  if [[ -n "$TASK_CMD" ]]; then
-    step "1/4 Running linters ($TASK_CMD lint)..."
-    "$TASK_CMD" lint
-    
-    step "2/4 Running unit tests ($TASK_CMD test)..."
-    "$TASK_CMD" test
-    
-    step "3/4 Running race detector tests ($TASK_CMD test:race)..."
-    "$TASK_CMD" test:race
-    
-    step "4/4 Running database integration tests ($TASK_CMD test:integration)..."
-    "$TASK_CMD" test:integration
-  else
-    step "1/4 Running linters (golangci-lint)..."
-    golangci-lint run
-    
-    step "2/4 Running unit tests (go test)..."
-    go test ./...
-    
-    step "3/4 Running race detector tests..."
-    CGO_ENABLED=1 go test -race -count=1 -timeout=30s ./...
-    
-    step "4/4 Running database integration tests..."
-    go test -v -tags=integration -run="^TestIntegration" -timeout=5m ./...
-  fi
+  step "1/4 Running linters ($TASK_CMD lint)..."
+  "$TASK_CMD" lint
+  
+  step "2/4 Running unit tests ($TASK_CMD test)..."
+  "$TASK_CMD" test
+  
+  step "3/4 Running race detector tests ($TASK_CMD test-race)..."
+  "$TASK_CMD" test-race
+  
+  step "4/4 Running database integration tests ($TASK_CMD test-integration)..."
+  "$TASK_CMD" test-integration
   
   ok "All verification suites passed successfully."
 else

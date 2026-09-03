@@ -153,7 +153,11 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *cor
 	return nil
 }
 
-func (p *PipelineExecutor) execSQLStep(w http.ResponseWriter, step parser.ParsedStep, execCtx *core.ExecutionContext) (bool, error) {
+func (p *PipelineExecutor) execSQLStep(
+	w http.ResponseWriter,
+	step parser.ParsedStep,
+	execCtx *core.ExecutionContext,
+) (bool, error) {
 	if step.SQL == nil {
 		return false, fmt.Errorf("step %q: missing sql configuration", step.Name)
 	}

@@ -58,8 +58,8 @@ tasks:
   fmt:
     desc: Format all code and documentation
     cmds:
-      - task: fmt:go
-      - task: fmt:docs
+      - task: fmt-go
+      - task: fmt-docs
 
   fmt-go:
     desc: Format Go source files
@@ -72,8 +72,8 @@ tasks:
   gen:
     desc: Run all generators
     cmds:
-      - task: gen:docs
-      - task: gen:man
+      - task: gen-docs
+      - task: gen-man
 
   gen-docs:
     desc: Generate CLI markdown documentation

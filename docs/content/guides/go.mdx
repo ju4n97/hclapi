@@ -122,7 +122,7 @@ latitude, ok := step.Args.Get[float64]("latitude")
 if !ok {
     return nil, errors.New("missing or invalid 'latitude' argument")
 }
-    
+
 // Generic type inference with defaults
 port := step.Args.GetOr("port", 8080)          // Inferred as int
 host := step.Args.GetOr("host", "localhost")   // Inferred as string

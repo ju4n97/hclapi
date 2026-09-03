@@ -161,14 +161,14 @@ var nowFunc = function.New(&function.Spec{
 })
 
 // problemFunc constructs an RFC 9457 Problem Details object from positional arguments or an object map.
-func problemFunc(ctx *core.Context) function.Function {
+func problemFunc(execCtx *core.ExecutionContext) function.Function {
 	var instancePath string
 	var errorBaseURL string
 
-	if ctx != nil {
-		errorBaseURL = ctx.Server.ErrorBaseURL
-		if ctx.RawRequest != nil && ctx.RawRequest.URL != nil {
-			instancePath = ctx.RawRequest.URL.Path
+	if execCtx != nil {
+		errorBaseURL = execCtx.Server.ErrorBaseURL
+		if execCtx.RawRequest != nil && execCtx.RawRequest.URL != nil {
+			instancePath = execCtx.RawRequest.URL.Path
 		}
 	}
 

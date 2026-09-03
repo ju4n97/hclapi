@@ -54,10 +54,10 @@ func TestPipeline_Go(t *testing.T) {
 		t.Parallel()
 
 		goSteps := map[string]core.StepHandler{
-			"auth.verify": func(ctx *core.Context, args map[string]any) (any, error) {
-				token, ok := args["token"].(string)
+			"auth.verify": func(ctx context.Context, step *core.Step) (any, error) {
+				token := step.Args.GetOr("token", "")
 				return map[string]any{
-					"valid": ok && token == "secret-token",
+					"valid": token == "secret-token",
 					"uid":   42,
 				}, nil
 			},
@@ -86,13 +86,13 @@ func TestPipeline_Go(t *testing.T) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
 		req.Header.Set("Authorization", "secret-token")
 
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -111,7 +111,7 @@ func TestPipeline_Go(t *testing.T) {
 		t.Parallel()
 
 		goSteps := map[string]core.StepHandler{
-			"panic.step": func(ctx *core.Context, args map[string]any) (any, error) {
+			"panic.step": func(ctx context.Context, step *core.Step) (any, error) {
 				panic("nil pointer dereference inside user step")
 			},
 		}
@@ -127,13 +127,13 @@ func TestPipeline_Go(t *testing.T) {
 		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		err = executor.Execute(rec, hclapiCtx)
+		err = executor.Execute(rec, execCtx)
 
 		if err == nil || !strings.Contains(err.Error(), "panic in custom go step") {
 			t.Fatalf("expected recovered panic error, got: %v", err)
@@ -154,13 +154,13 @@ func TestPipeline_Go(t *testing.T) {
 		executor := engine.NewPipelineExecutor(steps, nil, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		err = executor.Execute(rec, hclapiCtx)
+		err = executor.Execute(rec, execCtx)
 
 		if err == nil || !strings.Contains(err.Error(), "unregistered go function") {
 			t.Fatalf("expected unregistered function error, got: %v", err)
@@ -175,7 +175,7 @@ func TestPipeline_Starlark(t *testing.T) {
 		t.Parallel()
 
 		goSteps := map[string]core.StepHandler{
-			"fetch.user": func(ctx *core.Context, args map[string]any) (any, error) {
+			"fetch.user": func(ctx context.Context, step *core.Step) (any, error) {
 				return map[string]any{
 					"name":  "jane",
 					"roles": []any{"admin", "editor"},
@@ -217,13 +217,13 @@ def execute(ctx):
 		executor := engine.NewPipelineExecutor(steps, goSteps, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -257,13 +257,13 @@ def execute(ctx):
 		executor := engine.NewPipelineExecutor(steps, nil, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		err = executor.Execute(rec, hclapiCtx)
+		err = executor.Execute(rec, execCtx)
 
 		if err == nil || !strings.Contains(err.Error(), "too many steps") {
 			t.Fatalf("expected step limit exceeded error, got: %v", err)
@@ -324,13 +324,13 @@ func TestPipeline_SQL(t *testing.T) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/1", http.NoBody)
 		req.SetPathValue("id", "1")
 
-		hclapiCtx, err := core.NewContext(nil, req, core.WithPathParams([]string{"id"}))
+		execCtx, err := core.NewExecutionContext(nil, req, core.WithPathParams([]string{"id"}))
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -402,13 +402,13 @@ func TestPipeline_SQL(t *testing.T) {
 		)
 		req.Header.Set("Content-Type", "application/json")
 
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -444,13 +444,13 @@ func TestPipeline_Respond(t *testing.T) {
 		executor := engine.NewPipelineExecutor(steps, nil, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -480,13 +480,13 @@ func TestPipeline_Respond(t *testing.T) {
 		executor := engine.NewPipelineExecutor(steps, nil, nil)
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		if err := executor.Execute(rec, hclapiCtx); err != nil {
+		if err := executor.Execute(rec, execCtx); err != nil {
 			t.Fatalf("unexpected execution error: %v", err)
 		}
 
@@ -507,10 +507,10 @@ func TestPipeline_ContextCancellation(t *testing.T) {
 
 		stepTwoExecuted := false
 		goSteps := map[string]core.StepHandler{
-			"step.one": func(ctx *core.Context, args map[string]any) (any, error) {
+			"step.one": func(ctx context.Context, step *core.Step) (any, error) {
 				return "done_one", nil
 			},
-			"step.two": func(ctx *core.Context, args map[string]any) (any, error) {
+			"step.two": func(ctx context.Context, step *core.Step) (any, error) {
 				stepTwoExecuted = true
 				return "done_two", nil
 			},
@@ -535,13 +535,13 @@ func TestPipeline_ContextCancellation(t *testing.T) {
 		cancel() // Cancel before execution
 
 		req := httptest.NewRequestWithContext(reqCtx, http.MethodGet, "/test", http.NoBody)
-		hclapiCtx, err := core.NewContext(nil, req)
+		execCtx, err := core.NewExecutionContext(nil, req)
 		if err != nil {
 			t.Fatalf("failed to create context: %v", err)
 		}
 
 		rec := httptest.NewRecorder()
-		err = executor.Execute(rec, hclapiCtx)
+		err = executor.Execute(rec, execCtx)
 
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("expected context.Canceled error, got: %v", err)

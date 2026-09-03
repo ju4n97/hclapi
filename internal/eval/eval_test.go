@@ -25,18 +25,18 @@ func parseExpr(t *testing.T, src string) hcl.Expression {
 func evalExpr(t *testing.T, src string) (any, error) {
 	t.Helper()
 
-	ctx := &core.Context{
+	execCtx := &core.ExecutionContext{
 		Request: &core.RequestState{},
 		Steps:   make(map[string]core.StepResult),
 	}
 
-	return eval.Any(parseExpr(t, src), ctx)
+	return eval.Any(parseExpr(t, src), execCtx)
 }
 
 func TestEval(t *testing.T) {
 	t.Parallel()
 
-	sampleCtx := &core.Context{
+	execCtx := &core.ExecutionContext{
 		Request: &core.RequestState{
 			Method: "POST",
 			Path:   map[string]string{"id": "usr_99"},
@@ -90,7 +90,7 @@ func TestEval(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				res, err := eval.Bool(tt.expr, sampleCtx, tt.defaultVal)
+				res, err := eval.Bool(tt.expr, execCtx, tt.defaultVal)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -133,7 +133,7 @@ func TestEval(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				res, err := eval.Int(tt.expr, sampleCtx, tt.defaultVal)
+				res, err := eval.Int(tt.expr, execCtx, tt.defaultVal)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -148,7 +148,7 @@ func TestEval(t *testing.T) {
 		t.Parallel()
 
 		expr := parseExpr(t, `{ user_id = ctx.request.path.id, user_tier = steps.lookup.result.tier }`)
-		res, err := eval.Map(expr, sampleCtx)
+		res, err := eval.Map(expr, execCtx)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

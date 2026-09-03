@@ -20,7 +20,7 @@ func TestNewContext(t *testing.T) {
 		pathParams  map[string]string
 		bodyJSON    string
 		expectError bool
-		validate    func(t *testing.T, ctx *core.Context)
+		validate    func(t *testing.T, execCtx *core.ExecutionContext)
 	}{
 		{
 			name:   "Parses query parameters and lowercases headers",
@@ -31,15 +31,15 @@ func TestNewContext(t *testing.T) {
 				"Content-Type": "application/json",
 			},
 			expectError: false,
-			validate: func(t *testing.T, ctx *core.Context) {
-				if ctx.Request.Method != http.MethodGet {
-					t.Errorf("expected GET, got %s", ctx.Request.Method)
+			validate: func(t *testing.T, execCtx *core.ExecutionContext) {
+				if execCtx.Request.Method != http.MethodGet {
+					t.Errorf("expected GET, got %s", execCtx.Request.Method)
 				}
-				if ctx.Request.Query["limit"] != "10" || ctx.Request.Query["status"] != "active" {
-					t.Errorf("unexpected query params: %+v", ctx.Request.Query)
+				if execCtx.Request.Query["limit"] != "10" || execCtx.Request.Query["status"] != "active" {
+					t.Errorf("unexpected query params: %+v", execCtx.Request.Query)
 				}
-				if ctx.Request.Headers["x-trace-id"] != "trace-123" {
-					t.Errorf("expected lowercase header key, got: %+v", ctx.Request.Headers)
+				if execCtx.Request.Headers["x-trace-id"] != "trace-123" {
+					t.Errorf("expected lowercase header key, got: %+v", execCtx.Request.Headers)
 				}
 			},
 		},
@@ -56,7 +56,7 @@ func TestNewContext(t *testing.T) {
 			url:         "/items",
 			bodyJSON:    `{"title": "Test Item", "count": 5}`,
 			expectError: false,
-			validate: func(t *testing.T, ctx *core.Context) {
+			validate: func(t *testing.T, ctx *core.ExecutionContext) {
 				body, ok := ctx.Request.Body.(map[string]any)
 				if !ok {
 					t.Fatalf("expected map[string]any body, got %T", ctx.Request.Body)
@@ -90,7 +90,7 @@ func TestNewContext(t *testing.T) {
 				paramNames = append(paramNames, k)
 			}
 
-			ctx, err := core.NewContext(nil, req,
+			ctx, err := core.NewExecutionContext(nil, req,
 				core.WithPathParams(paramNames),
 				core.WithServer(core.Server{
 					MaxBodySize: 10 * 1024 * 1024,

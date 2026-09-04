@@ -43,7 +43,7 @@ func (a Args) Get[T any](key string) (T, bool) {
 	}
 
 	// Numeric coercion
-	if num, ok := coerceNumber[T](val); ok {
+	if num, ok := CoerceNumber[T](val); ok {
 		return num, true
 	}
 
@@ -62,10 +62,10 @@ func (a Args) Get[T any](key string) (T, bool) {
 
 // GetOr is like Get but returns a fallback if key is missing or null.
 //
-//	port := step.Args.GetOr("port", 8080)            // Inferred as int
-//	host := step.Args.GetOr("host", "localhost")     // Inferred as string
-//	priority := step.Args.GetOr("priority", false)   // Inferred as bool
-//	ratio := step.Args.GetOr("ratio", 0.95)          // Inferred as float64
+//	port := step.Args.GetOr("port", 8080)          // Inferred as int
+//	host := step.Args.GetOr("host", "localhost")   // Inferred as string
+//	priority := step.Args.GetOr("priority", false) // Inferred as bool
+//	ratio := step.Args.GetOr("ratio", 0.95)        // Inferred as float64
 func (a Args) GetOr[T any](key string, fallback T) T {
 	if val, ok := a.Get[T](key); ok {
 		return val
@@ -106,7 +106,7 @@ func (a Args) Slice[T any](key string) []T {
 			}
 			if v, ok := item.(T); ok {
 				res = append(res, v)
-			} else if num, ok := coerceNumber[T](item); ok {
+			} else if num, ok := CoerceNumber[T](item); ok {
 				res = append(res, num)
 			} else if isString {
 				res = append(res, any(fmt.Sprintf("%v", item)).(T))
@@ -126,7 +126,7 @@ func (a Args) Slice[T any](key string) []T {
 			}
 			if v, ok := item.(T); ok {
 				res = append(res, v)
-			} else if num, ok := coerceNumber[T](item); ok {
+			} else if num, ok := CoerceNumber[T](item); ok {
 				res = append(res, num)
 			} else if isString {
 				res = append(res, any(fmt.Sprintf("%v", item)).(T))
@@ -151,119 +151,4 @@ func (a Args) Bind(dst any) error {
 		return fmt.Errorf("unmarshal args: %w", err)
 	}
 	return nil
-}
-
-func coerceNumber[T any](val any) (T, bool) {
-	var zero T
-	switch any(zero).(type) {
-	case int:
-		if n, ok := toInt64(val); ok {
-			return any(int(n)).(T), true
-		}
-	case int8:
-		if n, ok := toInt64(val); ok {
-			return any(int8(n)).(T), true
-		}
-	case int16:
-		if n, ok := toInt64(val); ok {
-			return any(int16(n)).(T), true
-		}
-	case int32:
-		if n, ok := toInt64(val); ok {
-			return any(int32(n)).(T), true
-		}
-	case int64:
-		if n, ok := toInt64(val); ok {
-			return any(n).(T), true
-		}
-	case uint:
-		if n, ok := toInt64(val); ok {
-			return any(uint(n)).(T), true
-		}
-	case uint8:
-		if n, ok := toInt64(val); ok {
-			return any(uint8(n)).(T), true
-		}
-	case uint16:
-		if n, ok := toInt64(val); ok {
-			return any(uint16(n)).(T), true
-		}
-	case uint32:
-		if n, ok := toInt64(val); ok {
-			return any(uint32(n)).(T), true
-		}
-	case uint64:
-		if n, ok := toInt64(val); ok {
-			return any(uint64(n)).(T), true
-		}
-	case float32:
-		if f, ok := toFloat64(val); ok {
-			return any(float32(f)).(T), true
-		}
-	case float64:
-		if f, ok := toFloat64(val); ok {
-			return any(f).(T), true
-		}
-	}
-	return zero, false
-}
-
-func toInt64(val any) (int64, bool) {
-	switch v := val.(type) {
-	case int:
-		return int64(v), true
-	case int8:
-		return int64(v), true
-	case int16:
-		return int64(v), true
-	case int32:
-		return int64(v), true
-	case int64:
-		return v, true
-	case uint:
-		return int64(v), true
-	case uint8:
-		return int64(v), true
-	case uint16:
-		return int64(v), true
-	case uint32:
-		return int64(v), true
-	case uint64:
-		return int64(v), true
-	case float32:
-		return int64(v), true
-	case float64:
-		return int64(v), true
-	}
-	return 0, false
-}
-
-func toFloat64(val any) (float64, bool) {
-	switch v := val.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int8:
-		return float64(v), true
-	case int16:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint8:
-		return float64(v), true
-	case uint16:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	}
-	return 0, false
 }

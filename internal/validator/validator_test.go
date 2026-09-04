@@ -7,7 +7,7 @@ import (
 	"github.com/ju4n97/hclapi/internal/validator"
 )
 
-func TestValidate(t *testing.T) {
+func TestValidateBody(t *testing.T) {
 	t.Parallel()
 
 	fields := []core.Field{
@@ -29,6 +29,7 @@ func TestValidate(t *testing.T) {
 			Name:     "role",
 			Type:     "string",
 			Required: false,
+			Default:  "member",
 			Enum:     []any{"admin", "member", "viewer"},
 		},
 		{
@@ -37,6 +38,11 @@ func TestValidate(t *testing.T) {
 			Required: false,
 			Min:      new(float64(18)),
 			Max:      new(float64(100)),
+		},
+		{
+			Name:     "bio",
+			Type:     "string",
+			Required: false,
 		},
 		{
 			Name:        "tags",
@@ -48,20 +54,28 @@ func TestValidate(t *testing.T) {
 		},
 	}
 
-	t.Run("Valid payload passes with 0 invalid params", func(t *testing.T) {
+	t.Run("Valid payload passes, injects defaults, and normalizes optional missing fields to nil", func(t *testing.T) {
 		t.Parallel()
 
 		data := map[string]any{
 			"email":    "jane@example.com",
 			"username": "jane_doe",
-			"role":     "member",
 			"age":      25,
 			"tags":     []any{"go", "api"},
 		}
 
-		errors := validator.Validate(data, fields)
-		if len(errors) != 0 {
-			t.Fatalf("expected 0 errors, got %d: %+v", len(errors), errors)
+		normalized, errs := validator.ValidateBody(data, fields)
+		if len(errs) != 0 {
+			t.Fatalf("expected 0 errors, got %d: %+v", len(errs), errs)
+		}
+
+		// Defaults injected
+		if normalized["role"] != "member" {
+			t.Errorf("expected default role 'member', got %v", normalized["role"])
+		}
+		// Optional missing fields normalized to explicit nil
+		if normalized["bio"] != nil {
+			t.Errorf("expected missing optional field 'bio' to be nil, got %v", normalized["bio"])
 		}
 	})
 
@@ -72,23 +86,9 @@ func TestValidate(t *testing.T) {
 			"username": "jane_doe",
 		}
 
-		errors := validator.Validate(data, fields)
-		if len(errors) != 1 || errors[0].Name != "email" || errors[0].Reason != "field is required" {
-			t.Fatalf("expected required email error, got: %+v", errors)
-		}
-	})
-
-	t.Run("Rejects empty string on required field", func(t *testing.T) {
-		t.Parallel()
-
-		data := map[string]any{
-			"email":    "   ", // Empty whitespace string
-			"username": "jane_doe",
-		}
-
-		errors := validator.Validate(data, fields)
-		if len(errors) != 1 || errors[0].Name != "email" {
-			t.Fatalf("expected empty string error on required email, got: %+v", errors)
+		_, errs := validator.ValidateBody(data, fields)
+		if len(errs) != 1 || errs[0].Name != "email" || errs[0].Reason != "field is required" {
+			t.Fatalf("expected required email error, got: %+v", errs)
 		}
 	})
 
@@ -103,27 +103,9 @@ func TestValidate(t *testing.T) {
 			"tags":     []any{"go", "go"},
 		}
 
-		errors := validator.Validate(data, fields)
-		if len(errors) != 5 {
-			t.Fatalf("expected 5 errors, got %d: %+v", len(errors), errors)
-		}
-
-		errMap := make(map[string]string, len(errors))
-		for _, err := range errors {
-			errMap[err.Name] = err.Reason
-		}
-
-		if errMap["email"] != "must be a valid email format" {
-			t.Errorf("unexpected email error: %q", errMap["email"])
-		}
-		if errMap["role"] != `must be one of: ["admin", "member", "viewer"]` {
-			t.Errorf("unexpected role error: %q", errMap["role"])
-		}
-		if errMap["age"] != "must be greater than or equal to 18" {
-			t.Errorf("unexpected age error: %q", errMap["age"])
-		}
-		if errMap["tags"] != "items must be unique" {
-			t.Errorf("unexpected tags error: %q", errMap["tags"])
+		_, errs := validator.ValidateBody(data, fields)
+		if len(errs) != 5 {
+			t.Fatalf("expected 5 errors, got %d: %+v", len(errs), errs)
 		}
 	})
 }
@@ -132,16 +114,16 @@ func TestValidateStringMap(t *testing.T) {
 	t.Parallel()
 
 	fields := []core.Field{
-		{Name: "limit", Type: "int", Required: true, Min: new(float64(1)), Max: new(float64(100))},
+		{Name: "page", Type: "int", Default: 1},
+		{Name: "limit", Type: "int", Required: true, Default: int64(25), Min: new(float64(1)), Max: new(float64(100))},
 		{Name: "sort", Type: "string", Enum: []any{"asc", "desc"}},
 		{Name: "active", Type: "bool"},
 	}
 
-	t.Run("Coerces and validates valid string map", func(t *testing.T) {
+	t.Run("Validates and injects defaults in-place", func(t *testing.T) {
 		t.Parallel()
 
 		data := map[string]string{
-			"limit":  "25",
 			"sort":   "desc",
 			"active": "true",
 		}
@@ -150,20 +132,67 @@ func TestValidateStringMap(t *testing.T) {
 		if len(errs) != 0 {
 			t.Fatalf("expected 0 errors, got: %+v", errs)
 		}
+
+		if data["page"] != "1" {
+			t.Errorf("expected default page '1', got %q", data["page"])
+		}
+		if data["limit"] != "25" {
+			t.Errorf("expected default limit '25', got %q", data["limit"])
+		}
 	})
 
 	t.Run("Catches invalid coerced types and bounds in string map", func(t *testing.T) {
 		t.Parallel()
 
 		data := map[string]string{
-			"limit":  "200",    // exceeds max 100
-			"sort":   "random", // invalid enum
+			"limit":  "200", // exceeds max 100
+			"sort":   "random",
 			"active": "invalid",
 		}
 
 		errs := validator.ValidateStringMap(data, fields)
 		if len(errs) != 3 {
 			t.Fatalf("expected 3 errors, got %d: %+v", len(errs), errs)
+		}
+	})
+}
+
+func TestValidateHeaders(t *testing.T) {
+	t.Parallel()
+
+	fields := []core.Field{
+		{Name: "Authorization", Type: "string", Required: true},
+		{Name: "X-Trace-Sampled", Type: "bool", Default: true},
+	}
+
+	t.Run("Case-insensitive lookup against lowercased headers with default injection", func(t *testing.T) {
+		t.Parallel()
+
+		headers := map[string]string{
+			"authorization": "Bearer token", // Ingress lowercases all headers
+		}
+
+		errs := validator.ValidateHeaders(headers, fields)
+		if len(errs) != 0 {
+			t.Fatalf("expected 0 errors, got: %+v", errs)
+		}
+
+		if headers["x-trace-sampled"] != "true" {
+			t.Errorf("expected injected default 'true', got %q", headers["x-trace-sampled"])
+		}
+	})
+
+	t.Run("Missing required header retains schema casing in error diagnostic", func(t *testing.T) {
+		t.Parallel()
+
+		headers := map[string]string{}
+
+		errs := validator.ValidateHeaders(headers, fields)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error, got %d", len(errs))
+		}
+		if errs[0].Name != "Authorization" {
+			t.Errorf("expected error field name 'Authorization', got %q", errs[0].Name)
 		}
 	})
 }

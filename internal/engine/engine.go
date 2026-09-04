@@ -262,50 +262,39 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	})
 }
 
-func (e *Engine) validateRequest(execCtx *core.ExecutionContext, rules compiler.CompiledRequestRules) []core.InvalidParam {
+func (e *Engine) validateRequest(ctx *core.ExecutionContext, rules compiler.CompiledRequestRules) []core.InvalidParam {
 	var invalidParams []core.InvalidParam
 
 	if len(rules.PathFields) > 0 {
-		if errs := validator.ValidateStringMap(execCtx.Request.Path, rules.PathFields); len(errs) > 0 {
-			invalidParams = append(invalidParams, errs...)
-		} else {
-			validator.NormalizeStringMap(execCtx.Request.Path, rules.PathFields)
-		}
+		invalidParams = append(invalidParams, validator.ValidateStringMap(ctx.Request.Path, rules.PathFields)...)
 	}
 
 	if len(rules.QueryFields) > 0 {
-		if errs := validator.ValidateStringMap(execCtx.Request.Query, rules.QueryFields); len(errs) > 0 {
-			invalidParams = append(invalidParams, errs...)
-		} else {
-			validator.NormalizeStringMap(execCtx.Request.Query, rules.QueryFields)
-		}
+		invalidParams = append(invalidParams, validator.ValidateStringMap(ctx.Request.Query, rules.QueryFields)...)
 	}
 
 	if len(rules.HeaderFields) > 0 {
-		if errs := validator.ValidateStringMap(execCtx.Request.Headers, rules.HeaderFields); len(errs) > 0 {
-			invalidParams = append(invalidParams, errs...)
-		}
+		invalidParams = append(invalidParams, validator.ValidateHeaders(ctx.Request.Headers, rules.HeaderFields)...)
 	}
 
 	if len(rules.BodyFields) > 0 {
-		bodyMap, ok := execCtx.Request.Body.(map[string]any)
+		bodyMap, ok := ctx.Request.Body.(map[string]any)
 		if !ok {
-			if execCtx.Request.Body == nil {
+			if ctx.Request.Body == nil {
 				bodyMap = make(map[string]any)
 			} else {
-				invalidParams = append(invalidParams, core.InvalidParam{
+				return append(invalidParams, core.InvalidParam{
 					Name:   "body",
 					Reason: "request body must be a JSON object",
 				})
 			}
 		}
 
-		if ok || execCtx.Request.Body == nil {
-			if errs := validator.Validate(bodyMap, rules.BodyFields); len(errs) > 0 {
-				invalidParams = append(invalidParams, errs...)
-			} else {
-				execCtx.Request.Body = validator.Normalize(bodyMap, rules.BodyFields)
-			}
+		normalizedBody, errs := validator.ValidateBody(bodyMap, rules.BodyFields)
+		if len(errs) > 0 {
+			invalidParams = append(invalidParams, errs...)
+		} else {
+			ctx.Request.Body = normalizedBody
 		}
 	}
 

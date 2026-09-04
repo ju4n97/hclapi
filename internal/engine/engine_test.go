@@ -286,6 +286,108 @@ endpoint "POST /api/v1/users" {
 	})
 }
 
+func TestEngine_HeaderCaseInsensitivity_RFC9110(t *testing.T) {
+	t.Parallel()
+
+	eng := newTestEngine(t, `
+endpoint "GET /api/v1/headers" {
+  request {
+    headers {
+      field "Authorization" {
+        type     = string
+        required = true
+      }
+      field "X-Api-Key" {
+        type     = string
+        required = false
+      }
+    }
+  }
+
+  pipeline {
+    respond {
+      status = 200
+      body = {
+        auth = ctx.request.headers.authorization
+      }
+    }
+  }
+}
+`)
+
+	tests := []struct {
+		name         string
+		headerKey    string
+		headerValue  string
+		wantStatus   int
+		wantErrorKey string
+	}{
+		{
+			name:        "exact casing as declared in schema (Authorization)",
+			headerKey:   "Authorization",
+			headerValue: "Bearer secret-token",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "all lowercase (authorization)",
+			headerKey:   "authorization",
+			headerValue: "Bearer secret-token",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "all uppercase (AUTHORIZATION)",
+			headerKey:   "AUTHORIZATION",
+			headerValue: "Bearer secret-token",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:        "mixed case (AuThOrIzAtIoN)",
+			headerKey:   "AuThOrIzAtIoN",
+			headerValue: "Bearer secret-token",
+			wantStatus:  http.StatusOK,
+		},
+		{
+			name:         "missing required header",
+			headerKey:    "",
+			headerValue:  "",
+			wantStatus:   http.StatusUnprocessableEntity,
+			wantErrorKey: "Authorization", // Preserves schema casing in error diagnostic
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/headers", http.NoBody)
+			if tt.headerKey != "" {
+				req.Header.Set(tt.headerKey, tt.headerValue)
+			}
+			rec := httptest.NewRecorder()
+
+			eng.Handler().ServeHTTP(rec, req)
+
+			if rec.Code != tt.wantStatus {
+				t.Fatalf("status code = %d; want %d. Body: %s", rec.Code, tt.wantStatus, rec.Body.String())
+			}
+
+			if tt.wantErrorKey != "" {
+				var prob core.ProblemDetailsError
+				if err := json.NewDecoder(rec.Body).Decode(&prob); err != nil {
+					t.Fatalf("failed to decode response JSON: %v", err)
+				}
+
+				if len(prob.InvalidParams) == 0 {
+					t.Fatalf("expected InvalidParams, got none")
+				}
+				if prob.InvalidParams[0].Name != tt.wantErrorKey {
+					t.Errorf("InvalidParams[0].Name = %q; want %q", prob.InvalidParams[0].Name, tt.wantErrorKey)
+				}
+			}
+		})
+	}
+}
+
 func TestEngine_ProblemDetailsError(t *testing.T) {
 	t.Parallel()
 

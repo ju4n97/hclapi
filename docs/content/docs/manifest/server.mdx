@@ -1,53 +1,105 @@
 ---
 title: server
-description: Transport-level listener, timeout, request-size, and error-documentation settings.
+description: Transport-level listener, timeouts, request size limits, and child blocks.
 ---
 
-Declares transport-level settings: listener interface and port, connection timeouts, maximum request body size, and error documentation URIs.
+Declares transport-level settings: listener interface and port binding, connection timeouts, maximum request body size, RFC 9457 problem type resolution, and global OpenAPI metadata.
 
 ## Declaration
 
 ```hcl
 server {
-  host           = "0.0.0.0"
-  port           = 8080
-  read_timeout   = "15s"
-  write_timeout  = "30s"
-  idle_timeout   = "60s"
-  max_body_size  = "25MB"
-  error_base_url = "https://docs.mycompany.com/errors/"
+  host          = "0.0.0.0"
+  port          = 8080
+  read_timeout  = "15s"
+  write_timeout = "30s"
+  idle_timeout  = "60s"
+  max_body_size = "25MB"
+
+  problem {
+    type_prefix = "https://docs.mycompany.com/errors/"
+  }
+
+  openapi {
+    title   = "Acme Storefront API"
+    version = "1.0.0"
+  }
 }
 ```
 
-All attributes are optional.
+## Transport attributes
 
-| Attribute        | Type       | Default       | Description                                          |
-| :--------------- | :--------- | :------------ | :--------------------------------------------------- |
-| `host`           | `string`   | `"127.0.0.1"` | Interface to bind; `"0.0.0.0"` binds all interfaces  |
-| `port`           | `int`      | `8080`        | TCP port                                             |
-| `read_timeout`   | `Duration` | `"15s"`       | Maximum time to read the full request                |
-| `write_timeout`  | `Duration` | `"15s"`       | Maximum time to write the response                   |
-| `idle_timeout`   | `Duration` | `"60s"`       | Maximum idle time on a keep-alive connection         |
-| `max_body_size`  | `ByteSize` | `"10MB"`      | Requests larger than this are rejected with HTTP 413 |
-| `error_base_url` | `string`   | `""`          | Base URI prefix for RFC 9457 error problem types     |
+All attributes are optional and inherit production-ready defaults.
 
-## Error documentation URI resolution
+| Attribute       | Type       | Default       | Description                                                                       |
+| :-------------- | :--------- | :------------ | :-------------------------------------------------------------------------------- |
+| `host`          | `string`   | `"127.0.0.1"` | Network interface to bind. Use `"0.0.0.0"` to listen on all interfaces.           |
+| `port`          | `int`      | `8080`        | TCP port.                                                                         |
+| `read_timeout`  | `Duration` | `"15s"`       | Maximum duration allowed to read the full request headers and body.               |
+| `write_timeout` | `Duration` | `"15s"`       | Maximum duration allowed before timing out write operations on the response.      |
+| `idle_timeout`  | `Duration` | `"60s"`       | Maximum time an idle keep-alive connection remains open.                          |
+| `max_body_size` | `ByteSize` | `"10MB"`      | Requests with bodies exceeding this limit are immediately rejected with HTTP 413. |
 
-When returning RFC 9457 Problem Details errors:
+## Child blocks
 
-- Without `error_base_url`, hclapi uses URNs such as `urn:hclapi:error:bad-request`.
-- With `error_base_url`, hclapi prefixes the error slug, such as `https://developer.example.com/api/errors/bad-request`.
+### `problem`
 
-## Production example
+Configures [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) error type resolution for the application.
 
 ```hcl
 server {
-  host           = "0.0.0.0"
-  port           = 8080
-  read_timeout   = "30s"
-  write_timeout  = "60s"
-  idle_timeout   = "120s"
-  max_body_size  = "50MB"
-  error_base_url = "https://developer.example.com/api/errors/"
+  problem {
+    type_prefix = "https://docs.mycompany.com/errors/"
+  }
+}
+```
+
+| Attribute     | Type     | Default | Description                                              |
+| :------------ | :------- | :------ | :------------------------------------------------------- |
+| `type_prefix` | `string` | `""`    | Base type prefix for human-readable error documentation. |
+
+#### Problem type URI resolution
+
+- **Without `problem.type_prefix` (default):** Emits standard URNs (`urn:hclapi:error:bad-request`).
+- **With a documentation URL:** `type_prefix = "https://docs.example.com/errors/"` resolves to `https://docs.example.com/errors/bad-request`.
+- **With a custom URN prefix:** `type_prefix = "urn:acme:error:"` resolves to `urn:acme:error:bad-request`.
+
+### `openapi`
+
+Declares top-level metadata for the automatically compiled OpenAPI 3.1 specification (title, description, deployment servers, category tags, contact, and license).
+
+```hcl
+server {
+  openapi {
+    title       = "Acme Storefront API"
+    version     = "1.2.0"
+    description = "Customer accounts and order processing API."
+  }
+}
+```
+
+:::tip Full OpenAPI reference
+All available options are documented in the **[OpenAPI configuration guide](/docs/openapi/configuration)**.
+:::
+
+## Example
+
+```hcl
+server {
+  host          = "0.0.0.0"
+  port          = 8080
+  read_timeout  = "30s"
+  write_timeout = "60s"
+  idle_timeout  = "120s"
+  max_body_size = "50MB"
+
+  problem {
+    type_prefix = "https://developer.example.com/api/errors/"
+  }
+
+  openapi {
+    title   = "Production API Gateway"
+    version = "2.0.0"
+  }
 }
 ```

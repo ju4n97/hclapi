@@ -100,11 +100,13 @@ engine.RegisterStep("billing.charge", func(ctx context.Context, step *hclapi.Ste
 
 ## Overriding error documentation URLs
 
-It's possible to override the default `urn:hclapi:error:` prefix by configuring `error_base_url` in the `server {}` block:
+It's possible to override the default `urn:hclapi:error:` prefix by configuring `problem.type_prefix` in the `server {}` block:
 
 ```hcl
 server {
-  error_base_url = "https://docs.mycompany.com/errors/"
+  problem {
+    type_prefix = "https://docs.mycompany.com/errors/"
+  }
 }
 ```
 

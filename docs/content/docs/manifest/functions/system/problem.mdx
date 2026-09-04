@@ -29,7 +29,7 @@ problem(config: map) -> map
 | `status`   | `int`    | yes      | HTTP status code                                                    |
 | `detail`   | `string` | yes      | Human-readable explanation                                          |
 | `title`    | `string` | no       | Custom title (defaults to standard `http.StatusText`)               |
-| `type`     | `string` | no       | Custom type URI or slug (defaults to URN or `error_base_url`)       |
+| `type`     | `string` | no       | Custom type URI or slug (defaults to URN or `problem.type_prefix`)  |
 | `instance` | `string` | no       | Request path identifier (defaults to current route path)            |
 | `*`        | `any`    | no       | Any additional key-value pairs are preserved as RFC 9457 extensions |
 
@@ -40,7 +40,7 @@ To minimize boilerplate in manifests, `problem()` automatically derives missing 
 1. **Title:** If `title` is omitted, the engine uses the canonical HTTP status text for `status` (e.g. `404` -> `"Not Found"`, `409` -> `"Conflict"`).
 2. **Type URI:** If `type` is omitted, the title is slugified and appended to the configured URI scheme:
    - **Default:** `"urn:hclapi:error:<slug>"` (e.g. `"urn:hclapi:error:not-found"`).
-   - **If `error_base_url` is set in `server {}`:** `error_base_url + "<slug>"` (e.g. `"https://docs.example.com/errors/not-found"`).
+   - **If `problem.type_prefix` is set in `server {}`:** `problem.type_prefix + "<slug>"` (e.g. `"https://docs.example.com/errors/not-found"`).
 3. **Instance:** Defaults to the current request's URL path (`ctx.request.path`).
 
 ---

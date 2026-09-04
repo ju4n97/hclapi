@@ -35,7 +35,9 @@ func TestServerBlock_ToServer(t *testing.T) {
 			WriteTimeout: new("45s"),
 			IdleTimeout:  new("2m"),
 			MaxBodySize:  new("50MB"),
-			ErrorBaseURL: new("https://docs.example.com/errors/"),
+			Problem: &parser.ServerProblemBlock{
+				TypePrefix: new("https://docs.example.com/errors/"),
+			},
 		}
 
 		srv, err := block.ToServer()
@@ -52,8 +54,8 @@ func TestServerBlock_ToServer(t *testing.T) {
 		if srv.MaxBodySize.Bytes() != 50*1000*1000 {
 			t.Errorf("expected max body size 50MB, got %d", srv.MaxBodySize.Bytes())
 		}
-		if srv.ErrorBaseURL != "https://docs.example.com/errors/" {
-			t.Errorf("unexpected error base URL: %q", srv.ErrorBaseURL)
+		if srv.Problem.TypePrefix != "https://docs.example.com/errors/" {
+			t.Errorf("unexpected problem base URL: %q", srv.Problem.TypePrefix)
 		}
 	})
 

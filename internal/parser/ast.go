@@ -28,9 +28,14 @@ type ServerBlock struct {
 	WriteTimeout *string             `hcl:"write_timeout,optional"`
 	IdleTimeout  *string             `hcl:"idle_timeout,optional"`
 	MaxBodySize  *string             `hcl:"max_body_size,optional"`
-	ErrorBaseURL *string             `hcl:"error_base_url,optional"`
+	Problem      *ServerProblemBlock `hcl:"problem,block"`
 	OpenAPI      *ServerOpenAPIBlock `hcl:"openapi,block"`
 	Remain       hcl.Body            `hcl:",remain"`
+}
+
+// ServerProblemBlock represents the global problem {} metadata block in server.
+type ServerProblemBlock struct {
+	TypePrefix *string `hcl:"type_prefix,optional"`
 }
 
 // ServerOpenAPIBlock represents the global openapi {} metadata block in server.
@@ -98,8 +103,10 @@ func (s *ServerBlock) ToServer() (manifest.Server, error) {
 		}
 		srv.MaxBodySize = b
 	}
-	if s.ErrorBaseURL != nil {
-		srv.ErrorBaseURL = *s.ErrorBaseURL
+	if s.Problem != nil {
+		if s.Problem.TypePrefix != nil {
+			srv.Problem.TypePrefix = *s.Problem.TypePrefix
+		}
 	}
 	if s.OpenAPI != nil {
 		if s.OpenAPI.Title != nil {

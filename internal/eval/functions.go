@@ -164,10 +164,10 @@ var nowFunc = function.New(&function.Spec{
 // problemFunc constructs an RFC 9457 Problem Details object from positional arguments or an object map.
 func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 	var instancePath string
-	var errorBaseURL string
+	var typePrefix string
 
 	if execCtx != nil {
-		errorBaseURL = execCtx.Server.ErrorBaseURL
+		typePrefix = execCtx.Server.Problem.TypePrefix
 		if execCtx.RawRequest != nil && execCtx.RawRequest.URL != nil {
 			instancePath = execCtx.RawRequest.URL.Path
 		}
@@ -209,19 +209,19 @@ func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 					title = t
 				}
 
-				slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
-				typeURI := problem.TypeURI(slug)
-				if errorBaseURL != "" {
-					typeURI = errorBaseURL + slug
+				slug := problem.Slugify(title)
+				finalType := problem.TypeURI(slug)
+				if typePrefix != "" {
+					finalType = typePrefix + slug
 				}
 				if customType, ok := m["type"].(string); ok && customType != "" {
 					switch {
 					case strings.Contains(customType, "://") || strings.HasPrefix(customType, "urn:"):
-						typeURI = customType
-					case errorBaseURL != "":
-						typeURI = errorBaseURL + customType
+						finalType = customType
+					case typePrefix != "":
+						finalType = typePrefix + customType
 					default:
-						typeURI = problem.TypeURI(customType)
+						finalType = problem.TypeURI(customType)
 					}
 				}
 
@@ -233,7 +233,7 @@ func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 				// Populate standard RFC 9457 fields if omitted
 				m["status"] = status
 				m["title"] = title
-				m["type"] = typeURI
+				m["type"] = finalType
 				if instance != "" && m["instance"] == nil {
 					m["instance"] = instance
 				}
@@ -268,8 +268,8 @@ func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 
 			slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
 			typeURI := problem.TypeURI(slug)
-			if errorBaseURL != "" {
-				typeURI = errorBaseURL + slug
+			if typePrefix != "" {
+				typeURI = typePrefix + slug
 			}
 
 			if len(args) > 2 && !args[2].IsNull() {
@@ -278,8 +278,8 @@ func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 				switch {
 				case strings.Contains(custom, "://") || strings.HasPrefix(custom, "urn:"):
 					typeURI = custom
-				case errorBaseURL != "":
-					typeURI = errorBaseURL + custom
+				case typePrefix != "":
+					typeURI = typePrefix + custom
 				default:
 					typeURI = problem.TypeURI(custom)
 				}

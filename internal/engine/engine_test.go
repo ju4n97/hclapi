@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,11 +16,33 @@ import (
 	"github.com/ju4n97/hclapi/internal/engine"
 )
 
+// newTestEngine compiles an in-memory HCL manifest into an isolated Engine instance.
+func newTestEngine(t *testing.T, manifest string, opts ...func(*core.Options)) *engine.Engine {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	manifestPath := filepath.Join(tmpDir, "manifest.hcl")
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+		t.Fatalf("failed to write test manifest: %v", err)
+	}
+
+	options := core.Options{ConfigPath: tmpDir}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	eng, err := engine.New(options)
+	if err != nil {
+		t.Fatalf("failed to initialize engine: %v", err)
+	}
+
+	return eng
+}
+
 func TestEngine_RoutingAndCatchAll(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	manifestContent := `
+	eng := newTestEngine(t, `
 endpoint "GET /ping" {
   pipeline {
     respond {
@@ -46,15 +69,7 @@ endpoint "GET /static/{filepath...}" {
     }
   }
 }
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write test manifest: %v", err)
-	}
-
-	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to initialize engine: %v", err)
-	}
+`)
 
 	t.Run("Static route matching", func(t *testing.T) {
 		t.Parallel()
@@ -100,8 +115,7 @@ endpoint "GET /static/{filepath...}" {
 func TestEngine_MaxBodySizeEnforcement(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	manifestContent := `
+	eng := newTestEngine(t, `
 server {
   max_body_size = "1KB"
 }
@@ -114,15 +128,7 @@ endpoint "POST /upload" {
     }
   }
 }
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "server.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write test manifest: %v", err)
-	}
-
-	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to initialize engine: %v", err)
-	}
+`)
 
 	t.Run("Payload under limit succeeds", func(t *testing.T) {
 		t.Parallel()
@@ -156,8 +162,7 @@ endpoint "POST /upload" {
 func TestEngine_SchemaValidationIngress(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	manifestContent := `
+	eng := newTestEngine(t, `
 schema "pagination" {
   field "source" {
     type    = string
@@ -210,15 +215,7 @@ endpoint "POST /api/v1/users" {
     }
   }
 }
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write test manifest: %v", err)
-	}
-
-	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to initialize engine: %v", err)
-	}
+`)
 
 	t.Run("Returns 422 with all invalid_params when header, email, and enum are invalid", func(t *testing.T) {
 		t.Parallel()
@@ -231,7 +228,6 @@ endpoint "POST /api/v1/users" {
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/users", body)
 		req.Header.Set("Content-Type", "application/json")
-		// x-api-key is intentionally omitted
 
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -293,8 +289,7 @@ endpoint "POST /api/v1/users" {
 func TestEngine_ProblemDetailsError(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	manifestContent := `
+	manifest := `
 endpoint "POST /api/v1/secure" {
   pipeline {
     go "auth_check" {
@@ -308,36 +303,31 @@ endpoint "POST /api/v1/secure" {
 }
 `
 
-	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write test manifest: %v", err)
-	}
-
-	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to initialize engine: %v", err)
-	}
-
 	t.Run("custom ProblemDetailsError preserves status and fields", func(t *testing.T) {
 		t.Parallel()
+		eng := newTestEngine(t, manifest)
 
-		_ = eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
 			return nil, core.ProblemDetailsError{
 				Type:     "urn:hclapi:error:missing-api-key",
 				Title:    "Missing API key",
 				Status:   http.StatusUnauthorized,
 				Detail:   "Provide a valid API key in the 'Authorization' header.",
-				Step:     "auth_check",
+				Step:     step.Name,
 				Instance: "/api/v1/secure",
 			}
 		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/secure", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
 		rec := httptest.NewRecorder()
 
 		eng.Handler().ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusUnauthorized)
+			t.Fatalf("status code = %d; want %d. Body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
 		}
 
 		contentType := rec.Header().Get("Content-Type")
@@ -363,13 +353,66 @@ endpoint "POST /api/v1/secure" {
 			t.Errorf("problem.Detail = %q; want expected detail", prob.Detail)
 		}
 	})
+
+	t.Run("generic error converts to 500 pipeline failure", func(t *testing.T) {
+		t.Parallel()
+		eng := newTestEngine(t, manifest)
+
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+			return nil, errors.New("database connection refused")
+		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
+		rec := httptest.NewRecorder()
+
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
+		}
+
+		var prob core.ProblemDetailsError
+		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
+			t.Fatalf("failed to decode response JSON: %v", err)
+		}
+
+		if prob.Status != 500 {
+			t.Errorf("problem.Status = %d; want 500", prob.Status)
+		}
+		if prob.Type != "urn:hclapi:error:pipeline-execution-failed" {
+			t.Errorf("problem.Type = %q; want pipeline-execution-failed URN", prob.Type)
+		}
+	})
+
+	t.Run("step panic is recovered and converts to 500", func(t *testing.T) {
+		t.Parallel()
+		eng := newTestEngine(t, manifest)
+
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+			panic("unexpected memory crash")
+		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
+		rec := httptest.NewRecorder()
+
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
 }
 
 func TestEngine_OpenAPIRoutes(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	manifestContent := `
+	eng := newTestEngine(t, `
 server {
   openapi {
     title   = "Store API"
@@ -404,15 +447,7 @@ endpoint "GET /ping" {
     }
   }
 }
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write test manifest: %v", err)
-	}
-
-	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to initialize engine: %v", err)
-	}
+`)
 
 	t.Run("Serves interactive Scalar documentation at /docs", func(t *testing.T) {
 		t.Parallel()
@@ -432,7 +467,7 @@ endpoint "GET /ping" {
 		}
 	})
 
-	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json [1.2, 1.3]", func(t *testing.T) {
+	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json", func(t *testing.T) {
 		t.Parallel()
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)

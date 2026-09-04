@@ -1,10 +1,10 @@
-package core_test
+package manifest_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 func TestServerWithDefaults(t *testing.T) {
@@ -13,7 +13,7 @@ func TestServerWithDefaults(t *testing.T) {
 	t.Run("Empty server receives all defaults", func(t *testing.T) {
 		t.Parallel()
 
-		var s core.Server
+		var s manifest.Server
 		res := s.WithDefaults()
 
 		if res.Host != "127.0.0.1" {
@@ -33,7 +33,7 @@ func TestServerWithDefaults(t *testing.T) {
 	t.Run("Custom fields are preserved while missing fields get defaults", func(t *testing.T) {
 		t.Parallel()
 
-		s := core.Server{
+		s := manifest.Server{
 			Host: "0.0.0.0",
 			Port: 3000,
 		}

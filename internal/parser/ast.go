@@ -6,8 +6,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/gohcl"
 
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 // Manifest represents the root collection of merged HCL route definitions.
@@ -57,43 +58,43 @@ type ServerLicenseBlock struct {
 	URL  *string `hcl:"url,optional"`
 }
 
-// ToServer maps the AST ServerBlock into a pure domain core.Server with defaults applied.
-func (s *ServerBlock) ToServer() (core.Server, error) {
-	def := core.DefaultServer()
+// ToServer maps the AST ServerBlock into a pure domain manifest.Server with defaults applied.
+func (s *ServerBlock) ToServer() (manifest.Server, error) {
+	def := manifest.DefaultServer()
 	if s == nil {
 		return def, nil
 	}
 
-	srv := core.Server{
+	srv := manifest.Server{
 		Host: s.Host,
 		Port: s.Port,
 	}
 
 	if s.ReadTimeout != nil {
-		var d core.Duration
+		var d scalar.Duration
 		if err := d.UnmarshalText([]byte(*s.ReadTimeout)); err != nil {
-			return core.Server{}, fmt.Errorf("server: invalid read_timeout: %w", err)
+			return manifest.Server{}, fmt.Errorf("server: invalid read_timeout: %w", err)
 		}
 		srv.ReadTimeout = d
 	}
 	if s.WriteTimeout != nil {
-		var d core.Duration
+		var d scalar.Duration
 		if err := d.UnmarshalText([]byte(*s.WriteTimeout)); err != nil {
-			return core.Server{}, fmt.Errorf("server: invalid write_timeout: %w", err)
+			return manifest.Server{}, fmt.Errorf("server: invalid write_timeout: %w", err)
 		}
 		srv.WriteTimeout = d
 	}
 	if s.IdleTimeout != nil {
-		var d core.Duration
+		var d scalar.Duration
 		if err := d.UnmarshalText([]byte(*s.IdleTimeout)); err != nil {
-			return core.Server{}, fmt.Errorf("server: invalid idle_timeout: %w", err)
+			return manifest.Server{}, fmt.Errorf("server: invalid idle_timeout: %w", err)
 		}
 		srv.IdleTimeout = d
 	}
 	if s.MaxBodySize != nil {
-		b, err := core.ParseByteSize(*s.MaxBodySize)
+		b, err := scalar.ParseByteSize(*s.MaxBodySize)
 		if err != nil {
-			return core.Server{}, fmt.Errorf("server: invalid max_body_size: %w", err)
+			return manifest.Server{}, fmt.Errorf("server: invalid max_body_size: %w", err)
 		}
 		srv.MaxBodySize = b
 	}
@@ -111,7 +112,7 @@ func (s *ServerBlock) ToServer() (core.Server, error) {
 			srv.OpenAPI.Description = *s.OpenAPI.Description
 		}
 		if s.OpenAPI.Contact != nil {
-			contact := &core.OpenAPIContact{}
+			contact := &manifest.OpenAPIContact{}
 			if s.OpenAPI.Contact.Name != nil {
 				contact.Name = *s.OpenAPI.Contact.Name
 			}
@@ -124,7 +125,7 @@ func (s *ServerBlock) ToServer() (core.Server, error) {
 			srv.OpenAPI.Contact = contact
 		}
 		if s.OpenAPI.License != nil {
-			license := &core.OpenAPILicense{}
+			license := &manifest.OpenAPILicense{}
 			if s.OpenAPI.License.Name != nil {
 				license.Name = *s.OpenAPI.License.Name
 			}
@@ -157,13 +158,13 @@ type ConnectionPoolBlock struct {
 	Remain          hcl.Body `hcl:",remain"`
 }
 
-// ToConnection maps the AST ConnectionBlock into a pure domain core.Connection with defaults applied.
-func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
-	conn := core.Connection{
+// ToConnection maps the AST ConnectionBlock into a pure domain manifest.Connection with defaults applied.
+func (c *ConnectionBlock) ToConnection() (manifest.Connection, error) {
+	conn := manifest.Connection{
 		Driver: c.Driver,
 		Name:   c.Name,
 		URL:    c.URL,
-		Pool:   core.DefaultPoolConfig(),
+		Pool:   manifest.DefaultPoolConfig(),
 	}
 
 	if c.Pool != nil {
@@ -174,16 +175,16 @@ func (c *ConnectionBlock) ToConnection() (core.Connection, error) {
 			conn.Pool.MaxIdleConns = *c.Pool.MaxIdleConns
 		}
 		if c.Pool.ConnMaxLifetime != nil {
-			var d core.Duration
+			var d scalar.Duration
 			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err != nil {
-				return core.Connection{}, fmt.Errorf("connection %q: invalid conn_max_lifetime: %w", c.Name, err)
+				return manifest.Connection{}, fmt.Errorf("connection %q: invalid conn_max_lifetime: %w", c.Name, err)
 			}
 			conn.Pool.ConnMaxLifetime = d
 		}
 		if c.Pool.IdleTimeout != nil {
-			var d core.Duration
+			var d scalar.Duration
 			if err := d.UnmarshalText([]byte(*c.Pool.IdleTimeout)); err != nil {
-				return core.Connection{}, fmt.Errorf("connection %q: invalid idle_timeout: %w", c.Name, err)
+				return manifest.Connection{}, fmt.Errorf("connection %q: invalid idle_timeout: %w", c.Name, err)
 			}
 			conn.Pool.IdleTimeout = d
 		}
@@ -215,13 +216,13 @@ type FieldBlock struct {
 	Remain      hcl.Body       `hcl:",remain"`
 }
 
-// ToField maps the AST FieldBlock into a pure domain core.Field with defaults applied.
-func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (core.Field, error) {
+// ToField maps the AST FieldBlock into a pure domain manifest.Field with defaults applied.
+func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (manifest.Field, error) {
 	fieldType := "any"
 	if f.Type != nil {
 		typeVal, err := eval.Any(f.Type, nil)
 		if err != nil {
-			return core.Field{}, fmt.Errorf("field %q type: %w", f.Name, err)
+			return manifest.Field{}, fmt.Errorf("field %q type: %w", f.Name, err)
 		}
 		if typeVal != nil {
 			fieldType = fmt.Sprintf("%v", typeVal)
@@ -232,7 +233,7 @@ func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (core.Field, error) {
 	if f.Enum != nil {
 		rawEnum, err := eval.Any(f.Enum, nil)
 		if err != nil {
-			return core.Field{}, fmt.Errorf("field %q enum: %w", f.Name, err)
+			return manifest.Field{}, fmt.Errorf("field %q enum: %w", f.Name, err)
 		}
 		if list, ok := rawEnum.([]any); ok {
 			enumList = list
@@ -243,12 +244,12 @@ func (f *FieldBlock) ToField(evalCtx *hcl.EvalContext) (core.Field, error) {
 	if f.Default != nil {
 		rawDefault, err := eval.Any(f.Default, nil)
 		if err != nil {
-			return core.Field{}, fmt.Errorf("field %q default: %w", f.Name, err)
+			return manifest.Field{}, fmt.Errorf("field %q default: %w", f.Name, err)
 		}
 		defaultVal = rawDefault
 	}
 
-	field := core.Field{
+	field := manifest.Field{
 		Name:        f.Name,
 		Type:        fieldType,
 		Required:    f.Required,

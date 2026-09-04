@@ -2,59 +2,82 @@
 package hclapi
 
 import (
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/runtime"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine = engine.Engine
 
-// ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
-type ExecutionContext = core.ExecutionContext
+// Runtime
 
-// ExecutionContextOption configures optional behavior during ExecutionContext creation.
-type ExecutionContextOption = core.ExecutionContextOption
-
-// Step encapsulates the invocation state and arguments for a single Go step.
-type Step = core.Step
+// Step encapsulates the invocation state, arguments, and request metadata for a Go step.
+type Step = runtime.Step
 
 // StepHandler defines the signature for custom native Go step callbacks.
-type StepHandler = core.StepHandler
+type StepHandler = runtime.StepHandler
 
 // Args represents evaluated arguments passed to a Go step from an HCL manifest.
-type Args = core.Args
+type Args = runtime.Args
+
+// ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
+type ExecutionContext = runtime.ExecutionContext
+
+// ExecutionContextOption configures optional behavior during ExecutionContext creation.
+type ExecutionContextOption = runtime.ExecutionContextOption
 
 // RequestState represents normalized HTTP request metadata extracted at runtime.
-type RequestState = core.RequestState
+type RequestState = runtime.RequestState
 
 // StepResult represents arbitrary step-specific outputs.
-type StepResult = core.StepResult
+type StepResult = runtime.StepResult
 
-// Options defines the configuration options for the hclapi engine.
-type Options = core.Options
+// Manifest models
 
-// Server defines the resolved HTTP server configuration.
-type Server = core.Server
+// Options defines configuration parameters for the hclapi engine.
+type Options = manifest.Options
 
-// Duration wraps a time.Duration with universal text deserialization.
-type Duration = core.Duration
+// Server defines the resolved HTTP server transport configuration.
+type Server = manifest.Server
 
-// ByteSize represents a quantity of bytes that can be unmarshaled from text.
-type ByteSize = core.ByteSize
+// Connection represents a resolved database, cache, or storage backend configuration.
+type Connection = manifest.Connection
 
-// ProblemDetailsError represents an RFC 9457 compliant error object.
-type ProblemDetailsError = core.ProblemDetailsError
+// PoolConfig defines connection pool sizing and lifecycle settings.
+type PoolConfig = manifest.PoolConfig
 
-// InvalidParam represents a single field validation failure.
-type InvalidParam = core.InvalidParam
+// Schema represents a compiled, named validation schema.
+type Schema = manifest.Schema
 
-// ErrorHandler defines the contract for customizing API error serialization.
-type ErrorHandler = core.ErrorHandler
+// Field represents a compiled, type-safe schema field constraint rule.
+type Field = manifest.Field
 
-// DefaultErrorHandler returns a ProblemDetails with default values.
-var DefaultErrorHandler = core.DefaultErrorHandler
+// Scalar unit types
 
-// NewEngine initializes an Engine by parsing manifests and registering route endpoints.
+// Duration wraps a time.Duration with human-readable text deserialization (e.g. "15m", "30s").
+type Duration = scalar.Duration
+
+// ByteSize represents a quantity of bytes unmarshaled from text (e.g. "25MB", "10GiB").
+type ByteSize = scalar.ByteSize
+
+// Problem
+
+// Problem represents an RFC 9457 compliant error object.
+type Problem = problem.Problem
+
+// InvalidParam represents a single field-level schema validation constraint failure.
+type InvalidParam = problem.InvalidParam
+
+// ProblemHandler defines the contract for custom error serialization.
+type ProblemHandler = problem.Handler
+
+// DefaultProblemHandler serializes Problem as application/problem+json.
+var DefaultProblemHandler = problem.DefaultHandler
+
+// NewEngine parses manifests, statically verifies routes, and initializes the HTTP engine.
 func NewEngine(options Options) (*Engine, error) {
 	return engine.New(options)
 }

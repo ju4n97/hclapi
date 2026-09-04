@@ -1,9 +1,9 @@
-package core_test
+package scalar_test
 
 import (
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 func TestParseByteSize(t *testing.T) {
@@ -11,7 +11,7 @@ func TestParseByteSize(t *testing.T) {
 
 	tests := []struct {
 		input       string
-		expected    core.ByteSize
+		expected    scalar.ByteSize
 		expectError bool
 	}{
 		{"10MB", 10 * 1000 * 1000, false},
@@ -29,7 +29,7 @@ func TestParseByteSize(t *testing.T) {
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
 
-			res, err := core.ParseByteSize(tt.input)
+			res, err := scalar.ParseByteSize(tt.input)
 			if tt.expectError {
 				if err == nil {
 					t.Fatalf("expected error for %q, got nil", tt.input)

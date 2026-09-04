@@ -10,9 +10,9 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/runtime"
 	"github.com/ju4n97/hclapi/internal/steps/xgo"
 	"github.com/ju4n97/hclapi/internal/steps/xrespond"
 	"github.com/ju4n97/hclapi/internal/steps/xsql"
@@ -22,14 +22,14 @@ import (
 // PipelineExecutor coordinates sequential pipeline step dispatching.
 type PipelineExecutor struct {
 	steps      []parser.ParsedStep
-	goSteps    map[string]core.StepHandler
+	goSteps    map[string]runtime.StepHandler
 	sqlManager *connsql.Manager
 }
 
 // NewPipelineExecutor creates a new instance of the pipeline runner.
 func NewPipelineExecutor(
 	steps []parser.ParsedStep,
-	goSteps map[string]core.StepHandler,
+	goSteps map[string]runtime.StepHandler,
 	sqlManager *connsql.Manager,
 ) *PipelineExecutor {
 	return &PipelineExecutor{
@@ -40,7 +40,7 @@ func NewPipelineExecutor(
 }
 
 // Execute walks through configured steps sequentially, updating context state.
-func (p *PipelineExecutor) Execute(w http.ResponseWriter, execCtx *core.ExecutionContext) error {
+func (p *PipelineExecutor) Execute(w http.ResponseWriter, execCtx *runtime.ExecutionContext) error {
 	for _, step := range p.steps {
 		if err := execCtx.Context().Err(); err != nil {
 			return fmt.Errorf("pipeline execution aborted: %w", err)
@@ -83,7 +83,7 @@ func (p *PipelineExecutor) Execute(w http.ResponseWriter, execCtx *core.Executio
 	return nil
 }
 
-func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, execCtx *core.ExecutionContext) error {
+func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, execCtx *runtime.ExecutionContext) error {
 	if step.Go == nil {
 		return fmt.Errorf("step %q: missing go configuration", step.Name)
 	}
@@ -98,7 +98,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, execCtx *core.Exec
 		return fmt.Errorf("step %q: unregistered go function %q", step.Name, step.Go.Use)
 	}
 
-	stepObj := execCtx.NewStep(step.Name, core.Args(argsMap))
+	stepObj := execCtx.NewStep(step.Name, runtime.Args(argsMap))
 
 	res, err := xgo.Execute(execCtx.Context(), handler, stepObj)
 	if err != nil {
@@ -114,7 +114,7 @@ func (p *PipelineExecutor) execGoStep(step parser.ParsedStep, execCtx *core.Exec
 	return nil
 }
 
-func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *core.ExecutionContext) error {
+func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *runtime.ExecutionContext) error {
 	if step.Starlark == nil {
 		return fmt.Errorf("step %q: missing starlark configuration", step.Name)
 	}
@@ -156,7 +156,7 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *cor
 func (p *PipelineExecutor) execSQLStep(
 	w http.ResponseWriter,
 	step parser.ParsedStep,
-	execCtx *core.ExecutionContext,
+	execCtx *runtime.ExecutionContext,
 ) (bool, error) {
 	if step.SQL == nil {
 		return false, fmt.Errorf("step %q: missing sql configuration", step.Name)
@@ -216,7 +216,7 @@ func (p *PipelineExecutor) execSQLStep(
 func (p *PipelineExecutor) execRespondStep(
 	w http.ResponseWriter,
 	step parser.ParsedStep,
-	execCtx *core.ExecutionContext,
+	execCtx *runtime.ExecutionContext,
 ) (bool, error) {
 	if step.Respond == nil {
 		return false, errors.New("step is missing respond configuration")
@@ -240,7 +240,7 @@ func (p *PipelineExecutor) execRespondStep(
 // writeResponse evaluates dynamic status, headers, and body expressions and writes the finalized HTTP response.
 func writeResponse(
 	w http.ResponseWriter,
-	execCtx *core.ExecutionContext,
+	execCtx *runtime.ExecutionContext,
 	statusExpr, headersExpr, bodyExpr hcl.Expression,
 	defaultStatus int,
 ) error {

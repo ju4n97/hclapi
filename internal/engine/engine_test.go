@@ -12,21 +12,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/engine"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // newTestEngine compiles an in-memory HCL manifest into an isolated Engine instance.
-func newTestEngine(t *testing.T, manifest string, opts ...func(*core.Options)) *engine.Engine {
+func newTestEngine(t *testing.T, m string, opts ...func(*manifest.Options)) *engine.Engine {
 	t.Helper()
 
 	tmpDir := t.TempDir()
 	manifestPath := filepath.Join(tmpDir, "manifest.hcl")
-	if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(m), 0o600); err != nil {
 		t.Fatalf("failed to write test manifest: %v", err)
 	}
 
-	options := core.Options{ConfigPath: tmpDir}
+	options := manifest.Options{ConfigPath: tmpDir}
 	for _, opt := range opts {
 		opt(&options)
 	}
@@ -236,7 +238,7 @@ endpoint "POST /api/v1/users" {
 			t.Fatalf("expected status 422, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 
-		var problem core.ProblemDetailsError
+		var problem problem.Problem
 		if err := json.NewDecoder(rec.Body).Decode(&problem); err != nil {
 			t.Fatalf("failed to decode 422 problem details: %v", err)
 		}
@@ -372,7 +374,7 @@ endpoint "GET /api/v1/headers" {
 			}
 
 			if tt.wantErrorKey != "" {
-				var prob core.ProblemDetailsError
+				var prob problem.Problem
 				if err := json.NewDecoder(rec.Body).Decode(&prob); err != nil {
 					t.Fatalf("failed to decode response JSON: %v", err)
 				}
@@ -405,12 +407,12 @@ endpoint "POST /api/v1/secure" {
 }
 `
 
-	t.Run("custom ProblemDetailsError preserves status and fields", func(t *testing.T) {
+	t.Run("custom DetailsError preserves status and fields", func(t *testing.T) {
 		t.Parallel()
 		eng := newTestEngine(t, manifest)
 
-		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
-			return nil, core.ProblemDetailsError{
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *runtime.Step) (any, error) {
+			return nil, problem.Problem{
 				Type:     "urn:hclapi:error:missing-api-key",
 				Title:    "Missing API key",
 				Status:   http.StatusUnauthorized,
@@ -437,7 +439,7 @@ endpoint "POST /api/v1/secure" {
 			t.Errorf("Content-Type = %q; want application/problem+json", contentType)
 		}
 
-		var prob core.ProblemDetailsError
+		var prob problem.Problem
 		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
 			t.Fatalf("failed to decode response JSON: %v", err)
 		}
@@ -460,7 +462,7 @@ endpoint "POST /api/v1/secure" {
 		t.Parallel()
 		eng := newTestEngine(t, manifest)
 
-		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *runtime.Step) (any, error) {
 			return nil, errors.New("database connection refused")
 		})
 		if err != nil {
@@ -476,7 +478,7 @@ endpoint "POST /api/v1/secure" {
 			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
 		}
 
-		var prob core.ProblemDetailsError
+		var prob problem.Problem
 		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
 			t.Fatalf("failed to decode response JSON: %v", err)
 		}
@@ -493,7 +495,7 @@ endpoint "POST /api/v1/secure" {
 		t.Parallel()
 		eng := newTestEngine(t, manifest)
 
-		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *runtime.Step) (any, error) {
 			panic("unexpected memory crash")
 		})
 		if err != nil {

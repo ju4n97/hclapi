@@ -3,14 +3,14 @@ package validator_test
 import (
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/validator"
 )
 
 func TestValidateBody(t *testing.T) {
 	t.Parallel()
 
-	fields := []core.Field{
+	fields := []manifest.Field{
 		{
 			Name:     "email",
 			Type:     "string",
@@ -113,7 +113,7 @@ func TestValidateBody(t *testing.T) {
 func TestValidateStringMap(t *testing.T) {
 	t.Parallel()
 
-	fields := []core.Field{
+	fields := []manifest.Field{
 		{Name: "page", Type: "int", Default: 1},
 		{Name: "limit", Type: "int", Required: true, Default: int64(25), Min: new(float64(1)), Max: new(float64(100))},
 		{Name: "sort", Type: "string", Enum: []any{"asc", "desc"}},
@@ -160,7 +160,7 @@ func TestValidateStringMap(t *testing.T) {
 func TestValidateHeaders(t *testing.T) {
 	t.Parallel()
 
-	fields := []core.Field{
+	fields := []manifest.Field{
 		{Name: "Authorization", Type: "string", Required: true},
 		{Name: "X-Trace-Sampled", Type: "bool", Default: true},
 	}

@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 func TestContext(t *testing.T) {
@@ -64,7 +64,7 @@ func TestContext(t *testing.T) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/42", http.NoBody)
 		req.Header.Set("Authorization", "Bearer token-123")
 
-		ctx, err := core.NewExecutionContext(nil, req, core.WithPathParams([]string{"id"}))
+		ctx, err := runtime.NewExecutionContext(nil, req, runtime.WithPathParams([]string{"id"}))
 		if err != nil {
 			t.Fatalf("failed to create core context: %v", err)
 		}

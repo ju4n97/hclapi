@@ -1,4 +1,4 @@
-package core
+package runtime
 
 import (
 	"bytes"
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 // StepResult represents arbitrary step-specific outputs.
@@ -66,7 +68,7 @@ type ExecutionContext struct {
 	Steps          map[string]StepResult `json:"steps"`
 	TimestampEpoch int64                 `json:"timestamp_epoch"`
 	IngressTime    time.Time             `json:"-"`
-	Server         Server                `json:"-"`
+	Server         manifest.Server       `json:"-"`
 	RawRequest     *http.Request         `json:"-"`
 
 	mu sync.RWMutex
@@ -84,7 +86,7 @@ type StepHandler func(ctx context.Context, step *Step) (any, error)
 
 type executionContextConfig struct {
 	pathParams []string
-	server     Server
+	server     manifest.Server
 }
 
 // ExecutionContextOption configures optional behavior during context creation.
@@ -96,7 +98,7 @@ func WithPathParams(paramNames []string) ExecutionContextOption {
 }
 
 // WithServer attaches the resolved server configuration to the execution context.
-func WithServer(server Server) ExecutionContextOption {
+func WithServer(server manifest.Server) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.server = server }
 }
 

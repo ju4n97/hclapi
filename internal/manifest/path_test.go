@@ -1,11 +1,11 @@
-package core_test
+package manifest_test
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 func TestResolveRelativePath(t *testing.T) {
@@ -91,7 +91,7 @@ func TestResolveRelativePath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			actual := core.ResolveRelativePath(tt.rawPath, tt.baseDir)
+			actual := manifest.ResolveRelativePath(tt.rawPath, tt.baseDir)
 			// Normalize path separators for cross-platform test assertions (Windows vs Unix)
 			actualNormalized := filepath.Clean(actual)
 			expectedNormalized := filepath.Clean(tt.expected)

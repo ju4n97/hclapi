@@ -7,7 +7,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // buildBaseFunctions combines standard runtime functions with schema type constructors.
@@ -34,7 +34,7 @@ func BaseContext() *hcl.EvalContext {
 	return baseEvalContext
 }
 
-func buildEvalContext(execCtx *core.ExecutionContext) *hcl.EvalContext {
+func buildEvalContext(execCtx *runtime.ExecutionContext) *hcl.EvalContext {
 	if execCtx == nil {
 		return baseEvalContext
 	}

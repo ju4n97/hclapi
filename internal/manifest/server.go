@@ -1,6 +1,11 @@
-package core
+package manifest
 
-import "time"
+import (
+	"time"
+
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/scalar"
+)
 
 // OpenAPIServer defines a target server deployment in the OpenAPI spec.
 type OpenAPIServer struct {
@@ -42,10 +47,10 @@ type OpenAPIConfig struct {
 type Server struct {
 	Host         string
 	Port         int
-	ReadTimeout  Duration
-	WriteTimeout Duration
-	IdleTimeout  Duration
-	MaxBodySize  ByteSize
+	ReadTimeout  scalar.Duration
+	WriteTimeout scalar.Duration
+	IdleTimeout  scalar.Duration
+	MaxBodySize  scalar.ByteSize
 	ErrorBaseURL string // TODO: validate introducing a new block to put stuff like this
 	OpenAPI      OpenAPIConfig
 }
@@ -55,10 +60,10 @@ func DefaultServer() Server {
 	return Server{
 		Host:         "127.0.0.1",
 		Port:         8080,
-		ReadTimeout:  Duration(15 * time.Second),
-		WriteTimeout: Duration(15 * time.Second),
-		IdleTimeout:  Duration(60 * time.Second),
-		MaxBodySize:  ByteSize(10 * 1024 * 1024),
+		ReadTimeout:  scalar.Duration(15 * time.Second),
+		WriteTimeout: scalar.Duration(15 * time.Second),
+		IdleTimeout:  scalar.Duration(60 * time.Second),
+		MaxBodySize:  scalar.ByteSize(10 * 1024 * 1024),
 		OpenAPI: OpenAPIConfig{
 			Title:   "API Documentation",
 			Version: "1.0.0",
@@ -101,5 +106,5 @@ func (s Server) ProblemType(slug string) string {
 	if s.ErrorBaseURL != "" {
 		return s.ErrorBaseURL + "/" + slug
 	}
-	return ProblemType(slug)
+	return problem.TypeURI(slug)
 }

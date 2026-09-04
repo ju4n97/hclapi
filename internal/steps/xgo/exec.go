@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // Execute runs a custom Go step safely, recovering from panics.
-func Execute(ctx context.Context, handler core.StepHandler, step *core.Step) (res any, err error) {
+func Execute(ctx context.Context, handler runtime.StepHandler, step *runtime.Step) (res any, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stepName := "anonymous"

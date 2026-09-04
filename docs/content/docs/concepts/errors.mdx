@@ -29,13 +29,13 @@ hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Detail
 
 ## Returning custom errors from Go steps
 
-Native `go` steps can return a `hclapi.ProblemDetailsError` to halt the pipeline and emit a specific HTTP status code, type URN, and custom error details directly to the client:
+Native `go` steps can return a `hclapi.Problem` to halt the pipeline and emit a specific HTTP status code, type URN, and custom error details directly to the client:
 
 ```go
 engine.RegisterStep("auth.verify_key", func(ctx context.Context, step *hclapi.Step) (any, error) {
     apiKey := step.Request.Header("X-API-Key")
     if apiKey == "" {
-        return nil, hclapi.ProblemDetailsError{
+        return nil, hclapi.Problem{
             Type:     "urn:hclapi:error:unauthorized",
             Title:    "Unauthorized",
             Status:   http.StatusUnauthorized,
@@ -60,5 +60,5 @@ server {
 This transforms `urn:hclapi:error:bad-request` into `https://docs.mycompany.com/errors/bad-request`.
 
 :::tip Embedded applications
-When embedding hclapi into Go, you can replace the default response shape with a custom `ErrorHandler`. See [Go integration](../../guides/go).
+When embedding hclapi into Go, you can replace the default response shape with a custom `ProblemHandler`. See [Go integration](../../guides/go).
 :::

@@ -19,7 +19,8 @@ import (
 	"github.com/zclconf/go-cty/cty/function"
 	"github.com/zclconf/go-cty/cty/function/stdlib"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // typeConstructors returns HCL functions used specifically for schema type definitions (e.g. list(string)).
@@ -161,7 +162,7 @@ var nowFunc = function.New(&function.Spec{
 })
 
 // problemFunc constructs an RFC 9457 Problem Details object from positional arguments or an object map.
-func problemFunc(execCtx *core.ExecutionContext) function.Function {
+func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 	var instancePath string
 	var errorBaseURL string
 
@@ -209,7 +210,7 @@ func problemFunc(execCtx *core.ExecutionContext) function.Function {
 				}
 
 				slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
-				typeURI := core.ProblemType(slug)
+				typeURI := problem.TypeURI(slug)
 				if errorBaseURL != "" {
 					typeURI = errorBaseURL + slug
 				}
@@ -220,7 +221,7 @@ func problemFunc(execCtx *core.ExecutionContext) function.Function {
 					case errorBaseURL != "":
 						typeURI = errorBaseURL + customType
 					default:
-						typeURI = core.ProblemType(customType)
+						typeURI = problem.TypeURI(customType)
 					}
 				}
 
@@ -266,7 +267,7 @@ func problemFunc(execCtx *core.ExecutionContext) function.Function {
 			}
 
 			slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(title), " ", "-"))
-			typeURI := core.ProblemType(slug)
+			typeURI := problem.TypeURI(slug)
 			if errorBaseURL != "" {
 				typeURI = errorBaseURL + slug
 			}
@@ -280,7 +281,7 @@ func problemFunc(execCtx *core.ExecutionContext) function.Function {
 				case errorBaseURL != "":
 					typeURI = errorBaseURL + custom
 				default:
-					typeURI = core.ProblemType(custom)
+					typeURI = problem.TypeURI(custom)
 				}
 			}
 

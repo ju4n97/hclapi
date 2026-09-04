@@ -1,13 +1,17 @@
-package core
+package manifest
 
-import "time"
+import (
+	"time"
+
+	"github.com/ju4n97/hclapi/internal/scalar"
+)
 
 // PoolConfig defines connection pool sizing and lifecycle settings.
 type PoolConfig struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
-	ConnMaxLifetime Duration
-	IdleTimeout     Duration
+	ConnMaxLifetime scalar.Duration
+	IdleTimeout     scalar.Duration
 	Size            int
 }
 
@@ -16,8 +20,8 @@ func DefaultPoolConfig() PoolConfig {
 	return PoolConfig{
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
-		ConnMaxLifetime: Duration(30 * time.Minute),
-		IdleTimeout:     Duration(5 * time.Minute),
+		ConnMaxLifetime: scalar.Duration(30 * time.Minute),
+		IdleTimeout:     scalar.Duration(5 * time.Minute),
 		Size:            20,
 	}
 }

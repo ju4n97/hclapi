@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 //go:embed templates/*
@@ -31,7 +31,7 @@ func RenderHTML(ui string, data TemplateData, rawTemplate, templateFile, manifes
 	case rawTemplate != "":
 		tmplContent = rawTemplate
 	case templateFile != "":
-		resolvedPath := core.ResolveRelativePath(templateFile, manifestDir)
+		resolvedPath := manifest.ResolveRelativePath(templateFile, manifestDir)
 		content, err := os.ReadFile(resolvedPath)
 		if err != nil {
 			return nil, fmt.Errorf("read custom template file: %w", err)

@@ -11,7 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclparse"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 func ishclapiManifest(filename string) bool {
@@ -72,28 +72,28 @@ func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Mani
 		return nil, fmt.Errorf("parse %s: %s", path, diags.Error())
 	}
 
-	var manifest Manifest
-	diags = gohcl.DecodeBody(file.Body, evalCtx, &manifest)
+	var m Manifest
+	diags = gohcl.DecodeBody(file.Body, evalCtx, &m)
 	if diags.HasErrors() {
 		return nil, fmt.Errorf("decode %s: %s", path, diags.Error())
 	}
 
 	manifestDir, err := filepath.Abs(filepath.Dir(path))
 	if err == nil {
-		for i := range manifest.Connections {
-			manifest.Connections[i].URL = core.ResolveRelativePath(manifest.Connections[i].URL, manifestDir)
+		for i := range m.Connections {
+			m.Connections[i].URL = manifest.ResolveRelativePath(m.Connections[i].URL, manifestDir)
 		}
 	}
 
-	for i := range manifest.Endpoints {
-		if manifest.Endpoints[i].Request != nil {
-			if err := manifest.Endpoints[i].Request.Decode(evalCtx); err != nil {
-				return nil, fmt.Errorf("endpoint %q: %w", manifest.Endpoints[i].MethodAndPath, err)
+	for i := range m.Endpoints {
+		if m.Endpoints[i].Request != nil {
+			if err := m.Endpoints[i].Request.Decode(evalCtx); err != nil {
+				return nil, fmt.Errorf("endpoint %q: %w", m.Endpoints[i].MethodAndPath, err)
 			}
 		}
 	}
 
-	return &manifest, nil
+	return &m, nil
 }
 
 // DecodePipelineSteps decodes steps from a pipeline block preserving declaration order.

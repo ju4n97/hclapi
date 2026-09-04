@@ -247,5 +247,5 @@ endpoint "GET /api/v1/locations/{city}/weather" {
 
 ## Errors and panics
 
-- **Returned errors:** Returning an error immediately halts the pipeline and converts to an RFC 9457 Problem Details 500 response (or passes to your custom `ErrorHandler`).
+- **Returned errors:** Returning an error immediately halts the pipeline and converts to an RFC 9457 Problem Details 500 response (or passes to your custom `ProblemHandler`).
 - **Panics:** Any panic inside a `StepHandler` is automatically recovered by the runtime, logged with the step name and stack trace, and returned as an HTTP 500. The server process continues running uninterrupted.

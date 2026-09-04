@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 func TestDialects(t *testing.T) {
@@ -44,15 +45,15 @@ func TestManager(t *testing.T) {
 		t.Parallel()
 
 		mgr := connsql.NewManager()
-		conn := core.Connection{
+		conn := manifest.Connection{
 			Driver: "sqlite",
 			Name:   "primary",
 			URL:    "file::memory:?cache=shared",
-			Pool: core.PoolConfig{
+			Pool: manifest.PoolConfig{
 				MaxOpenConns:    10,
 				MaxIdleConns:    2,
-				ConnMaxLifetime: core.Duration(15 * time.Minute),
-				IdleTimeout:     core.Duration(5 * time.Minute),
+				ConnMaxLifetime: scalar.Duration(15 * time.Minute),
+				IdleTimeout:     scalar.Duration(5 * time.Minute),
 			},
 		}
 
@@ -88,11 +89,11 @@ func TestManager(t *testing.T) {
 		t.Parallel()
 
 		mgr := connsql.NewManager()
-		conn := core.Connection{
+		conn := manifest.Connection{
 			Driver: "sqlite",
 			Name:   "broken",
 			URL:    "file:/invalid_non_existent_dir_9999/app.db?mode=ro",
-			Pool:   core.DefaultPoolConfig(),
+			Pool:   manifest.DefaultPoolConfig(),
 		}
 
 		if err := mgr.Open(t.Context(), conn); err == nil {

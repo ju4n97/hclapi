@@ -12,23 +12,80 @@ It's recommended that you read this documentation before contributing to have fu
 
 ## How the engine works
 
-1. **Startup:** When `hclapi serve` starts, it walks the manifest directory, parses `.hcl` files into an AST, initializes database connection pools, and binds routes to Go's standard `http.ServeMux`.
-2. **Request time:** Each incoming HTTP request creates an isolated context and executes pipeline steps sequentially (`sql`, `starlark`, `go`, etc.) until a `respond` step sends the HTTP response.
+1. **Startup:** When `hclapi serve` starts, it walks the manifest directory, parses `.hcl` files into an AST, compiles routes, initializes database connection pools, and binds endpoints to Go's standard `http.ServeMux`.
+2. **Request time:** Each incoming HTTP request creates an isolated `ExecutionContext` and executes pipeline steps sequentially (`sql`, `starlark`, `go`, etc.) until a `respond` step terminates the pipeline and sends the response.
 
 ## Project structure
 
-```text
-cmd/hclapi/                     CLI entrypoint and subcommands (serve, openapi, version)
-hclapi.go                       Public library API for embedding in Go
-internal/
-  core/                         Domain models (Context, Server, Connection, ProblemDetailsError)
-  parser/                       HCL manifest parsing and AST definitions
-  compiler/                     Static analysis, AST validation, and route compilation
-  eval/                         HCL expression evaluation and built-in functions
-  connectors/connsql/           Database connection pools, drivers, and dialects
-  steps/                        Individual step runners (xgo, xstarlark, xsql, xrespond)
-  engine/                       Route dispatcher and pipeline execution runner
+```sh
+hclapi/
+├── cmd/hclapi/                 # CLI: serve, openapi, version
+├── hclapi.go                   # Public Go library facade
+└── internal/
+    ├── manifest/               # Static config models
+    ├── runtime/                # Request execution state
+    ├── scalar/                 # Primitive units & conversions
+    ├── problem/                # RFC 9457 problem detail errors
+    ├── parser/                 # HCL parsing & AST
+    ├── compiler/               # Static analysis & route compilation
+    ├── validator/              # Schema validation & defaults
+    ├── eval/                   # Expression evaluation & built-ins
+    ├── openapi/                # OpenAPI 3.1 & documentation
+    ├── connectors/             # Database connectivity
+    ├── steps/                  # xgo, xstarlark, xsql, xrespond, etc.
+    └── engine/                 # Dispatcher & pipeline runner
 ```
+
+## Architectural dependency graph
+
+In order to avoid circular dependencies and maintain clear boundaries, package imports form a strict Directed Acyclic Graph (DAG) flowing from leaf primitives up to the orchestrator and binaries:
+
+```mermaid
+flowchart TB
+    CLI["CLI / Go API"]
+    ENGINE["API Engine<br/>Routing & pipeline"]
+
+    subgraph BOOT["BOOT TIME"]
+        CONFIG["Parse & compile configuration"]
+        DOCS["Generate API documentation"]
+        CONFIG --> DOCS
+    end
+
+    subgraph REQUEST["REQUEST TIME"]
+        INGRESS["Validate & prepare request"]
+        EXEC["Evaluate & execute pipeline"]
+        DATA["Access external systems"]
+        INGRESS --> EXEC --> DATA
+    end
+
+    subgraph CORE["CORE DOMAIN"]
+        STATE["Configuration & runtime state"]
+    end
+
+    subgraph FOUNDATION["FOUNDATION"]
+        ERRORS["Errors"]
+        PRIMITIVES["Shared primitives"]
+    end
+
+    CLI --> ENGINE
+
+    ENGINE --> BOOT
+    ENGINE --> REQUEST
+
+    CONFIG --> STATE
+    INGRESS --> STATE
+    EXEC --> STATE
+    DATA --> STATE
+
+    STATE --> FOUNDATION
+```
+
+### Dependency rules
+
+- Leaf packages such as `internal/scalar` and `internal/problem` depend only on the Go standard library and never import internal application code.
+- Dependencies flow strictly in one direction, with lower-level packages never knowing about the packages that import them; for example, `internal/manifest`, which provides boot-time static configuration, never imports `internal/runtime`, which handles request-time dynamic execution.
+- Step runners in `internal/steps/` are decoupled execution units that never import one another or `internal/engine`.
+- Nothing under `internal/` can import `github.com/ju4n97/hclapi`, as the root package serves purely as the public facade.
 
 ## Key engineering rules
 
@@ -62,16 +119,16 @@ task fmt
 task test
 
 # Run tests with the Go race detector
-task test:race
+task test-race
 
 # Run integration tests against real databases (requires Docker)
-task test:integration
+task test-integration
 
 # Fast local compilation for current OS/Arch
 task build
 
 # Compile matrix binaries across all supported platforms (requires goreleaser)
-task build:all
+task build-all
 ```
 
 ## Release process
@@ -89,8 +146,8 @@ Before publishing a release, ensure all verifications pass cleanly on `main`:
 ```bash
 task lint
 task test
-task test:race
-task test:integration
+task test-race
+task test-integration
 ```
 
 ### 2. Local dry run (optional)
@@ -98,7 +155,7 @@ task test:integration
 Simulate the full release lifecycle locally without publishing to GitHub or registries:
 
 ```bash
-task release:dry-run
+task release-dry-run
 ```
 
 ### 3. Publishing a release

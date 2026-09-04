@@ -31,18 +31,18 @@ endpoint "POST /api/v1/data" {
 	}
 
 	customHandlerCalled := false
-	customHandler := func(w http.ResponseWriter, r *http.Request, problem hclapi.ProblemDetailsError) {
+	customHandler := func(w http.ResponseWriter, r *http.Request, p hclapi.Problem) {
 		customHandlerCalled = true
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(problem.Status)
+		w.WriteHeader(p.Status)
 		_ = json.NewEncoder(w).Encode(map[string]string{
-			"custom_error": problem.Detail,
+			"custom_error": p.Detail,
 		})
 	}
 
 	engine, err := hclapi.NewEngine(hclapi.Options{
-		ConfigPath:   tmpDir,
-		ErrorHandler: customHandler,
+		ConfigPath:     tmpDir,
+		ProblemHandler: customHandler,
 	})
 	if err != nil {
 		t.Fatalf("failed to initialize engine: %v", err)

@@ -6,41 +6,42 @@ import (
 	"testing"
 
 	"github.com/ju4n97/hclapi/internal/compiler"
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/openapi"
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Parallel()
 
 	service := &compiler.CompiledService{
-		Server: core.Server{
-			MaxBodySize: core.ByteSize(10 * 1024 * 1024),
-			OpenAPI: core.OpenAPIConfig{
+		Server: manifest.Server{
+			MaxBodySize: scalar.ByteSize(10 * 1024 * 1024),
+			OpenAPI: manifest.OpenAPIConfig{
 				Title:       "Acme Store API",
 				Version:     "1.0.0",
 				Description: "Comprehensive API specification for testing.",
-				Servers: []core.OpenAPIServer{
+				Servers: []manifest.OpenAPIServer{
 					{URL: "https://api.example.com/v1", Description: "Production"},
 					{URL: "http://localhost:8080", Description: "Local"},
 				},
-				Tags: []core.OpenAPITag{
+				Tags: []manifest.OpenAPITag{
 					{Name: "users", Description: "User account management"},
 					{Name: "orders", Description: "Order processing"},
 				},
-				Contact: &core.OpenAPIContact{
+				Contact: &manifest.OpenAPIContact{
 					Name:  "API Support",
 					Email: "support@example.com",
 					URL:   "https://example.com/support",
 				},
-				License: &core.OpenAPILicense{
+				License: &manifest.OpenAPILicense{
 					Name: "MIT",
 					URL:  "https://opensource.org/licenses/MIT",
 				},
 			},
 		},
-		Schemas: map[string][]core.Field{
+		Schemas: map[string][]manifest.Field{
 			"user": {
 				{Name: "email", Type: "string", Required: true, Format: "email", Description: "User email"},
 				{
@@ -61,16 +62,16 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 				MethodAndPath: "POST /api/v1/users/{id}",
 				Description:   "Registers a new user record.",
 				Rules: compiler.CompiledRequestRules{
-					PathFields: []core.Field{
+					PathFields: []manifest.Field{
 						{Name: "id", Type: "int", Required: true, Description: "Unique user ID"},
 					},
-					HeaderFields: []core.Field{
+					HeaderFields: []manifest.Field{
 						{Name: "x-api-key", Type: "string", Required: true, Format: "uuid"},
 					},
-					QueryFields: []core.Field{
+					QueryFields: []manifest.Field{
 						{Name: "source", Type: "string", Default: "direct", Enum: []any{"direct", "referral"}},
 					},
-					BodyFields: []core.Field{
+					BodyFields: []manifest.Field{
 						{Name: "email", Type: "string", Required: true, Format: "email"},
 						{Name: "username", Type: "string", Required: true, MinLength: new(3)},
 					},
@@ -97,7 +98,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 				MethodAndPath: "GET /static/{filepath...}",
 				Description:   "Serves public assets.",
 				Rules: compiler.CompiledRequestRules{
-					PathFields: []core.Field{
+					PathFields: []manifest.Field{
 						{Name: "filepath", Type: "string", Required: true},
 					},
 				},

@@ -1,10 +1,10 @@
-package core_test
+package scalar_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 func TestDuration(t *testing.T) {
@@ -29,7 +29,7 @@ func TestDuration(t *testing.T) {
 			t.Run(tt.input, func(t *testing.T) {
 				t.Parallel()
 
-				var d core.Duration
+				var d scalar.Duration
 				err := d.UnmarshalText([]byte(tt.input))
 				if err != nil {
 					t.Fatalf("unexpected error for %q: %v", tt.input, err)
@@ -56,7 +56,7 @@ func TestDuration(t *testing.T) {
 			t.Run(input, func(t *testing.T) {
 				t.Parallel()
 
-				var d core.Duration
+				var d scalar.Duration
 				err := d.UnmarshalText([]byte(input))
 				if err == nil {
 					t.Fatalf("expected error for invalid input %q, got nil", input)
@@ -68,7 +68,7 @@ func TestDuration(t *testing.T) {
 	t.Run("MarshalText and String formatting", func(t *testing.T) {
 		t.Parallel()
 
-		d := core.Duration(15 * time.Minute)
+		d := scalar.Duration(15 * time.Minute)
 
 		if d.String() != "15m0s" {
 			t.Errorf("expected '15m0s', got %q", d.String())

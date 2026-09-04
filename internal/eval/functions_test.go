@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 var (
@@ -108,8 +109,8 @@ func TestFunctions_System(t *testing.T) {
 	t.Run("problem function builds RFC 9457 payload", func(t *testing.T) {
 		t.Parallel()
 
-		execCtx := &core.ExecutionContext{
-			Server: core.Server{
+		execCtx := &runtime.ExecutionContext{
+			Server: manifest.Server{
 				ErrorBaseURL: "https://docs.example.com/errors/",
 			},
 			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/42", http.NoBody),
@@ -140,7 +141,7 @@ func TestFunctions_System(t *testing.T) {
 		}
 
 		// Default URN fallback without base URL
-		execCtxNoBase := &core.ExecutionContext{
+		execCtxNoBase := &runtime.ExecutionContext{
 			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/items", http.NoBody),
 		}
 		resURN, err := eval.Any(parseExpr(t, `problem(400, "Invalid parameter", "invalid-param")`), execCtxNoBase)

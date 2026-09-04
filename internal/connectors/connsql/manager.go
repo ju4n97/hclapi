@@ -14,14 +14,14 @@ import (
 	_ "github.com/microsoft/go-mssqldb" // SQL Server
 	_ "modernc.org/sqlite"              // SQLite
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 // Pool wraps an active *sql.DB pool with its database dialect and configuration metadata.
 type Pool struct {
 	DB      *sql.DB
 	Dialect Dialect
-	Config  core.Connection
+	Config  manifest.Connection
 }
 
 // Manager manages the lifecycle, pooling, and retrieval of active database connection pools.
@@ -67,7 +67,7 @@ func mapDriverName(driver string) string {
 }
 
 // Open initializes a connection pool, applies pool sizing limits, pings the database, and registers it.
-func (m *Manager) Open(ctx context.Context, conn core.Connection) error {
+func (m *Manager) Open(ctx context.Context, conn manifest.Connection) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

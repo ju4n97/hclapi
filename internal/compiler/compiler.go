@@ -6,16 +6,16 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
 // CompiledRequestRules holds pre-compiled field validation constraints for an endpoint.
 type CompiledRequestRules struct {
-	PathFields   []core.Field
-	QueryFields  []core.Field
-	HeaderFields []core.Field
-	BodyFields   []core.Field
+	PathFields   []manifest.Field
+	QueryFields  []manifest.Field
+	HeaderFields []manifest.Field
+	BodyFields   []manifest.Field
 }
 
 // CompiledOpenAPIHandler holds configuration for an endpoint that serves documentation or raw specifications.
@@ -42,42 +42,42 @@ type CompiledEndpoint struct {
 
 // CompiledService represents the entire statically compiled and verified manifest tree.
 type CompiledService struct {
-	Server      core.Server
-	Connections []core.Connection
-	Schemas     map[string][]core.Field
+	Server      manifest.Server
+	Connections []manifest.Connection
+	Schemas     map[string][]manifest.Field
 	Endpoints   []CompiledEndpoint
 }
 
 // Compile performs static semantic analysis on the entire AST manifest tree.
 // It verifies all connection and schema references and returns a ready-to-run CompiledService.
-func Compile(manifest *parser.Manifest, evalCtx *hcl.EvalContext) (*CompiledService, error) {
-	if manifest == nil {
+func Compile(m *parser.Manifest, evalCtx *hcl.EvalContext) (*CompiledService, error) {
+	if m == nil {
 		return &CompiledService{
-			Server:  core.DefaultServer(),
-			Schemas: make(map[string][]core.Field),
+			Server:  manifest.DefaultServer(),
+			Schemas: make(map[string][]manifest.Field),
 		}, nil
 	}
 
 	// Compile and validate server settings
-	serverConfig, err := manifest.Server.ToServer()
+	serverConfig, err := m.Server.ToServer()
 	if err != nil {
 		return nil, fmt.Errorf("server config: %w", err)
 	}
 
 	// Compile and validate connection blocks
-	connections, connIndex, err := compileConnections(manifest.Connections)
+	connections, connIndex, err := compileConnections(m.Connections)
 	if err != nil {
 		return nil, err
 	}
 
 	// Compile and validate schema blocks
-	schemasMap, err := compileSchemas(manifest.Schemas, evalCtx)
+	schemasMap, err := compileSchemas(m.Schemas, evalCtx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Compile and validate endpoints and pipeline steps
-	endpoints, err := compileEndpoints(manifest.Endpoints, connIndex, schemasMap, serverConfig, evalCtx)
+	endpoints, err := compileEndpoints(m.Endpoints, connIndex, schemasMap, serverConfig, evalCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -90,8 +90,8 @@ func Compile(manifest *parser.Manifest, evalCtx *hcl.EvalContext) (*CompiledServ
 	}, nil
 }
 
-func compileConnections(blocks []parser.ConnectionBlock) ([]core.Connection, map[string]bool, error) {
-	var connections []core.Connection
+func compileConnections(blocks []parser.ConnectionBlock) ([]manifest.Connection, map[string]bool, error) {
+	var connections []manifest.Connection
 	connIndex := make(map[string]bool, len(blocks))
 
 	for _, block := range blocks {
@@ -113,15 +113,15 @@ func compileConnections(blocks []parser.ConnectionBlock) ([]core.Connection, map
 	return connections, connIndex, nil
 }
 
-func compileSchemas(blocks []parser.SchemaBlock, evalCtx *hcl.EvalContext) (map[string][]core.Field, error) {
-	schemasMap := make(map[string][]core.Field, len(blocks))
+func compileSchemas(blocks []parser.SchemaBlock, evalCtx *hcl.EvalContext) (map[string][]manifest.Field, error) {
+	schemasMap := make(map[string][]manifest.Field, len(blocks))
 
 	for _, block := range blocks {
 		if _, exists := schemasMap[block.Name]; exists {
 			return nil, fmt.Errorf("duplicate schema declaration %q", "schema."+block.Name)
 		}
 
-		var fields []core.Field
+		var fields []manifest.Field
 		for _, fieldBlock := range block.Fields {
 			cf, err := fieldBlock.ToField(evalCtx)
 			if err != nil {
@@ -138,8 +138,8 @@ func compileSchemas(blocks []parser.SchemaBlock, evalCtx *hcl.EvalContext) (map[
 func compileEndpoints(
 	blocks []parser.EndpointBlock,
 	connIndex map[string]bool,
-	schemasMap map[string][]core.Field,
-	serverConfig core.Server,
+	schemasMap map[string][]manifest.Field,
+	serverConfig manifest.Server,
 	evalCtx *hcl.EvalContext,
 ) ([]CompiledEndpoint, error) {
 	seenRoutes := make(map[string]bool, len(blocks))
@@ -256,7 +256,7 @@ func validatePipelineSteps(route string, steps []parser.ParsedStep, connIndex ma
 func compileRequestRules(
 	route string,
 	req *parser.RequestBlock,
-	schemasMap map[string][]core.Field,
+	schemasMap map[string][]manifest.Field,
 	evalCtx *hcl.EvalContext,
 ) (CompiledRequestRules, error) {
 	var rules CompiledRequestRules
@@ -264,8 +264,8 @@ func compileRequestRules(
 		return rules, nil
 	}
 
-	compileFields := func(blocks []parser.FieldBlock) ([]core.Field, error) {
-		var fields []core.Field
+	compileFields := func(blocks []parser.FieldBlock) ([]manifest.Field, error) {
+		var fields []manifest.Field
 		for _, fieldBlock := range blocks {
 			cf, err := fieldBlock.ToField(evalCtx)
 			if err != nil {
@@ -276,7 +276,7 @@ func compileRequestRules(
 		return fields, nil
 	}
 
-	resolveTarget := func(targetName string, inline *parser.FieldGroupBlock, expr hcl.Expression) ([]core.Field, error) {
+	resolveTarget := func(targetName string, inline *parser.FieldGroupBlock, expr hcl.Expression) ([]manifest.Field, error) {
 		if inline != nil {
 			return compileFields(inline.Fields)
 		}

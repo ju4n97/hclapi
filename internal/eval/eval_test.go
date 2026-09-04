@@ -6,8 +6,8 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 func parseExpr(t *testing.T, src string) hcl.Expression {
@@ -25,9 +25,9 @@ func parseExpr(t *testing.T, src string) hcl.Expression {
 func evalExpr(t *testing.T, src string) (any, error) {
 	t.Helper()
 
-	execCtx := &core.ExecutionContext{
-		Request: &core.RequestState{},
-		Steps:   make(map[string]core.StepResult),
+	execCtx := &runtime.ExecutionContext{
+		Request: &runtime.RequestState{},
+		Steps:   make(map[string]runtime.StepResult),
 	}
 
 	return eval.Any(parseExpr(t, src), execCtx)
@@ -36,8 +36,8 @@ func evalExpr(t *testing.T, src string) (any, error) {
 func TestEval(t *testing.T) {
 	t.Parallel()
 
-	execCtx := &core.ExecutionContext{
-		Request: &core.RequestState{
+	execCtx := &runtime.ExecutionContext{
+		Request: &runtime.RequestState{
 			Method: "POST",
 			Path:   map[string]string{"id": "usr_99"},
 			Headers: map[string]string{
@@ -48,7 +48,7 @@ func TestEval(t *testing.T) {
 				"score": 100,
 			},
 		},
-		Steps: map[string]core.StepResult{
+		Steps: map[string]runtime.StepResult{
 			"lookup": {
 				"result": map[string]any{
 					"exists": true,

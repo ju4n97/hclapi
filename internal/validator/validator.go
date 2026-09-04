@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 var (
@@ -30,12 +32,12 @@ var (
 
 // ValidateBody validates and normalizes a JSON request body in a single pass.
 // It applies defaults, normalizes missing optional fields to nil, and validates all constraints.
-func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []core.InvalidParam) {
+func ValidateBody(data map[string]any, fields []manifest.Field) (map[string]any, []problem.InvalidParam) {
 	result := make(map[string]any, len(fields)+len(data))
 	if len(data) > 0 {
 		maps.Copy(result, data)
 	}
-	var invalidParams []core.InvalidParam
+	var invalidParams []problem.InvalidParam
 
 	for _, field := range fields {
 		val, exists := result[field.Name]
@@ -46,7 +48,7 @@ func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []c
 				result[field.Name] = field.Default
 				val = field.Default
 			case field.Required:
-				invalidParams = append(invalidParams, core.InvalidParam{
+				invalidParams = append(invalidParams, problem.InvalidParam{
 					Name:   field.Name,
 					Reason: "field is required",
 				})
@@ -59,7 +61,7 @@ func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []c
 
 		if field.Required {
 			if strVal, ok := val.(string); ok && strings.TrimSpace(strVal) == "" {
-				invalidParams = append(invalidParams, core.InvalidParam{
+				invalidParams = append(invalidParams, problem.InvalidParam{
 					Name:   field.Name,
 					Reason: "field is required and cannot be empty",
 				})
@@ -68,7 +70,7 @@ func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []c
 		}
 
 		if errReason := validateValue(val, field); errReason != "" {
-			invalidParams = append(invalidParams, core.InvalidParam{
+			invalidParams = append(invalidParams, problem.InvalidParam{
 				Name:   field.Name,
 				Reason: errReason,
 			})
@@ -79,7 +81,7 @@ func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []c
 }
 
 // ValidateStringMap validates string-keyed parameter maps (Path, Query) and injects defaults.
-func ValidateStringMap(data map[string]string, fields []core.Field) []core.InvalidParam {
+func ValidateStringMap(data map[string]string, fields []manifest.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(data, fields, func(name string) string {
 		return name
 	})
@@ -88,16 +90,16 @@ func ValidateStringMap(data map[string]string, fields []core.Field) []core.Inval
 // ValidateHeaders validates incoming HTTP headers against schema fields in a single pass.
 // Per RFC 9110, header lookup is case-insensitive against lowercased ingress headers,
 // defaults are injected, and error diagnostics retain the author's declared schema casing.
-func ValidateHeaders(headers map[string]string, fields []core.Field) []core.InvalidParam {
+func ValidateHeaders(headers map[string]string, fields []manifest.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(headers, fields, strings.ToLower)
 }
 
 func validateStringMapWithLookup(
 	data map[string]string,
-	fields []core.Field,
+	fields []manifest.Field,
 	keyLookup func(string) string,
-) []core.InvalidParam {
-	var invalidParams []core.InvalidParam
+) []problem.InvalidParam {
+	var invalidParams []problem.InvalidParam
 
 	for _, field := range fields {
 		lookupKey := keyLookup(field.Name)
@@ -109,7 +111,7 @@ func validateStringMapWithLookup(
 				continue
 			}
 			if field.Required {
-				invalidParams = append(invalidParams, core.InvalidParam{
+				invalidParams = append(invalidParams, problem.InvalidParam{
 					Name:   field.Name,
 					Reason: "field is required and cannot be empty",
 				})
@@ -119,7 +121,7 @@ func validateStringMapWithLookup(
 
 		coercedVal, errReason := coerceString(rawStr, field.Type)
 		if errReason != "" {
-			invalidParams = append(invalidParams, core.InvalidParam{
+			invalidParams = append(invalidParams, problem.InvalidParam{
 				Name:   field.Name,
 				Reason: errReason,
 			})
@@ -127,7 +129,7 @@ func validateStringMapWithLookup(
 		}
 
 		if errReason := validateValue(coercedVal, field); errReason != "" {
-			invalidParams = append(invalidParams, core.InvalidParam{
+			invalidParams = append(invalidParams, problem.InvalidParam{
 				Name:   field.Name,
 				Reason: errReason,
 			})
@@ -137,7 +139,7 @@ func validateStringMapWithLookup(
 	return invalidParams
 }
 
-func validateValue(val any, field core.Field) string {
+func validateValue(val any, field manifest.Field) string {
 	switch {
 	case field.Type == "string":
 		strVal, ok := val.(string)
@@ -147,14 +149,14 @@ func validateValue(val any, field core.Field) string {
 		return checkStringConstraints(strVal, field)
 
 	case field.Type == "int":
-		intVal, ok := core.ToInt64(val)
+		intVal, ok := scalar.ToInt64(val)
 		if !ok {
 			return "must be of type int"
 		}
 		return checkNumericConstraints(float64(intVal), intVal, field)
 
 	case field.Type == "float":
-		floatVal, ok := core.ToFloat64(val)
+		floatVal, ok := scalar.ToFloat64(val)
 		if !ok {
 			return "must be of type float"
 		}
@@ -181,7 +183,7 @@ func validateValue(val any, field core.Field) string {
 	return ""
 }
 
-func checkStringConstraints(val string, field core.Field) string {
+func checkStringConstraints(val string, field manifest.Field) string {
 	runes := []rune(val)
 	if field.MinLength != nil && len(runes) < *field.MinLength {
 		return fmt.Sprintf("length must be at least %d characters", *field.MinLength)
@@ -220,7 +222,7 @@ func matchPattern(pattern, val string) bool {
 	return re.MatchString(val)
 }
 
-func checkNumericConstraints(val float64, rawVal any, field core.Field) string {
+func checkNumericConstraints(val float64, rawVal any, field manifest.Field) string {
 	if field.Min != nil && val < *field.Min {
 		return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
 	}
@@ -233,7 +235,7 @@ func checkNumericConstraints(val float64, rawVal any, field core.Field) string {
 	return ""
 }
 
-func checkListConstraints(val any, field core.Field) string {
+func checkListConstraints(val any, field manifest.Field) string {
 	rv := reflect.ValueOf(val)
 	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
 		return "must be of type list"

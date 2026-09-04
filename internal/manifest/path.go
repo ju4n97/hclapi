@@ -1,4 +1,4 @@
-package core
+package manifest
 
 import (
 	"path/filepath"

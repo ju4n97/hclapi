@@ -1,9 +1,11 @@
-package core
+package runtime
 
 import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+
+	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 // Args represents evaluated arguments passed to a Go step from an HCL manifest.
@@ -43,7 +45,7 @@ func (a Args) Get[T any](key string) (T, bool) {
 	}
 
 	// Numeric coercion
-	if num, ok := CoerceNumber[T](val); ok {
+	if num, ok := scalar.CoerceNumber[T](val); ok {
 		return num, true
 	}
 
@@ -106,7 +108,7 @@ func (a Args) Slice[T any](key string) []T {
 			}
 			if v, ok := item.(T); ok {
 				res = append(res, v)
-			} else if num, ok := CoerceNumber[T](item); ok {
+			} else if num, ok := scalar.CoerceNumber[T](item); ok {
 				res = append(res, num)
 			} else if isString {
 				res = append(res, any(fmt.Sprintf("%v", item)).(T))
@@ -126,7 +128,7 @@ func (a Args) Slice[T any](key string) []T {
 			}
 			if v, ok := item.(T); ok {
 				res = append(res, v)
-			} else if num, ok := CoerceNumber[T](item); ok {
+			} else if num, ok := scalar.CoerceNumber[T](item); ok {
 				res = append(res, num)
 			} else if isString {
 				res = append(res, any(fmt.Sprintf("%v", item)).(T))

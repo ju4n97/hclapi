@@ -1,4 +1,4 @@
-package core_test
+package runtime_test
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 func TestNewContext(t *testing.T) {
@@ -20,7 +21,7 @@ func TestNewContext(t *testing.T) {
 		pathParams  map[string]string
 		bodyJSON    string
 		expectError bool
-		validate    func(t *testing.T, execCtx *core.ExecutionContext)
+		validate    func(t *testing.T, execCtx *runtime.ExecutionContext)
 	}{
 		{
 			name:   "Parses query parameters and lowercases headers",
@@ -31,7 +32,7 @@ func TestNewContext(t *testing.T) {
 				"Content-Type": "application/json",
 			},
 			expectError: false,
-			validate: func(t *testing.T, execCtx *core.ExecutionContext) {
+			validate: func(t *testing.T, execCtx *runtime.ExecutionContext) {
 				if execCtx.Request.Method != http.MethodGet {
 					t.Errorf("expected GET, got %s", execCtx.Request.Method)
 				}
@@ -56,7 +57,7 @@ func TestNewContext(t *testing.T) {
 			url:         "/items",
 			bodyJSON:    `{"title": "Test Item", "count": 5}`,
 			expectError: false,
-			validate: func(t *testing.T, ctx *core.ExecutionContext) {
+			validate: func(t *testing.T, ctx *runtime.ExecutionContext) {
 				body, ok := ctx.Request.Body.(map[string]any)
 				if !ok {
 					t.Fatalf("expected map[string]any body, got %T", ctx.Request.Body)
@@ -90,9 +91,9 @@ func TestNewContext(t *testing.T) {
 				paramNames = append(paramNames, k)
 			}
 
-			ctx, err := core.NewExecutionContext(nil, req,
-				core.WithPathParams(paramNames),
-				core.WithServer(core.Server{
+			ctx, err := runtime.NewExecutionContext(nil, req,
+				runtime.WithPathParams(paramNames),
+				runtime.WithServer(manifest.Server{
 					MaxBodySize: 10 * 1024 * 1024,
 				}),
 			)

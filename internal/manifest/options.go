@@ -1,6 +1,10 @@
-package core
+package manifest
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/ju4n97/hclapi/internal/problem"
+)
 
 // Options defines the configuration options for the hclapi engine.
 type Options struct {
@@ -10,8 +14,8 @@ type Options struct {
 	// StrictTyping enforces request schema validation on all endpoints.
 	StrictTyping bool
 
-	// ErrorHandler formats error responses. If nil, RFC 9457 defaults are used.
-	ErrorHandler ErrorHandler
+	// ProblemHandler formats error responses. If nil, RFC 9457 defaults are used.
+	ProblemHandler problem.Handler
 
 	// Logger receives operational logs. If nil, logging is discarded.
 	Logger *slog.Logger

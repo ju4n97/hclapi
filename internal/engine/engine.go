@@ -12,10 +12,12 @@ import (
 
 	"github.com/ju4n97/hclapi/internal/compiler"
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/openapi"
 	"github.com/ju4n97/hclapi/internal/parser"
+	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/runtime"
 	"github.com/ju4n97/hclapi/internal/validator"
 )
 
@@ -23,25 +25,25 @@ var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
 // Engine is the central HTTP coordinator.
 type Engine struct {
-	options      core.Options
-	server       core.Server
+	options      manifest.Options
+	server       manifest.Server
 	mux          *http.ServeMux
 	sqlManager   *connsql.Manager
-	goSteps      map[string]core.StepHandler
-	errorHandler core.ErrorHandler
+	goSteps      map[string]runtime.StepHandler
+	errorHandler problem.Handler
 	logger       *slog.Logger
 }
 
 // New initializes an Engine by parsing manifests, statically compiling services, and registering routes.
-func New(options core.Options) (*Engine, error) {
+func New(options manifest.Options) (*Engine, error) {
 	logger := options.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	errorHandler := options.ErrorHandler
+	errorHandler := options.ProblemHandler
 	if errorHandler == nil {
-		errorHandler = core.DefaultErrorHandler
+		errorHandler = problem.DefaultHandler
 	}
 
 	evalCtx := eval.BaseContext()
@@ -76,7 +78,7 @@ func New(options core.Options) (*Engine, error) {
 		server:       service.Server,
 		mux:          http.NewServeMux(),
 		sqlManager:   sqlManager,
-		goSteps:      make(map[string]core.StepHandler),
+		goSteps:      make(map[string]runtime.StepHandler),
 		errorHandler: errorHandler,
 		logger:       logger,
 	}
@@ -153,7 +155,7 @@ func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, 
 		htmlBytes, err := openapi.RenderHTML(handler.UI, data, handler.Template, handler.TemplateFile, handler.BaseDir)
 		if err != nil {
 			e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
-			e.errorHandler(w, r, core.ProblemDetailsError{
+			e.errorHandler(w, r, problem.Problem{
 				Type:     e.server.ProblemType("internal-error"),
 				Title:    "Documentation Render Error",
 				Status:   http.StatusInternalServerError,
@@ -181,14 +183,14 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	executor := NewPipelineExecutor(endpoint.Steps, e.goSteps, e.sqlManager)
 
 	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
-		execCtx, err := core.NewExecutionContext(w, r,
-			core.WithPathParams(paramNames),
-			core.WithServer(e.server),
+		execCtx, err := runtime.NewExecutionContext(w, r,
+			runtime.WithPathParams(paramNames),
+			runtime.WithServer(e.server),
 		)
 		if err != nil {
 			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
 				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
-				e.errorHandler(w, r, core.ProblemDetailsError{
+				e.errorHandler(w, r, problem.Problem{
 					Type:     e.server.ProblemType("payload-too-large"),
 					Title:    "Request Entity Too Large",
 					Status:   http.StatusRequestEntityTooLarge,
@@ -199,7 +201,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			}
 
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, core.ProblemDetailsError{
+			e.errorHandler(w, r, problem.Problem{
 				Type:     e.server.ProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
@@ -220,7 +222,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 				"invalid_count",
 				len(invalidParams),
 			)
-			e.errorHandler(w, r, core.ProblemDetailsError{
+			e.errorHandler(w, r, problem.Problem{
 				Type:          e.server.ProblemType("validation-error"),
 				Title:         "Unprocessable Entity",
 				Status:        http.StatusUnprocessableEntity,
@@ -233,7 +235,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 
 		// Execute pipeline
 		if err := executor.Execute(w, execCtx); err != nil {
-			if problemErr, ok := errors.AsType[core.ProblemDetailsError](err); ok {
+			if problemErr, ok := errors.AsType[problem.Problem](err); ok {
 				if problemErr.Instance == "" {
 					problemErr.Instance = r.URL.Path
 				}
@@ -251,7 +253,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			}
 
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, core.ProblemDetailsError{
+			e.errorHandler(w, r, problem.Problem{
 				Type:     e.server.ProblemType("pipeline-execution-failed"),
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,
@@ -262,28 +264,28 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 	})
 }
 
-func (e *Engine) validateRequest(ctx *core.ExecutionContext, rules compiler.CompiledRequestRules) []core.InvalidParam {
-	var invalidParams []core.InvalidParam
+func (e *Engine) validateRequest(execCtx *runtime.ExecutionContext, rules compiler.CompiledRequestRules) []problem.InvalidParam {
+	var invalidParams []problem.InvalidParam
 
 	if len(rules.PathFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateStringMap(ctx.Request.Path, rules.PathFields)...)
+		invalidParams = append(invalidParams, validator.ValidateStringMap(execCtx.Request.Path, rules.PathFields)...)
 	}
 
 	if len(rules.QueryFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateStringMap(ctx.Request.Query, rules.QueryFields)...)
+		invalidParams = append(invalidParams, validator.ValidateStringMap(execCtx.Request.Query, rules.QueryFields)...)
 	}
 
 	if len(rules.HeaderFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateHeaders(ctx.Request.Headers, rules.HeaderFields)...)
+		invalidParams = append(invalidParams, validator.ValidateHeaders(execCtx.Request.Headers, rules.HeaderFields)...)
 	}
 
 	if len(rules.BodyFields) > 0 {
-		bodyMap, ok := ctx.Request.Body.(map[string]any)
+		bodyMap, ok := execCtx.Request.Body.(map[string]any)
 		if !ok {
-			if ctx.Request.Body == nil {
+			if execCtx.Request.Body == nil {
 				bodyMap = make(map[string]any)
 			} else {
-				return append(invalidParams, core.InvalidParam{
+				return append(invalidParams, problem.InvalidParam{
 					Name:   "body",
 					Reason: "request body must be a JSON object",
 				})
@@ -294,7 +296,7 @@ func (e *Engine) validateRequest(ctx *core.ExecutionContext, rules compiler.Comp
 		if len(errs) > 0 {
 			invalidParams = append(invalidParams, errs...)
 		} else {
-			ctx.Request.Body = normalizedBody
+			execCtx.Request.Body = normalizedBody
 		}
 	}
 
@@ -310,7 +312,7 @@ func (e *Engine) Close() error {
 }
 
 // RegisterStep registers a named custom Go function for the pipeline runtime.
-func (e *Engine) RegisterStep(name string, handler core.StepHandler) error {
+func (e *Engine) RegisterStep(name string, handler runtime.StepHandler) error {
 	if _, exists := e.goSteps[name]; exists {
 		return fmt.Errorf("step %q already registered", name)
 	}
@@ -325,6 +327,6 @@ func (e *Engine) Handler() http.Handler {
 }
 
 // Server returns the server configuration with defaults applied.
-func (e *Engine) Server() core.Server {
+func (e *Engine) Server() manifest.Server {
 	return e.server
 }

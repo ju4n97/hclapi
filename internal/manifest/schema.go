@@ -1,4 +1,4 @@
-package core
+package manifest
 
 // Field represents a compiled, type-safe schema field rule.
 type Field struct {

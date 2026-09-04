@@ -8,11 +8,11 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/zclconf/go-cty/cty"
 
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // Bool evaluates an HCL expression to a boolean value.
-func Bool(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal bool) (bool, error) {
+func Bool(expr hcl.Expression, execCtx *runtime.ExecutionContext, defaultVal bool) (bool, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
@@ -30,7 +30,7 @@ func Bool(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal bool) 
 }
 
 // Int evaluates an HCL expression to an integer.
-func Int(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal int) (int, error) {
+func Int(expr hcl.Expression, execCtx *runtime.ExecutionContext, defaultVal int) (int, error) {
 	if expr == nil {
 		return defaultVal, nil
 	}
@@ -50,7 +50,7 @@ func Int(expr hcl.Expression, execCtx *core.ExecutionContext, defaultVal int) (i
 }
 
 // Map evaluates an HCL expression into a string-keyed dictionary.
-func Map(expr hcl.Expression, execCtx *core.ExecutionContext) (map[string]any, error) {
+func Map(expr hcl.Expression, execCtx *runtime.ExecutionContext) (map[string]any, error) {
 	if expr == nil {
 		return nil, nil
 	}
@@ -69,7 +69,7 @@ func Map(expr hcl.Expression, execCtx *core.ExecutionContext) (map[string]any, e
 }
 
 // Any evaluates an arbitrary HCL expression into corresponding Go types.
-func Any(expr hcl.Expression, execCtx *core.ExecutionContext) (any, error) {
+func Any(expr hcl.Expression, execCtx *runtime.ExecutionContext) (any, error) {
 	if expr == nil {
 		return nil, nil
 	}

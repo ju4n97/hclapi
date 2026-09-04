@@ -12,8 +12,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ju4n97/hclapi/internal/compiler"
-	"github.com/ju4n97/hclapi/internal/core"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/parser"
 )
 
@@ -205,7 +205,7 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 	return op, nil
 }
 
-func fieldToSchema(f core.Field) (*openapi3.Schema, error) {
+func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
 	schema := &openapi3.Schema{}
 
 	switch {
@@ -250,7 +250,7 @@ func fieldToSchema(f core.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeArray}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "list("), ")")
 		if elemType != "" && elemType != f.Type {
-			subSchema, err := fieldToSchema(core.Field{Type: elemType})
+			subSchema, err := fieldToSchema(manifest.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -269,7 +269,7 @@ func fieldToSchema(f core.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeObject}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "map("), ")")
 		if elemType != "" && elemType != f.Type && elemType != "any" {
-			valSchema, err := fieldToSchema(core.Field{Type: elemType})
+			valSchema, err := fieldToSchema(manifest.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -299,7 +299,7 @@ func fieldToSchema(f core.Field) (*openapi3.Schema, error) {
 	return schema, nil
 }
 
-func fieldsToObjectSchema(fields []core.Field) (*openapi3.Schema, error) {
+func fieldsToObjectSchema(fields []manifest.Field) (*openapi3.Schema, error) {
 	obj := openapi3.NewObjectSchema()
 	for _, f := range fields {
 		s, err := fieldToSchema(f)

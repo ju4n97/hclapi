@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/ju4n97/hclapi/internal/connectors/connsql"
-	"github.com/ju4n97/hclapi/internal/core"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/steps/xsql"
 )
 
@@ -41,7 +41,7 @@ func setupIsolatedSQLitePool(t *testing.T, dbName string) *connsql.Pool {
 	return &connsql.Pool{
 		DB:      db,
 		Dialect: connsql.ResolveDialect("sqlite"),
-		Config: core.Connection{
+		Config: manifest.Connection{
 			Driver: "sqlite",
 			Name:   dbName,
 			URL:    dsn,

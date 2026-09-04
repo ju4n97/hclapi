@@ -110,6 +110,8 @@ func StarlarkToGoValue(val starlark.Value) any {
 	}
 
 	switch v := val.(type) {
+	case *CaseInsensitiveDict:
+		return v.ToMap()
 	case starlark.String:
 		return v.GoString()
 	case starlark.Bool:

@@ -41,16 +41,17 @@ func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []c
 		val, exists := result[field.Name]
 
 		if !exists || val == nil {
-			if field.Default != nil {
+			switch {
+			case field.Default != nil:
 				result[field.Name] = field.Default
 				val = field.Default
-			} else if field.Required {
+			case field.Required:
 				invalidParams = append(invalidParams, core.InvalidParam{
 					Name:   field.Name,
 					Reason: "field is required",
 				})
 				continue
-			} else {
+			default:
 				result[field.Name] = nil // Explicit nil so HCL can traverse as null
 				continue
 			}

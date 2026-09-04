@@ -123,7 +123,7 @@ func (p *PipelineExecutor) execStarlarkStep(step parser.ParsedStep, execCtx *cor
 		"method":  starlark.String(execCtx.Request.Method),
 		"path":    xstarlark.GoToStarlarkValue(execCtx.Request.Path),
 		"query":   xstarlark.GoToStarlarkValue(execCtx.Request.Query),
-		"headers": xstarlark.GoToStarlarkValue(execCtx.Request.Headers),
+		"headers": xstarlark.NewCaseInsensitiveDictFromStrings(execCtx.Request.Headers),
 		"body":    xstarlark.GoToStarlarkValue(execCtx.Request.Body),
 	}
 

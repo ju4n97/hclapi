@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -285,6 +286,81 @@ endpoint "POST /api/v1/users" {
 		}
 		if resp["source"] != "direct" {
 			t.Errorf("expected injected query default 'direct', got %v", resp["source"])
+		}
+	})
+}
+
+func TestEngine_ProblemDetailsError(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	manifestContent := `
+endpoint "POST /api/v1/secure" {
+  pipeline {
+    go "auth_check" {
+      use = "auth.verify"
+    }
+    respond {
+      status = 200
+      body   = { status = "ok" }
+    }
+  }
+}
+`
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "routes.hcl"), []byte(manifestContent), 0o600); err != nil {
+		t.Fatalf("failed to write test manifest: %v", err)
+	}
+
+	eng, err := engine.New(core.Options{ConfigPath: tmpDir})
+	if err != nil {
+		t.Fatalf("failed to initialize engine: %v", err)
+	}
+
+	t.Run("custom ProblemDetailsError preserves status and fields", func(t *testing.T) {
+		t.Parallel()
+
+		_ = eng.RegisterStep("auth.verify", func(ctx context.Context, step *core.Step) (any, error) {
+			return nil, core.ProblemDetailsError{
+				Type:     "urn:hclapi:error:missing-api-key",
+				Title:    "Missing API key",
+				Status:   http.StatusUnauthorized,
+				Detail:   "Provide a valid API key in the 'Authorization' header.",
+				Step:     "auth_check",
+				Instance: "/api/v1/secure",
+			}
+		})
+
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/secure", nil)
+		rec := httptest.NewRecorder()
+
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusUnauthorized)
+		}
+
+		contentType := rec.Header().Get("Content-Type")
+		if contentType != "application/problem+json" {
+			t.Errorf("Content-Type = %q; want application/problem+json", contentType)
+		}
+
+		var prob core.ProblemDetailsError
+		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
+			t.Fatalf("failed to decode response JSON: %v", err)
+		}
+
+		if prob.Status != http.StatusUnauthorized {
+			t.Errorf("problem.Status = %d; want %d", prob.Status, http.StatusUnauthorized)
+		}
+		if prob.Title != "Missing API key" {
+			t.Errorf("problem.Title = %q; want 'Missing API key'", prob.Title)
+		}
+		if prob.Type != "urn:hclapi:error:missing-api-key" {
+			t.Errorf("problem.Type = %q; want 'urn:hclapi:error:missing-api-key'", prob.Type)
+		}
+		if prob.Detail != "Provide a valid API key in the 'Authorization' header." {
+			t.Errorf("problem.Detail = %q; want expected detail", prob.Detail)
 		}
 	})
 }

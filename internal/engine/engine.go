@@ -209,7 +209,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			return
 		}
 
-		// Ingress Schema Validation and normalization
+		// Ingress schema validation and normalization
 		invalidParams := e.validateRequest(execCtx, endpoint.Rules)
 		if len(invalidParams) > 0 {
 			e.logger.WarnContext(
@@ -233,6 +233,23 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 
 		// Execute pipeline
 		if err := executor.Execute(w, execCtx); err != nil {
+			if problemErr, ok := errors.AsType[core.ProblemDetailsError](err); ok {
+				if problemErr.Instance == "" {
+					problemErr.Instance = r.URL.Path
+				}
+				if problemErr.Status == 0 {
+					problemErr.Status = http.StatusInternalServerError
+				}
+				if problemErr.Status >= 500 {
+					e.logger.ErrorContext(r.Context(), "step execution failed", "error", problemErr, "path", r.URL.Path)
+				} else {
+					e.logger.WarnContext(r.Context(), "step rejected request", "status", problemErr, "path", r.URL.Path)
+				}
+
+				e.errorHandler(w, r, problemErr)
+				return
+			}
+
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, core.ProblemDetailsError{
 				Type:     e.server.ProblemType("pipeline-execution-failed"),

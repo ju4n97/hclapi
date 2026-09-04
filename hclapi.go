@@ -68,14 +68,19 @@ type ByteSize = scalar.ByteSize
 // Problem represents an RFC 9457 compliant error object.
 type Problem = problem.Problem
 
-// InvalidParam represents a single field-level schema validation constraint failure.
-type InvalidParam = problem.InvalidParam
+// NewProblem creates a Problem with title and type derived from the HTTP status code.
+func NewProblem(status int, detail ...string) Problem {
+	return problem.New(status, detail...)
+}
 
 // ProblemHandler defines the contract for custom error serialization.
 type ProblemHandler = problem.Handler
 
 // DefaultProblemHandler serializes Problem as application/problem+json.
 var DefaultProblemHandler = problem.DefaultHandler
+
+// InvalidParam represents a single field-level schema validation constraint failure.
+type InvalidParam = problem.InvalidParam
 
 // NewEngine parses manifests, statically verifies routes, and initializes the HTTP engine.
 func NewEngine(options Options) (*Engine, error) {

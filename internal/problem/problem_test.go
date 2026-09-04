@@ -3,62 +3,111 @@ package problem_test
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/ju4n97/hclapi/internal/problem"
 )
 
-func TestProblemDetails(t *testing.T) {
+func TestProblem_New(t *testing.T) {
 	t.Parallel()
 
-	t.Run("DefaultErrorHandler writes application/problem+json", func(t *testing.T) {
+	t.Run("canonical title and type derivation", func(t *testing.T) {
 		t.Parallel()
 
-		prob := problem.Problem{
-			Type:     problem.TypeURI("bad-request"),
-			Title:    "Invalid JSON Payload",
-			Status:   http.StatusBadRequest,
-			Detail:   "Syntax error at line 1",
-			Instance: "/api/v1/sanitize",
-			InvalidParams: []problem.InvalidParam{
-				{Name: "tags", Reason: "must be a list"},
-			},
+		p := problem.New(http.StatusUnauthorized, "Token expired")
+
+		if p.Status != 401 {
+			t.Errorf("Status = %d; want 401", p.Status)
 		}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/sanitize", http.NoBody)
-		rec := httptest.NewRecorder()
-
-		problem.DefaultHandler(rec, req, prob)
-
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("expected status 400, got %d", rec.Code)
+		if p.Title != "Unauthorized" {
+			t.Errorf("Title = %q; want 'Unauthorized'", p.Title)
 		}
-
-		if ct := rec.Header().Get("Content-Type"); ct != "application/problem+json" {
-			t.Errorf("expected Content-Type application/problem+json, got %q", ct)
+		if p.Type != "urn:hclapi:error:unauthorized" {
+			t.Errorf("Type = %q; want 'urn:hclapi:error:unauthorized'", p.Type)
 		}
-
-		var parsed problem.Problem
-		if err := json.NewDecoder(rec.Body).Decode(&parsed); err != nil {
-			t.Fatalf("failed to decode response: %v", err)
-		}
-
-		if parsed.Title != "Invalid JSON Payload" || len(parsed.InvalidParams) != 1 {
-			t.Errorf("unexpected problem details structure: %+v", parsed)
+		if p.Detail != "Token expired" {
+			t.Errorf("Detail = %q; want 'Token expired'", p.Detail)
 		}
 	})
 
-	t.Run("Error formatting", func(t *testing.T) {
+	t.Run("error interface implementation", func(t *testing.T) {
 		t.Parallel()
 
-		prob := problem.Problem{
-			Title:  "Bad Request",
-			Detail: "missing param",
+		p := problem.New(http.StatusNotFound, "Resource missing")
+		if got := p.Error(); got != "Not Found: Resource missing" {
+			t.Errorf("Error() = %q; want 'Not Found: Resource missing'", got)
 		}
-		if !strings.Contains(prob.Error(), "Bad Request: missing param") {
-			t.Errorf("unexpected error string: %s", prob.Error())
+
+		pNoDetail := problem.New(http.StatusForbidden)
+		if got := pNoDetail.Error(); got != "Forbidden" {
+			t.Errorf("Error() = %q; want 'Forbidden'", got)
 		}
 	})
+}
+
+func TestProblem_Slugify(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Not Found", "not-found"},
+		{"Bad Request", "bad-request"},
+		{"Payload Too Large", "payload-too-large"},
+		{"  Multiple   Spaces  ", "multiple-spaces"},
+		{"Already-Slugified", "already-slugified"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := problem.Slugify(tt.input); got != tt.want {
+				t.Errorf("Slugify(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProblem_ExtensionsRootSerialization_RFC9457(t *testing.T) {
+	t.Parallel()
+
+	p := problem.Problem{
+		Status:   http.StatusTooManyRequests,
+		Title:    "Rate Limit Exceeded",
+		Detail:   "Quota exhausted for current window.",
+		Type:     "urn:hclapi:error:rate-limit-exceeded",
+		Instance: "/api/v1/orders",
+		Extensions: map[string]any{
+			"retry_after_seconds": 60,
+			"tier":                "hobby",
+			"reset_epoch":         1771968000,
+		},
+	}
+
+	bytes, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("MarshalJSON failed: %v", err)
+	}
+
+	var rawMap map[string]any
+	if err := json.Unmarshal(bytes, &rawMap); err != nil {
+		t.Fatalf("Unmarshal to map failed: %v", err)
+	}
+
+	// Verify extensions appear directly at the root level of the JSON payload
+	if rawMap["retry_after_seconds"] != float64(60) {
+		t.Errorf("expected root 'retry_after_seconds' = 60, got %v", rawMap["retry_after_seconds"])
+	}
+	if rawMap["tier"] != "hobby" {
+		t.Errorf("expected root 'tier' = 'hobby', got %v", rawMap["tier"])
+	}
+	if rawMap["reset_epoch"] != float64(1771968000) {
+		t.Errorf("expected root 'reset_epoch' = 1771968000, got %v", rawMap["reset_epoch"])
+	}
+
+	// Ensure there is no nested "extensions" wrapper object
+	if _, exists := rawMap["extensions"]; exists {
+		t.Errorf("found unwanted nested 'extensions' key in JSON payload: %+v", rawMap)
+	}
 }

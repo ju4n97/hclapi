@@ -235,20 +235,38 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 
 		// Execute pipeline
 		if err := executor.Execute(w, execCtx); err != nil {
-			if problemErr, ok := errors.AsType[problem.Problem](err); ok {
-				if problemErr.Instance == "" {
-					problemErr.Instance = r.URL.Path
+			if p, ok := errors.AsType[problem.Problem](err); ok {
+				if p.Status == 0 {
+					p.Status = http.StatusInternalServerError
 				}
-				if problemErr.Status == 0 {
-					problemErr.Status = http.StatusInternalServerError
+				if p.Title == "" {
+					p.Title = http.StatusText(p.Status)
+					if p.Title == "" {
+						p.Title = "Error"
+					}
 				}
-				if problemErr.Status >= 500 {
-					e.logger.ErrorContext(r.Context(), "step execution failed", "error", problemErr, "path", r.URL.Path)
+				if p.Type == "" {
+					p.Type = e.server.ProblemType(problem.Slugify(p.Title))
+				}
+				if p.Instance == "" {
+					p.Instance = r.URL.Path
+				}
+				if p.Status >= 500 {
+					e.logger.ErrorContext(r.Context(), "step execution failed", "error", p, "path", r.URL.Path)
 				} else {
-					e.logger.WarnContext(r.Context(), "step rejected request", "status", problemErr, "path", r.URL.Path)
+					e.logger.WarnContext(
+						r.Context(),
+						"step rejected request",
+						"status",
+						p.Status,
+						"title",
+						p.Title,
+						"path",
+						r.URL.Path,
+					)
 				}
 
-				e.errorHandler(w, r, problemErr)
+				e.errorHandler(w, r, p)
 				return
 			}
 

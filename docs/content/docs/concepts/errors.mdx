@@ -3,53 +3,104 @@ title: Errors
 description: RFC 9457 Problem Details returned by hclapi for ingress, validation, and pipeline failures.
 ---
 
-hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details for every error, whether raised at ingress, during validation, or during pipeline execution.
+`hclapi` returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details for every error, whether raised at ingress, during schema validation, or during pipeline execution.
 
 ```json
 {
   "type": "urn:hclapi:error:bad-request",
   "title": "Invalid Request Payload",
   "status": 400,
-  "detail": "invalid JSON payload: invalid character '\"' after array element",
+  "detail": "invalid JSON payload: syntax error at line 1, column 9",
   "instance": "/api/v1/transform",
-  "step": "ingress",
-  "invalid_params": [{ "name": "tags", "reason": "must be a valid JSON array" }]
+  "step": "ingress"
 }
 ```
 
-| Field            | Type     | Description                                             |
-| :--------------- | :------- | :------------------------------------------------------ |
-| `type`           | `string` | URI or URN identifying the problem category             |
-| `title`          | `string` | Short summary of the problem type                       |
-| `status`         | `int`    | HTTP status code                                        |
-| `detail`         | `string` | Explanation specific to this occurrence                 |
-| `instance`       | `string` | Request path that produced the error                    |
-| `step`           | `string` | Pipeline step where the failure occurred, if applicable |
-| `invalid_params` | `list`   | Field-level validation errors                           |
+| Field            | Type     | Description                                                |
+| :--------------- | :------- | :--------------------------------------------------------- |
+| `type`           | `string` | URI reference identifying the problem type.                |
+| `title`          | `string` | Short human-readable summary of the problem type.          |
+| `status`         | `int`    | HTTP status code.                                          |
+| `detail`         | `string` | Human-readable explanation specific to this occurrence.    |
+| `instance`       | `string` | Request URL path that generated the error.                 |
+| `step`           | `string` | Pipeline step where the failure occurred, if applicable.   |
+| `invalid_params` | `list`   | Field-level schema validation errors (RFC 9457 extension). |
 
 ## Returning custom errors from Go steps
 
-Native `go` steps can return a `hclapi.Problem` to halt the pipeline and emit a specific HTTP status code, type URN, and custom error details directly to the client:
+Native `go` steps can return a `hclapi.Problem` to halt the pipeline and emit a specific HTTP status code directly to the client.
+
+### `step.Problem`
+
+The fastest way to return an error is using the `step.Problem` helper. The engine automatically binds the step's name, derives the standard title (`http.StatusText`), and builds the canonical type URN:
 
 ```go
 engine.RegisterStep("auth.verify_key", func(ctx context.Context, step *hclapi.Step) (any, error) {
     apiKey := step.Request.Header("X-API-Key")
     if apiKey == "" {
-        return nil, hclapi.Problem{
-            Type:     "urn:hclapi:error:unauthorized",
-            Title:    "Unauthorized",
-            Status:   http.StatusUnauthorized,
-            Detail:   "Missing or invalid 'X-API-Key' header",
-            Step:     step.Name,
-        }
+        // Automatically emits HTTP 401 Unauthorized with canonical URN
+        return nil, step.Problem(http.StatusUnauthorized, "Missing or invalid 'X-API-Key' header")
     }
     return map[string]any{"authenticated": true}, nil
 })
 ```
 
-## Self-hosting error documentation
+### `hclapi.NewProblem`
 
-Standalone deployments can override the default URN prefix:
+If you are outside a step or prefer a package-level function:
+
+```go
+return nil, hclapi.NewProblem(http.StatusNotFound, "Customer record not found")
+```
+
+### 3. Bare struct literal with auto-derivation
+
+You can return a `hclapi.Problem` struct literal with only `Status` and `Detail`. The engine automatically infers `Title`, `Type`, `Step`, and `Instance`:
+
+```go
+return nil, hclapi.Problem{
+    Status: http.StatusForbidden,
+    Detail: "User does not have permission to delete this project",
+}
+```
+
+## RFC 9457 Extension Members
+
+[RFC 9457 Section 3.2](https://www.rfc-editor.org/info/rfc9457/#section-3.2) allows problem details to be extended with custom members. Any key-value pairs placed in `Extensions` are automatically flattened into the root JSON object:
+
+```go
+engine.RegisterStep("billing.charge", func(ctx context.Context, step *hclapi.Step) (any, error) {
+    p := step.Problem(http.StatusPaymentRequired, "Insufficient account balance")
+    p.Extensions = map[string]any{
+        "error_code":       "CARD_DECLINED",
+        "current_balance": 14.50,
+        "required_amount": 50.00,
+        "currency":         "USD",
+    }
+    return nil, p
+})
+```
+
+#### Serialized output to the client:
+
+```json
+{
+  "type": "urn:hclapi:error:payment-required",
+  "title": "Payment Required",
+  "status": 402,
+  "detail": "Insufficient account balance",
+  "instance": "/api/v1/checkout",
+  "step": "billing.charge",
+  "error_code": "CARD_DECLINED",
+  "current_balance": 14.5,
+  "required_amount": 50,
+  "currency": "USD"
+}
+```
+
+## Overriding error documentation URLs
+
+It's possible to override the default `urn:hclapi:error:` prefix by configuring `error_base_url` in the `server {}` block:
 
 ```hcl
 server {
@@ -57,8 +108,4 @@ server {
 }
 ```
 
-This transforms `urn:hclapi:error:bad-request` into `https://docs.mycompany.com/errors/bad-request`.
-
-:::tip Embedded applications
-When embedding hclapi into Go, you can replace the default response shape with a custom `ProblemHandler`. See [Go integration](../../guides/go).
-:::
+This transforms `urn:hclapi:error:payment-required` into `https://docs.mycompany.com/errors/payment-required`.

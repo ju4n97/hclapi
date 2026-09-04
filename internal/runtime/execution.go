@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/problem"
 )
 
 // StepResult represents arbitrary step-specific outputs.
@@ -79,6 +80,16 @@ type Step struct {
 	*ExecutionContext
 	Name string `json:"name"`
 	Args Args   `json:"args"`
+}
+
+// Problem constructs an RFC 9457 Problem bound to this step's execution context.
+func (s *Step) Problem(status int, detail string) problem.Problem {
+	p := problem.New(status, detail)
+	p.Step = s.Name
+	if s.RawRequest != nil && s.RawRequest.URL != nil {
+		p.Instance = s.RawRequest.URL.Path
+	}
+	return p
 }
 
 // StepHandler defines the signature for custom native Go step callbacks.

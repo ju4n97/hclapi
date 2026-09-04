@@ -374,23 +374,23 @@ endpoint "GET /api/v1/headers" {
 			}
 
 			if tt.wantErrorKey != "" {
-				var prob problem.Problem
-				if err := json.NewDecoder(rec.Body).Decode(&prob); err != nil {
+				var p problem.Problem
+				if err := json.NewDecoder(rec.Body).Decode(&p); err != nil {
 					t.Fatalf("failed to decode response JSON: %v", err)
 				}
 
-				if len(prob.InvalidParams) == 0 {
+				if len(p.InvalidParams) == 0 {
 					t.Fatalf("expected InvalidParams, got none")
 				}
-				if prob.InvalidParams[0].Name != tt.wantErrorKey {
-					t.Errorf("InvalidParams[0].Name = %q; want %q", prob.InvalidParams[0].Name, tt.wantErrorKey)
+				if p.InvalidParams[0].Name != tt.wantErrorKey {
+					t.Errorf("InvalidParams[0].Name = %q; want %q", p.InvalidParams[0].Name, tt.wantErrorKey)
 				}
 			}
 		})
 	}
 }
 
-func TestEngine_ProblemDetailsError(t *testing.T) {
+func TestEngine_ProblemError(t *testing.T) {
 	t.Parallel()
 
 	manifest := `
@@ -407,7 +407,7 @@ endpoint "POST /api/v1/secure" {
 }
 `
 
-	t.Run("custom DetailsError preserves status and fields", func(t *testing.T) {
+	t.Run("custom problem.Problem preserves status and fields", func(t *testing.T) {
 		t.Parallel()
 		eng := newTestEngine(t, manifest)
 
@@ -439,22 +439,22 @@ endpoint "POST /api/v1/secure" {
 			t.Errorf("Content-Type = %q; want application/problem+json", contentType)
 		}
 
-		var prob problem.Problem
-		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
+		var p problem.Problem
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
 			t.Fatalf("failed to decode response JSON: %v", err)
 		}
 
-		if prob.Status != http.StatusUnauthorized {
-			t.Errorf("problem.Status = %d; want %d", prob.Status, http.StatusUnauthorized)
+		if p.Status != http.StatusUnauthorized {
+			t.Errorf("problem.Status = %d; want %d", p.Status, http.StatusUnauthorized)
 		}
-		if prob.Title != "Missing API key" {
-			t.Errorf("problem.Title = %q; want 'Missing API key'", prob.Title)
+		if p.Title != "Missing API key" {
+			t.Errorf("problem.Title = %q; want 'Missing API key'", p.Title)
 		}
-		if prob.Type != "urn:hclapi:error:missing-api-key" {
-			t.Errorf("problem.Type = %q; want 'urn:hclapi:error:missing-api-key'", prob.Type)
+		if p.Type != "urn:hclapi:error:missing-api-key" {
+			t.Errorf("problem.Type = %q; want 'urn:hclapi:error:missing-api-key'", p.Type)
 		}
-		if prob.Detail != "Provide a valid API key in the 'Authorization' header." {
-			t.Errorf("problem.Detail = %q; want expected detail", prob.Detail)
+		if p.Detail != "Provide a valid API key in the 'Authorization' header." {
+			t.Errorf("problem.Detail = %q; want expected detail", p.Detail)
 		}
 	})
 
@@ -478,16 +478,16 @@ endpoint "POST /api/v1/secure" {
 			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
 		}
 
-		var prob problem.Problem
-		if err := json.Unmarshal(rec.Body.Bytes(), &prob); err != nil {
+		var p problem.Problem
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
 			t.Fatalf("failed to decode response JSON: %v", err)
 		}
 
-		if prob.Status != 500 {
-			t.Errorf("problem.Status = %d; want 500", prob.Status)
+		if p.Status != 500 {
+			t.Errorf("problem.Status = %d; want 500", p.Status)
 		}
-		if prob.Type != "urn:hclapi:error:pipeline-execution-failed" {
-			t.Errorf("problem.Type = %q; want pipeline-execution-failed URN", prob.Type)
+		if p.Type != "urn:hclapi:error:pipeline-execution-failed" {
+			t.Errorf("problem.Type = %q; want pipeline-execution-failed URN", p.Type)
 		}
 	})
 
@@ -509,6 +509,127 @@ endpoint "POST /api/v1/secure" {
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
+		}
+	})
+}
+
+func TestEngine_ProblemAutoDerivationAndHelpers(t *testing.T) {
+	t.Parallel()
+
+	manifest := `
+endpoint "POST /api/v1/checkout" {
+  pipeline {
+    go "process_payment" {
+      use = "payment.charge"
+    }
+    respond {
+      status = 200
+      body   = { ok = true }
+    }
+  }
+}
+`
+
+	t.Run("step.Problem helper binds step name and derives status/title", func(t *testing.T) {
+		t.Parallel()
+		eng := newTestEngine(t, manifest)
+
+		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
+			return nil, step.Problem(http.StatusPaymentRequired, "Insufficient card balance")
+		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusPaymentRequired {
+			t.Fatalf("status = %d; want 402", rec.Code)
+		}
+
+		var p problem.Problem
+		_ = json.Unmarshal(rec.Body.Bytes(), &p)
+
+		if p.Step != "process_payment" {
+			t.Errorf("p.Step = %q; want 'process_payment'", p.Step)
+		}
+		if p.Title != "Payment Required" {
+			t.Errorf("p.Title = %q; want 'Payment Required'", p.Title)
+		}
+		if p.Type != "urn:hclapi:error:payment-required" {
+			t.Errorf("p.Type = %q; want 'urn:hclapi:error:payment-required'", p.Type)
+		}
+		if p.Detail != "Insufficient card balance" {
+			t.Errorf("p.Detail = %q; want 'Insufficient card balance'", p.Detail)
+		}
+	})
+
+	t.Run("bare Problem struct auto-derives title, type, and instance", func(t *testing.T) {
+		t.Parallel()
+		eng := newTestEngine(t, manifest)
+
+		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
+			return nil, problem.Problem{
+				Status: http.StatusForbidden,
+				Detail: "Card brand not supported",
+			}
+		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("status = %d; want 403", rec.Code)
+		}
+
+		var p problem.Problem
+		_ = json.Unmarshal(rec.Body.Bytes(), &p)
+
+		if p.Title != "Forbidden" {
+			t.Errorf("auto-derived Title = %q; want 'Forbidden'", p.Title)
+		}
+		if p.Type != "urn:hclapi:error:forbidden" {
+			t.Errorf("auto-derived Type = %q; want 'urn:hclapi:error:forbidden'", p.Type)
+		}
+		if p.Instance != "/api/v1/checkout" {
+			t.Errorf("auto-derived Instance = %q; want '/api/v1/checkout'", p.Instance)
+		}
+	})
+
+	t.Run("Problem with custom extensions flattens into root JSON payload", func(t *testing.T) {
+		t.Parallel()
+		eng := newTestEngine(t, manifest)
+
+		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
+			p := step.Problem(http.StatusTooManyRequests, "Rate limit reached")
+			p.Extensions = map[string]any{
+				"retry_after_ms": 5000,
+				"error_code":     "RATE_LIMIT_EXCEEDED",
+			}
+			return nil, p
+		})
+		if err != nil {
+			t.Fatalf("failed to register step: %v", err)
+		}
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		var rawMap map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &rawMap)
+
+		if rawMap["error_code"] != "RATE_LIMIT_EXCEEDED" {
+			t.Errorf("expected root error_code, got %v", rawMap["error_code"])
+		}
+		if rawMap["retry_after_ms"] != float64(5000) {
+			t.Errorf("expected root retry_after_ms, got %v", rawMap["retry_after_ms"])
 		}
 	})
 }

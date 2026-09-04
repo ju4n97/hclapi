@@ -27,12 +27,25 @@ hclapi returns [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Detail
 | `step`           | `string` | Pipeline step where the failure occurred, if applicable |
 | `invalid_params` | `list`   | Field-level validation errors                           |
 
-## Problem type identifiers
+## Returning custom errors from Go steps
 
-- `urn:hclapi:error:bad-request` — malformed JSON or unparseable payload.
-- `urn:hclapi:error:payload-too-large` — request body exceeded `max_body_size`.
-- `urn:hclapi:error:validation-error` — payload failed schema constraints.
-- `urn:hclapi:error:pipeline-execution-failed` — unhandled step failure or database timeout.
+Native `go` steps can return a `hclapi.ProblemDetailsError` to halt the pipeline and emit a specific HTTP status code, type URN, and custom error details directly to the client:
+
+```go
+engine.RegisterStep("auth.verify_key", func(ctx context.Context, step *hclapi.Step) (any, error) {
+    apiKey := step.Request.Header("X-API-Key")
+    if apiKey == "" {
+        return nil, hclapi.ProblemDetailsError{
+            Type:     "urn:hclapi:error:unauthorized",
+            Title:    "Unauthorized",
+            Status:   http.StatusUnauthorized,
+            Detail:   "Missing or invalid 'X-API-Key' header",
+            Step:     step.Name,
+        }
+    }
+    return map[string]any{"authenticated": true}, nil
+})
+```
 
 ## Self-hosting error documentation
 
@@ -47,5 +60,5 @@ server {
 This transforms `urn:hclapi:error:bad-request` into `https://docs.mycompany.com/errors/bad-request`.
 
 :::tip Embedded applications
-When embedding hclapi into Go, replace the default response shape with a custom `ErrorHandler`. See [Go integration](../../guides/go).
+When embedding hclapi into Go, you can replace the default response shape with a custom `ErrorHandler`. See [Go integration](../../guides/go).
 :::

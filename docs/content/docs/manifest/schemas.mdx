@@ -159,6 +159,23 @@ endpoint "GET /api/v1/search" {
 }
 ```
 
+:::tip Header case-insensitivity (RFC 9110)
+HTTP field names are case-insensitive. You can declare header fields in any casing:
+
+```hcl
+headers {
+  field "Authorization" {
+    type     = string
+    required = true
+  }
+  field "X-Trace-Sampled" {
+    type    = bool
+    default = true
+  }
+}
+```
+:::
+
 ## Validation failure responses (HTTP 422)
 
 When an incoming payload violates schema constraints, execution halts immediately before the pipeline runs. The engine returns an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) Problem Details object detailing every failed constraint:

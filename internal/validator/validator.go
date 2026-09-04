@@ -3,6 +3,7 @@ package validator
 
 import (
 	"fmt"
+	"maps"
 	"net"
 	"net/mail"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ju4n97/hclapi/internal/core"
@@ -22,23 +24,36 @@ var (
 	hostnameRegex = regexp.MustCompile(
 		`^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$`,
 	)
+	// patternCache is a thread-safe cache to avoid recompiling regex patterns on every HTTP request.
+	patternCache sync.Map
 )
 
-// Validate checks a JSON-decoded map against compiled schema field rules.
-func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
+// ValidateBody validates and normalizes a JSON request body in a single pass.
+// It applies defaults, normalizes missing optional fields to nil, and validates all constraints.
+func ValidateBody(data map[string]any, fields []core.Field) (map[string]any, []core.InvalidParam) {
+	result := make(map[string]any, len(fields)+len(data))
+	if len(data) > 0 {
+		maps.Copy(result, data)
+	}
 	var invalidParams []core.InvalidParam
 
 	for _, field := range fields {
-		val, exists := data[field.Name]
+		val, exists := result[field.Name]
 
 		if !exists || val == nil {
-			if field.Required {
+			if field.Default != nil {
+				result[field.Name] = field.Default
+				val = field.Default
+			} else if field.Required {
 				invalidParams = append(invalidParams, core.InvalidParam{
 					Name:   field.Name,
 					Reason: "field is required",
 				})
+				continue
+			} else {
+				result[field.Name] = nil // Explicit nil so HCL can traverse as null
+				continue
 			}
-			continue
 		}
 
 		if field.Required {
@@ -59,17 +74,39 @@ func Validate(data map[string]any, fields []core.Field) []core.InvalidParam {
 		}
 	}
 
-	return invalidParams
+	return result, invalidParams
 }
 
-// ValidateStringMap validates string-keyed parameter maps (query, path, headers) with zero map allocations.
+// ValidateStringMap validates string-keyed parameter maps (Path, Query) and injects defaults.
 func ValidateStringMap(data map[string]string, fields []core.Field) []core.InvalidParam {
+	return validateStringMapWithLookup(data, fields, func(name string) string {
+		return name
+	})
+}
+
+// ValidateHeaders validates incoming HTTP headers against schema fields in a single pass.
+// Per RFC 9110, header lookup is case-insensitive against lowercased ingress headers,
+// defaults are injected, and error diagnostics retain the author's declared schema casing.
+func ValidateHeaders(headers map[string]string, fields []core.Field) []core.InvalidParam {
+	return validateStringMapWithLookup(headers, fields, strings.ToLower)
+}
+
+func validateStringMapWithLookup(
+	data map[string]string,
+	fields []core.Field,
+	keyLookup func(string) string,
+) []core.InvalidParam {
 	var invalidParams []core.InvalidParam
 
 	for _, field := range fields {
-		rawStr, exists := data[field.Name]
+		lookupKey := keyLookup(field.Name)
+		rawStr, exists := data[lookupKey]
 
 		if !exists || strings.TrimSpace(rawStr) == "" {
+			if field.Default != nil {
+				data[lookupKey] = fmt.Sprintf("%v", field.Default)
+				continue
+			}
 			if field.Required {
 				invalidParams = append(invalidParams, core.InvalidParam{
 					Name:   field.Name,
@@ -79,7 +116,6 @@ func ValidateStringMap(data map[string]string, fields []core.Field) []core.Inval
 			continue
 		}
 
-		// Coerce string to target type for constraint checking
 		coercedVal, errReason := coerceString(rawStr, field.Type)
 		if errReason != "" {
 			invalidParams = append(invalidParams, core.InvalidParam{
@@ -110,14 +146,14 @@ func validateValue(val any, field core.Field) string {
 		return checkStringConstraints(strVal, field)
 
 	case field.Type == "int":
-		intVal, ok := toInt64(val)
+		intVal, ok := core.ToInt64(val)
 		if !ok {
 			return "must be of type int"
 		}
 		return checkNumericConstraints(float64(intVal), intVal, field)
 
 	case field.Type == "float":
-		floatVal, ok := toFloat64(val)
+		floatVal, ok := core.ToFloat64(val)
 		if !ok {
 			return "must be of type float"
 		}
@@ -153,8 +189,7 @@ func checkStringConstraints(val string, field core.Field) string {
 		return fmt.Sprintf("length must be at most %d characters", *field.MaxLength)
 	}
 	if field.Pattern != "" {
-		matched, err := regexp.MatchString(field.Pattern, val)
-		if err != nil || !matched {
+		if !matchPattern(field.Pattern, val) {
 			return "must match pattern " + field.Pattern
 		}
 	}
@@ -167,6 +202,21 @@ func checkStringConstraints(val string, field core.Field) string {
 		return checkEnum(val, field.Enum)
 	}
 	return ""
+}
+
+func matchPattern(pattern, val string) bool {
+	var re *regexp.Regexp
+	if cached, ok := patternCache.Load(pattern); ok {
+		re = cached.(*regexp.Regexp)
+	} else {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return false
+		}
+		patternCache.Store(pattern, compiled)
+		re = compiled
+	}
+	return re.MatchString(val)
 }
 
 func checkNumericConstraints(val float64, rawVal any, field core.Field) string {
@@ -284,38 +334,4 @@ func hasDuplicates(rv reflect.Value) bool {
 		seen[key] = true
 	}
 	return false
-}
-
-func toInt64(val any) (int64, bool) {
-	switch v := val.(type) {
-	case int:
-		return int64(v), true
-	case int8:
-		return int64(v), true
-	case int16:
-		return int64(v), true
-	case int32:
-		return int64(v), true
-	case int64:
-		return v, true
-	case float64:
-		if v == float64(int64(v)) {
-			return int64(v), true
-		}
-	}
-	return 0, false
-}
-
-func toFloat64(val any) (float64, bool) {
-	switch v := val.(type) {
-	case float64:
-		return v, true
-	case float32:
-		return float64(v), true
-	case int:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	}
-	return 0, false
 }

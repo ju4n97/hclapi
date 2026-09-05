@@ -100,9 +100,9 @@ flowchart TB
 
 ### Conventional commits
 
-Commit messages should follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(parser): ...`, `fix(sql): ...`, `chore: ...`).
+Commit messages should follow [Conventional Commits](https://www.conventionalcommits.org/) (e.g. `feat(parser): ...`, `fix(sql): ...`, `chore: ...`). This is needed because release changelogs are generated automatically from commit prefixes.
 
-This is needed because release changelogs are generated automatically from commit prefixes.
+Always open an issue for discussion before submitting a PR containing a breaking change and when committing a breaking change, append an exclamation mark (`!`) before the colon in the commit subject: `type(scope)!: description` to ensures the automated release pipeline flags it properly in the changelog and describe the exact migration steps in the commit body under a `BREAKING CHANGE:` footer.
 
 ## Development workflow
 

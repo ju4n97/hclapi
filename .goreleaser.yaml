@@ -112,6 +112,10 @@ changelog:
       - '(?i)^chore(\(.*\))?:'
       - '(?i)^style(\(.*\))?:'
   groups:
+    - title: "⚠️ Breaking changes"
+      regexp: '(?i)^(\w+)(\(.*\))?!:|^breaking[- ]change:'
+      order: 0
+
     - title: "Features and enhancements"
       regexp: '(?i)^feat(\(.*\))?!?:'
       order: 1

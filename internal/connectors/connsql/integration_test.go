@@ -47,12 +47,12 @@ func TestIntegration_Postgres(t *testing.T) {
 	conn := manifest.Connection{
 		Driver: "postgres",
 		Name:   "primary",
-		URL:    dsn,
+		Source: dsn,
 		Pool: manifest.PoolConfig{
-			MaxOpenConns:    10,
-			MaxIdleConns:    2,
-			ConnMaxLifetime: scalar.Duration(15 * time.Minute),
-			IdleTimeout:     scalar.Duration(5 * time.Minute),
+			MaxOpen:     10,
+			MaxIdle:     2,
+			MaxLifetime: scalar.Duration(15 * time.Minute),
+			IdleTimeout: scalar.Duration(5 * time.Minute),
 		},
 	}
 	if err := mgr.Open(ctx, conn); err != nil {
@@ -174,12 +174,12 @@ func TestIntegration_MySQL(t *testing.T) {
 	conn := manifest.Connection{
 		Driver: "mysql",
 		Name:   "primary",
-		URL:    dsn,
+		Source: dsn,
 		Pool: manifest.PoolConfig{
-			MaxOpenConns:    10,
-			MaxIdleConns:    2,
-			ConnMaxLifetime: scalar.Duration(15 * time.Minute),
-			IdleTimeout:     scalar.Duration(5 * time.Minute),
+			MaxOpen:     10,
+			MaxIdle:     2,
+			MaxLifetime: scalar.Duration(15 * time.Minute),
+			IdleTimeout: scalar.Duration(5 * time.Minute),
 		},
 	}
 	if err := mgr.Open(ctx, conn); err != nil {
@@ -286,7 +286,7 @@ func TestIntegration_SQLServer(t *testing.T) {
 	conn := manifest.Connection{
 		Driver: "sqlserver",
 		Name:   "primary",
-		URL:    dsn,
+		Source: dsn,
 		Pool:   manifest.DefaultPoolConfig(),
 	}
 	if err := mgr.Open(ctx, conn); err != nil {

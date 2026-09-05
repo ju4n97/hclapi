@@ -48,12 +48,12 @@ func TestManager(t *testing.T) {
 		conn := manifest.Connection{
 			Driver: "sqlite",
 			Name:   "primary",
-			URL:    "file::memory:?cache=shared",
+			Source: "file::memory:?cache=shared",
 			Pool: manifest.PoolConfig{
-				MaxOpenConns:    10,
-				MaxIdleConns:    2,
-				ConnMaxLifetime: scalar.Duration(15 * time.Minute),
-				IdleTimeout:     scalar.Duration(5 * time.Minute),
+				MaxOpen:     10,
+				MaxIdle:     2,
+				MaxLifetime: scalar.Duration(15 * time.Minute),
+				IdleTimeout: scalar.Duration(5 * time.Minute),
 			},
 		}
 
@@ -92,7 +92,7 @@ func TestManager(t *testing.T) {
 		conn := manifest.Connection{
 			Driver: "sqlite",
 			Name:   "broken",
-			URL:    "file:/invalid_non_existent_dir_9999/app.db?mode=ro",
+			Source: "file:/invalid_non_existent_dir_9999/app.db?mode=ro",
 			Pool:   manifest.DefaultPoolConfig(),
 		}
 

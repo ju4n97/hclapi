@@ -81,7 +81,7 @@ func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Mani
 	manifestDir, err := filepath.Abs(filepath.Dir(path))
 	if err == nil {
 		for i := range m.Connections {
-			m.Connections[i].URL = manifest.ResolveRelativePath(m.Connections[i].URL, manifestDir)
+			m.Connections[i].Source = manifest.ResolveRelativePath(m.Connections[i].Source, manifestDir)
 		}
 	}
 

@@ -8,21 +8,19 @@ import (
 
 // PoolConfig defines connection pool sizing and lifecycle settings.
 type PoolConfig struct {
-	MaxOpenConns    int
-	MaxIdleConns    int
-	ConnMaxLifetime scalar.Duration
-	IdleTimeout     scalar.Duration
-	Size            int
+	MaxOpen     int
+	MaxIdle     int
+	MaxLifetime scalar.Duration
+	IdleTimeout scalar.Duration
 }
 
 // DefaultPoolConfig returns baseline production connection pool settings.
 func DefaultPoolConfig() PoolConfig {
 	return PoolConfig{
-		MaxOpenConns:    25,
-		MaxIdleConns:    5,
-		ConnMaxLifetime: scalar.Duration(30 * time.Minute),
-		IdleTimeout:     scalar.Duration(5 * time.Minute),
-		Size:            20,
+		MaxOpen:     25,
+		MaxIdle:     5,
+		MaxLifetime: scalar.Duration(30 * time.Minute),
+		IdleTimeout: scalar.Duration(5 * time.Minute),
 	}
 }
 
@@ -30,7 +28,7 @@ func DefaultPoolConfig() PoolConfig {
 type Connection struct {
 	Driver string
 	Name   string
-	URL    string
+	Source string
 	Pool   PoolConfig
 }
 

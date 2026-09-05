@@ -150,19 +150,18 @@ func (s *ServerBlock) ToServer() (manifest.Server, error) {
 type ConnectionBlock struct {
 	Driver string               `hcl:"driver,label"`
 	Name   string               `hcl:"name,label"`
-	URL    string               `hcl:"url,attr"`
+	Source string               `hcl:"source,attr"`
 	Pool   *ConnectionPoolBlock `hcl:"pool,block"`
 	Remain hcl.Body             `hcl:",remain"`
 }
 
 // ConnectionPoolBlock represents connection pool tuning parameters.
 type ConnectionPoolBlock struct {
-	MaxOpenConns    *int     `hcl:"max_open_conns,optional"`
-	MaxIdleConns    *int     `hcl:"max_idle_conns,optional"`
-	ConnMaxLifetime *string  `hcl:"conn_max_lifetime,optional"`
-	IdleTimeout     *string  `hcl:"idle_timeout,optional"`
-	Size            *int     `hcl:"size,optional"`
-	Remain          hcl.Body `hcl:",remain"`
+	MaxOpen     *int     `hcl:"max_open,optional"`
+	MaxIdle     *int     `hcl:"max_idle,optional"`
+	MaxLifetime *string  `hcl:"max_lifetime,optional"`
+	IdleTimeout *string  `hcl:"idle_timeout,optional"`
+	Remain      hcl.Body `hcl:",remain"`
 }
 
 // ToConnection maps the AST ConnectionBlock into a pure domain manifest.Connection with defaults applied.
@@ -170,23 +169,23 @@ func (c *ConnectionBlock) ToConnection() (manifest.Connection, error) {
 	conn := manifest.Connection{
 		Driver: c.Driver,
 		Name:   c.Name,
-		URL:    c.URL,
+		Source: c.Source,
 		Pool:   manifest.DefaultPoolConfig(),
 	}
 
 	if c.Pool != nil {
-		if c.Pool.MaxOpenConns != nil {
-			conn.Pool.MaxOpenConns = *c.Pool.MaxOpenConns
+		if c.Pool.MaxOpen != nil {
+			conn.Pool.MaxOpen = *c.Pool.MaxOpen
 		}
-		if c.Pool.MaxIdleConns != nil {
-			conn.Pool.MaxIdleConns = *c.Pool.MaxIdleConns
+		if c.Pool.MaxIdle != nil {
+			conn.Pool.MaxIdle = *c.Pool.MaxIdle
 		}
-		if c.Pool.ConnMaxLifetime != nil {
+		if c.Pool.MaxLifetime != nil {
 			var d scalar.Duration
-			if err := d.UnmarshalText([]byte(*c.Pool.ConnMaxLifetime)); err != nil {
+			if err := d.UnmarshalText([]byte(*c.Pool.MaxLifetime)); err != nil {
 				return manifest.Connection{}, fmt.Errorf("connection %q: invalid conn_max_lifetime: %w", c.Name, err)
 			}
-			conn.Pool.ConnMaxLifetime = d
+			conn.Pool.MaxLifetime = d
 		}
 		if c.Pool.IdleTimeout != nil {
 			var d scalar.Duration
@@ -194,9 +193,6 @@ func (c *ConnectionBlock) ToConnection() (manifest.Connection, error) {
 				return manifest.Connection{}, fmt.Errorf("connection %q: invalid idle_timeout: %w", c.Name, err)
 			}
 			conn.Pool.IdleTimeout = d
-		}
-		if c.Pool.Size != nil {
-			conn.Pool.Size = *c.Pool.Size
 		}
 	}
 

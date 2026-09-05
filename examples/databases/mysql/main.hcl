@@ -10,11 +10,11 @@ server {
 }
 
 connection "mysql" "main" {
-  url = "hclapi:hclapi_password@tcp(127.0.0.1:3306)/hclapi_db?parseTime=true"
+  source = "hclapi:hclapi_password@tcp(127.0.0.1:3306)/hclapi_db?parseTime=true"
 
   pool {
-    max_open_conns = 30
-    max_idle_conns = 5
+    max_open = 30
+    max_idle = 5
   }
 }
 

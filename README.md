@@ -41,11 +41,11 @@ server {
 }
 
 connection "postgres" "main" {
-  url = env("DATABASE_URL")
+  source = env("DATABASE_URL")
 
   pool {
-    max_open_conns    = 25
-    conn_max_lifetime = "30m"
+    max_open     = 25
+    max_lifetime = "30m"
   }
 }
 

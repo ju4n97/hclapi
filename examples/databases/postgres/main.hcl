@@ -10,13 +10,13 @@ server {
 }
 
 connection "postgres" "main" {
-  url = "postgres://hclapi:hclapi_password@127.0.0.1:5432/hclapi_db?sslmode=disable"
+  source = "postgres://hclapi:hclapi_password@127.0.0.1:5432/hclapi_db?sslmode=disable"
 
   pool {
-    max_open_conns    = 25
-    max_idle_conns    = 5
-    conn_max_lifetime = "30m"
-    idle_timeout      = "5m"
+    max_open     = 25
+    max_idle     = 5
+    max_lifetime = "30m"
+    idle_timeout = "5m"
   }
 }
 

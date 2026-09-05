@@ -44,7 +44,7 @@ func setupIsolatedSQLitePool(t *testing.T, dbName string) *connsql.Pool {
 		Config: manifest.Connection{
 			Driver: "sqlite",
 			Name:   dbName,
-			URL:    dsn,
+			Source: dsn,
 		},
 	}
 }

@@ -47,10 +47,10 @@ server {
 }
 
 connection "postgres" "primary" {
-  url = "postgres://user:pass@localhost:5432/db"
+  source = "postgres://user:pass@localhost:5432/db"
   pool {
-    max_open_conns    = 50
-    conn_max_lifetime = "1h"
+    max_open     = 50
+    max_lifetime = "1h"
   }
 }
 
@@ -117,8 +117,8 @@ endpoint "POST /api/v1/users" {
 	if len(service.Connections) != 1 || service.Connections[0].Driver != "postgres" {
 		t.Fatalf("expected 1 postgres connection, got: %+v", service.Connections)
 	}
-	if service.Connections[0].Pool.MaxOpenConns != 50 {
-		t.Errorf("expected max_open_conns 50, got %d", service.Connections[0].Pool.MaxOpenConns)
+	if service.Connections[0].Pool.MaxOpen != 50 {
+		t.Errorf("expected max_open 50, got %d", service.Connections[0].Pool.MaxOpen)
 	}
 
 	// Verify Schemas compilation
@@ -296,10 +296,10 @@ schema "user" {
 			name: "Rejects duplicate connection declaration",
 			manifest: `
 connection "postgres" "main" {
-  url = "postgres://localhost/db1"
+  source = "postgres://localhost/db1"
 }
 connection "postgres" "main" {
-  url = "postgres://localhost/db2"
+  source = "postgres://localhost/db2"
 }
 `,
 			expectError: `duplicate connection declaration "connection.postgres.main"`,

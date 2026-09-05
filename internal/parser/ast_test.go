@@ -93,13 +93,12 @@ func TestConnectionBlock_ToConnection(t *testing.T) {
 		block := &parser.ConnectionBlock{
 			Driver: "postgres",
 			Name:   "primary",
-			URL:    "postgres://user:pass@localhost:5432/db",
+			Source: "postgres://user:pass@localhost:5432/db",
 			Pool: &parser.ConnectionPoolBlock{
-				MaxOpenConns:    new(50),
-				MaxIdleConns:    new(10),
-				ConnMaxLifetime: new("1h"),
-				IdleTimeout:     new("10m"),
-				Size:            new(30),
+				MaxOpen:     new(50),
+				MaxIdle:     new(10),
+				MaxLifetime: new("1h"),
+				IdleTimeout: new("10m"),
 			},
 		}
 
@@ -111,11 +110,11 @@ func TestConnectionBlock_ToConnection(t *testing.T) {
 		if conn.Driver != "postgres" || conn.Name != "primary" {
 			t.Errorf("unexpected driver/name: %s.%s", conn.Driver, conn.Name)
 		}
-		if conn.Pool.MaxOpenConns != 50 || conn.Pool.MaxIdleConns != 10 {
+		if conn.Pool.MaxOpen != 50 || conn.Pool.MaxIdle != 10 {
 			t.Errorf("unexpected pool limits: %+v", conn.Pool)
 		}
-		if conn.Pool.ConnMaxLifetime.Duration() != time.Hour {
-			t.Errorf("expected 1h lifetime, got %v", conn.Pool.ConnMaxLifetime)
+		if conn.Pool.MaxLifetime.Duration() != time.Hour {
+			t.Errorf("expected 1h lifetime, got %v", conn.Pool.MaxLifetime)
 		}
 	})
 
@@ -125,9 +124,9 @@ func TestConnectionBlock_ToConnection(t *testing.T) {
 		block := &parser.ConnectionBlock{
 			Driver: "postgres",
 			Name:   "primary",
-			URL:    "postgres://localhost/db",
+			Source: "postgres://localhost/db",
 			Pool: &parser.ConnectionPoolBlock{
-				ConnMaxLifetime: new("bad_duration"),
+				MaxLifetime: new("bad_duration"),
 			},
 		}
 

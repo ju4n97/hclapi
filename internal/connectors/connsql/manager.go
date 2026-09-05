@@ -77,15 +77,15 @@ func (m *Manager) Open(ctx context.Context, conn manifest.Connection) error {
 	}
 
 	driverName := mapDriverName(conn.Driver)
-	db, err := sql.Open(driverName, conn.URL)
+	db, err := sql.Open(driverName, conn.Source)
 	if err != nil {
 		return fmt.Errorf("open %s driver: %w", driverName, err)
 	}
 
 	// Apply connection pool settings
-	db.SetMaxOpenConns(conn.Pool.MaxOpenConns)
-	db.SetMaxIdleConns(conn.Pool.MaxIdleConns)
-	db.SetConnMaxLifetime(conn.Pool.ConnMaxLifetime.Duration())
+	db.SetMaxOpenConns(conn.Pool.MaxOpen)
+	db.SetMaxIdleConns(conn.Pool.MaxIdle)
+	db.SetConnMaxLifetime(conn.Pool.MaxLifetime.Duration())
 	db.SetConnMaxIdleTime(conn.Pool.IdleTimeout.Duration())
 
 	// Verify connectivity with timeout

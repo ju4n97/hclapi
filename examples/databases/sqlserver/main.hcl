@@ -10,13 +10,13 @@ server {
 }
 
 connection "sqlserver" "main" {
-  url = "sqlserver://sa:Password123!@127.0.0.1:1433?database=hclapi_db"
+  source = "sqlserver://sa:Password123!@127.0.0.1:1433?database=hclapi_db"
 
   pool {
-    max_open_conns    = 25
-    max_idle_conns    = 5
-    conn_max_lifetime = "30m"
-    idle_timeout      = "5m"
+    max_open     = 25
+    max_idle     = 5
+    max_lifetime = "30m"
+    idle_timeout = "5m"
   }
 }
 

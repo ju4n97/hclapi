@@ -10,7 +10,7 @@ server {
 }
 
 connection "duckdb" "main" {
-  url = ":memory:"
+  source = ":memory:"
 }
 
 schema "event_ingest" {

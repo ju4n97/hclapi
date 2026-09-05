@@ -10,10 +10,10 @@ server {
 }
 
 connection "clickhouse" "main" {
-  url = "clickhouse://default:@127.0.0.1:9000/default"
+  source = "clickhouse://default:@127.0.0.1:9000/default"
 
   pool {
-    max_open_conns = 15
+    max_open = 15
   }
 }
 

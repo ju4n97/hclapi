@@ -81,7 +81,7 @@ server {
 `,
 			"connections.hcl": `
 connection "postgres" "primary" {
-  url = "postgres://localhost/main"
+  source = "postgres://localhost/main"
 }
 `,
 			"routes/v1/users.hcl": `

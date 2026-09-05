@@ -37,7 +37,7 @@ func setupTestSQLiteManager(t *testing.T) *connsql.Manager {
 	conn := manifest.Connection{
 		Driver: "sqlite",
 		Name:   "main",
-		URL:    "file:pipeline_test_mem?mode=memory&cache=shared",
+		Source: "file:pipeline_test_mem?mode=memory&cache=shared",
 		Pool:   manifest.DefaultPoolConfig(),
 	}
 	if err := mgr.Open(t.Context(), conn); err != nil {

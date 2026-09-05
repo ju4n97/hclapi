@@ -4,11 +4,11 @@ server {
 }
 
 connection "sqlite" "main" {
-  url = "file:./data/todos.db?mode=rwc"
+  source = "file:./data/todos.db?mode=rwc"
 
   pool {
-    max_open_conns = 1
-    idle_timeout   = "10m"
+    max_open     = 1
+    idle_timeout = "10m"
   }
 }
 

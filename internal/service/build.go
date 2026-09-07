@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,7 +21,7 @@ import (
 // Build lowers a raw HCL Manifest into an immutable, fully validated service definition.
 func Build(m *manifest.Manifest, evalCtx *hcl.EvalContext) (*Definition, error) {
 	if m == nil {
-		return nil, fmt.Errorf("cannot build service from nil manifest")
+		return nil, errors.New("cannot build service from nil manifest")
 	}
 
 	def := &Definition{
@@ -406,7 +407,11 @@ func lowerEndpoint(
 				case "scalar", "elements", "swagger", "redoc":
 					renderer = r
 				default:
-					return ep, fmt.Errorf("endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'", b.MethodAndPath, *raw.Renderer)
+					return ep, fmt.Errorf(
+						"endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'",
+						b.MethodAndPath,
+						*raw.Renderer,
+					)
 				}
 			}
 			h.Mode = "ui"
@@ -414,7 +419,10 @@ func lowerEndpoint(
 
 		case "template":
 			if raw.Format != nil || raw.Renderer != nil {
-				return ep, fmt.Errorf("endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes", b.MethodAndPath)
+				return ep, fmt.Errorf(
+					"endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes",
+					b.MethodAndPath,
+				)
 			}
 			if (raw.File == nil && raw.Inline == nil) || (raw.File != nil && raw.Inline != nil) {
 				return ep, fmt.Errorf("endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'", b.MethodAndPath)
@@ -435,7 +443,11 @@ func lowerEndpoint(
 			}
 
 		default:
-			return ep, fmt.Errorf("endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"", b.MethodAndPath, raw.Mode)
+			return ep, fmt.Errorf(
+				"endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"",
+				b.MethodAndPath,
+				raw.Mode,
+			)
 		}
 
 		ep.Handler = h
@@ -668,7 +680,10 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		}
 
 		if len(jsonSpecs) == 0 {
-			return fmt.Errorf("cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly", ep.RoutePattern)
+			return fmt.Errorf(
+				"cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly",
+				ep.RoutePattern,
+			)
 		}
 
 		if len(jsonSpecs) == 1 {
@@ -697,7 +712,11 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		for _, s := range jsonSpecs {
 			candidatePaths = append(candidatePaths, fmt.Sprintf("%q", s.path))
 		}
-		return fmt.Errorf("ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly", ep.RoutePattern, strings.Join(candidatePaths, ", "))
+		return fmt.Errorf(
+			"ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly",
+			ep.RoutePattern,
+			strings.Join(candidatePaths, ", "),
+		)
 	}
 
 	return nil
@@ -713,7 +732,7 @@ func splitMethodAndPath(raw string) (string, string, error) {
 
 func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", fmt.Errorf("missing connection reference expression")
+		return "", errors.New("missing connection reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -732,12 +751,12 @@ func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.Type().Equals(cty.String) {
 		return val.AsString(), nil
 	}
-	return "", fmt.Errorf("invalid connection reference expression")
+	return "", errors.New("invalid connection reference expression")
 }
 
 func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", fmt.Errorf("missing schema reference expression")
+		return "", errors.New("missing schema reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -754,5 +773,5 @@ func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.IsKnown() && !val.IsNull() && val.Type().Equals(cty.String) {
 		return strings.TrimPrefix(val.AsString(), "schema."), nil
 	}
-	return "", fmt.Errorf("invalid schema reference expression")
+	return "", errors.New("invalid schema reference expression")
 }

@@ -5,6 +5,7 @@ import "github.com/hashicorp/hcl/v2"
 // StepType defines the execution category for a pipeline step.
 type StepType string
 
+// StepType constants for supported step types.
 const (
 	StepTypeGo       StepType = "go"
 	StepTypeStarlark StepType = "starlark"

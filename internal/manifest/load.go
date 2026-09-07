@@ -62,7 +62,11 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 
 			if fileCfg.Server != nil {
 				if serverFile != "" {
-					return fmt.Errorf("duplicate singleton block 'server' declared in %s and %s: only one 'server' block is permitted across all manifests", serverFile, currentPath)
+					return fmt.Errorf(
+						"duplicate singleton block 'server' declared in %s and %s: only one 'server' block is permitted across all manifests",
+						serverFile,
+						currentPath,
+					)
 				}
 				merged.Server = fileCfg.Server
 				serverFile = currentPath
@@ -70,7 +74,11 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 
 			if fileCfg.OpenAPI != nil {
 				if openapiFile != "" {
-					return fmt.Errorf("duplicate singleton block 'openapi' declared in %s and %s: only one 'openapi' block is permitted across all manifests", openapiFile, currentPath)
+					return fmt.Errorf(
+						"duplicate singleton block 'openapi' declared in %s and %s: only one 'openapi' block is permitted across all manifests",
+						openapiFile,
+						currentPath,
+					)
 				}
 				merged.OpenAPI = fileCfg.OpenAPI
 				openapiFile = currentPath
@@ -78,7 +86,11 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 
 			if fileCfg.Problem != nil {
 				if problemFile != "" {
-					return fmt.Errorf("duplicate singleton block 'problem' declared in %s and %s: only one 'problem' block is permitted across all manifests", problemFile, currentPath)
+					return fmt.Errorf(
+						"duplicate singleton block 'problem' declared in %s and %s: only one 'problem' block is permitted across all manifests",
+						problemFile,
+						currentPath,
+					)
 				}
 				merged.Problem = fileCfg.Problem
 				problemFile = currentPath

@@ -27,6 +27,8 @@ var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 type Engine struct {
 	options      manifest.Options
 	server       manifest.Server
+	openapi      manifest.OpenAPIConfig
+	problem      manifest.ProblemConfig
 	mux          *http.ServeMux
 	sqlManager   *connsql.Manager
 	goSteps      map[string]runtime.StepHandler
@@ -156,7 +158,7 @@ func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, 
 		if err != nil {
 			e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
 			e.errorHandler(w, r, problem.Problem{
-				Type:     e.server.ProblemType("internal-error"),
+				Type:     e.problem.ProblemType("internal-error"),
 				Title:    "Documentation Render Error",
 				Status:   http.StatusInternalServerError,
 				Detail:   err.Error(),
@@ -191,7 +193,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
 				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
 				e.errorHandler(w, r, problem.Problem{
-					Type:     e.server.ProblemType("payload-too-large"),
+					Type:     e.problem.ProblemType("payload-too-large"),
 					Title:    "Request Entity Too Large",
 					Status:   http.StatusRequestEntityTooLarge,
 					Detail:   "request body exceeded maximum size limit of " + e.server.MaxBodySize.String(),
@@ -202,7 +204,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 
 			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, problem.Problem{
-				Type:     e.server.ProblemType("bad-request"),
+				Type:     e.problem.ProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -223,7 +225,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 				len(invalidParams),
 			)
 			e.errorHandler(w, r, problem.Problem{
-				Type:          e.server.ProblemType("validation-error"),
+				Type:          e.problem.ProblemType("validation-error"),
 				Title:         "Unprocessable Entity",
 				Status:        http.StatusUnprocessableEntity,
 				Detail:        "Request payload failed schema validation constraints",
@@ -246,7 +248,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 					}
 				}
 				if p.Type == "" {
-					p.Type = e.server.ProblemType(problem.Slugify(p.Title))
+					p.Type = e.problem.ProblemType(problem.Slugify(p.Title))
 				}
 				if p.Instance == "" {
 					p.Instance = r.URL.Path
@@ -272,7 +274,7 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 
 			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
 			e.errorHandler(w, r, problem.Problem{
-				Type:     e.server.ProblemType("pipeline-execution-failed"),
+				Type:     e.problem.ProblemType("pipeline-execution-failed"),
 				Title:    "Pipeline Execution Error",
 				Status:   http.StatusInternalServerError,
 				Detail:   err.Error(),

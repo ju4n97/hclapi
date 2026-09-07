@@ -23,9 +23,13 @@ When passed a directory with `hclapi serve -c ./config`, the parser walks the tr
 Endpoints are identified by HTTP method and path. Declaring the same pair in more than one file halts startup with a diagnostic naming both files.
 :::
 
-Server blocks merge by attribute. If multiple files declare `server {}`, the last evaluated value wins for explicitly set attributes; unset attributes retain defaults.
+Singleton blocks (`server`, `openapi`, `problem`) define global configurations and can't be declared more than once across a project. If the parser encounters a duplicate singleton block in any manifest, startup halts with a fatal diagnostic.
 
 Connections and schemas occupy global namespaces. A connection labeled `connection "postgres" "primary"` in one file is available to endpoints in another file.
+
+## Relative path resolution
+
+All relative file paths declared inside manifests (such as template files in `openapi "template" { file = "./view.html" }` or database files in `connection "sqlite"`) are **resolved relative to the directory containing the manifest file where declared**.
 
 ## Layouts
 
@@ -39,10 +43,12 @@ my-service/
 
 ### Domain-driven layout
 
-```text title="api-service/"
+```text
 api-service/
-├── server.hcl
-├── connections.hcl
+├── server.hcl        # Transport settings (host, port, timeouts, body size)
+├── openapi.hcl       # API specification metadata (title, version, tags)
+├── problem.hcl       # RFC 9457 error domain prefix
+├── connections.hcl   # Database and cache connection pools
 ├── schemas/
 │   ├── account.hcl
 │   └── user.hcl

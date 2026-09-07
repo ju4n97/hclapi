@@ -10,14 +10,19 @@
     "label": "server"
   },
   {
-    "type": "file",
-    "name": "connections",
-    "label": "connection"
+    "type": "custom-link",
+    "label": "openapi",
+    "link": "/openapi/overview"
   },
   {
     "type": "file",
-    "name": "schemas",
-    "label": "schema"
+    "name": "problem",
+    "label": "problem"
+  },
+  {
+    "type": "file",
+    "name": "connections",
+    "label": "connection"
   },
   {
     "type": "file",
@@ -26,8 +31,13 @@
   },
   {
     "type": "file",
+    "name": "schemas",
+    "label": "schema"
+  },
+  {
+    "type": "file",
     "name": "types",
-    "label": "Types"
+    "label": "Scalar types"
   },
   {
     "type": "dir",

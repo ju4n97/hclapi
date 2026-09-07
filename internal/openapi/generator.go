@@ -22,37 +22,37 @@ func Generate(service *compiler.CompiledService) (*openapi3.T, error) {
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{
-			Title:       service.Server.OpenAPI.Title,
-			Version:     service.Server.OpenAPI.Version,
-			Description: service.Server.OpenAPI.Description,
+			Title:       service.OpenAPI.Title,
+			Version:     service.OpenAPI.Version,
+			Description: service.OpenAPI.Description,
 		},
 		Paths:      openapi3.NewPaths(),
 		Components: &openapi3.Components{Schemas: make(openapi3.Schemas)},
 	}
 
-	if service.Server.OpenAPI.Contact != nil {
+	if service.OpenAPI.Contact != nil {
 		doc.Info.Contact = &openapi3.Contact{
-			Name:  service.Server.OpenAPI.Contact.Name,
-			Email: service.Server.OpenAPI.Contact.Email,
-			URL:   service.Server.OpenAPI.Contact.URL,
+			Name:  service.OpenAPI.Contact.Name,
+			Email: service.OpenAPI.Contact.Email,
+			URL:   service.OpenAPI.Contact.URL,
 		}
 	}
 
-	if service.Server.OpenAPI.License != nil {
+	if service.OpenAPI.License != nil {
 		doc.Info.License = &openapi3.License{
-			Name: service.Server.OpenAPI.License.Name,
-			URL:  service.Server.OpenAPI.License.URL,
+			Name: service.OpenAPI.License.Name,
+			URL:  service.OpenAPI.License.URL,
 		}
 	}
 
-	for _, srv := range service.Server.OpenAPI.Servers {
+	for _, srv := range service.OpenAPI.Servers {
 		doc.Servers = append(doc.Servers, &openapi3.Server{
 			URL:         srv.URL,
 			Description: srv.Description,
 		})
 	}
 
-	for _, tag := range service.Server.OpenAPI.Tags {
+	for _, tag := range service.OpenAPI.Tags {
 		doc.Tags = append(doc.Tags, &openapi3.Tag{
 			Name:        tag.Name,
 			Description: tag.Description,

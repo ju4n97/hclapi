@@ -33,7 +33,13 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 		return parseFile(path, p, evalCtx)
 	}
 
-	var mergedManifest Manifest
+	var (
+		mergedManifest Manifest
+		serverFile     string
+		openapiFile    string
+		problemFile    string
+	)
+
 	err = filepath.WalkDir(path, func(currentPath string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -49,12 +55,45 @@ func Parse(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 				return err
 			}
 
+			if fileManifest.Server != nil {
+				if serverFile != "" {
+					return fmt.Errorf(
+						"duplicate singleton block 'server' declared in %s and %s: only one 'server' block is permitted across all manifests",
+						serverFile,
+						currentPath,
+					)
+				}
+				mergedManifest.Server = fileManifest.Server
+				serverFile = currentPath
+			}
+
+			if fileManifest.OpenAPI != nil {
+				if openapiFile != "" {
+					return fmt.Errorf(
+						"duplicate singleton block 'openapi' declared in %s and %s: only one 'openapi' block is permitted across all manifests",
+						openapiFile,
+						currentPath,
+					)
+				}
+				mergedManifest.OpenAPI = fileManifest.OpenAPI
+				openapiFile = currentPath
+			}
+
+			if fileManifest.Problem != nil {
+				if problemFile != "" {
+					return fmt.Errorf(
+						"duplicate singleton block 'problem' declared in %s and %s: only one 'problem' block is permitted across all manifests",
+						problemFile,
+						currentPath,
+					)
+				}
+				mergedManifest.Problem = fileManifest.Problem
+				problemFile = currentPath
+			}
+
 			mergedManifest.Endpoints = append(mergedManifest.Endpoints, fileManifest.Endpoints...)
 			mergedManifest.Connections = append(mergedManifest.Connections, fileManifest.Connections...)
 			mergedManifest.Schemas = append(mergedManifest.Schemas, fileManifest.Schemas...)
-			if fileManifest.Server != nil {
-				mergedManifest.Server = fileManifest.Server
-			}
 		}
 
 		return nil

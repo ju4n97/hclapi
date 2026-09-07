@@ -43,47 +43,54 @@ type CompiledEndpoint struct {
 // CompiledService represents the entire statically compiled and verified manifest tree.
 type CompiledService struct {
 	Server      manifest.Server
+	OpenAPI     manifest.OpenAPIConfig
+	Problem     manifest.ProblemConfig
 	Connections []manifest.Connection
 	Schemas     map[string][]manifest.Field
 	Endpoints   []CompiledEndpoint
 }
 
 // Compile performs static semantic analysis on the entire AST manifest tree.
-// It verifies all connection and schema references and returns a ready-to-run CompiledService.
 func Compile(m *parser.Manifest, evalCtx *hcl.EvalContext) (*CompiledService, error) {
 	if m == nil {
 		return &CompiledService{
 			Server:  manifest.DefaultServer(),
+			OpenAPI: manifest.DefaultOpenAPIConfig(),
 			Schemas: make(map[string][]manifest.Field),
 		}, nil
 	}
 
-	// Compile and validate server settings
 	serverConfig, err := m.Server.ToServer()
 	if err != nil {
 		return nil, fmt.Errorf("server config: %w", err)
 	}
 
-	// Compile and validate connection blocks
+	openapiConfig, err := m.OpenAPI.ToOpenAPI(evalCtx)
+	if err != nil {
+		return nil, fmt.Errorf("openapi config: %w", err)
+	}
+
+	problemConfig := m.Problem.ToProblem()
+
 	connections, connIndex, err := compileConnections(m.Connections)
 	if err != nil {
 		return nil, err
 	}
 
-	// Compile and validate schema blocks
 	schemasMap, err := compileSchemas(m.Schemas, evalCtx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Compile and validate endpoints and pipeline steps
-	endpoints, err := compileEndpoints(m.Endpoints, connIndex, schemasMap, serverConfig, evalCtx)
+	endpoints, err := compileEndpoints(m.Endpoints, connIndex, schemasMap, openapiConfig, evalCtx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CompiledService{
 		Server:      serverConfig,
+		OpenAPI:     openapiConfig,
+		Problem:     problemConfig,
 		Connections: connections,
 		Schemas:     schemasMap,
 		Endpoints:   endpoints,
@@ -139,7 +146,7 @@ func compileEndpoints(
 	blocks []parser.EndpointBlock,
 	connIndex map[string]bool,
 	schemasMap map[string][]manifest.Field,
-	serverConfig manifest.Server,
+	openapiConfig manifest.OpenAPIConfig,
 	evalCtx *hcl.EvalContext,
 ) ([]CompiledEndpoint, error) {
 	seenRoutes := make(map[string]bool, len(blocks))
@@ -169,9 +176,9 @@ func compileEndpoints(
 		if hasOpenAPI {
 			handler := &CompiledOpenAPIHandler{
 				UI:          "scalar",
-				Title:       serverConfig.OpenAPI.Title,
-				Version:     serverConfig.OpenAPI.Version,
-				Description: serverConfig.OpenAPI.Description,
+				Title:       openapiConfig.Title,
+				Version:     openapiConfig.Version,
+				Description: openapiConfig.Description,
 			}
 			if ep.OpenAPI.UI != nil {
 				handler.UI = *ep.OpenAPI.UI

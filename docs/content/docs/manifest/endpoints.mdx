@@ -3,11 +3,14 @@ title: endpoint
 description: Bind an HTTP method and path to request validation and a pipeline.
 ---
 
-Binds an HTTP method and path to a request schema and a pipeline.
+Binds an HTTP method and path pattern to route metadata, security guards, and a terminal request handler.
 
 ## Declaration
 
+An endpoint declares routing coordinates in its block label and implements exactly one handler: a dynamic `pipeline` or an engine-managed `openapi` handler.
+
 ```hcl
+# Dynamic pipeline endpoint
 endpoint "GET /api/v1/accounts/{id}" {
   description = "Fetches account details by identifier"
 
@@ -30,32 +33,67 @@ endpoint "GET /api/v1/accounts/{id}" {
     respond {
       condition = steps.find_account.rows_affected == 0
       status    = 404
-      body      = { error = "Account not found" }
+      body      = problem(404, "Account not found")
     }
 
     respond {
       status = 200
-      body   = steps.find_account.result
+      body   = steps.find_account.row
     }
+  }
+}
+
+# Managed OpenAPI handler endpoint
+endpoint "GET /docs" {
+  description = "Interactive API reference portal"
+
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 ```
 
 ## Attributes
 
-| Attribute                      | Type     | Required | Description                                                    |
-| :----------------------------- | :------- | :------- | :------------------------------------------------------------- |
-| Route label (`"METHOD /path"`) | `string` | yes      | HTTP method and path pattern                                   |
-| `description`                  | `string` | no       | Used in logs and generated API documentation                   |
-| `auth`                         | `list`   | no       | Route-level authentication guards; `[]` marks the route public |
-| `request`                      | `block`  | no       | Validation for path, query, headers, and body                  |
-| `pipeline`                     | `block`  | yes      | Steps that handle the request                                  |
+| Attribute                      | Type     | Required | Description                                                  |
+| :----------------------------- | :------- | :------- | :----------------------------------------------------------- |
+| Route label (`"METHOD /path"`) | `string` | yes      | HTTP method and path pattern                                 |
+| `description`                  | `string` | no       | Human-readable summary exported to OpenAPI documentation     |
+| `request`                      | `block`  | no       | Ingress validation (valid only with `pipeline`)              |
+| `pipeline`                     | `block`  | no       | Steps that handle the request.                               |
+| `openapi "<mode>"`             | `block`  | no       | Managed OpenAPI handler (`"spec"`, `"ui"`, or `"template"`). |
 
-Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
+_An endpoint must declare either a `pipeline` or an `openapi "<mode>"`. See Handler invariants below._
+
+Supported HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, `HEAD`.
+
+## Handler invariants
+
+The engine enforces a strict discriminated union model for endpoint handlers at boot time:
+
+```math
+\text{Endpoint} = \text{Metadata} + (\text{Pipeline Handler} \lor \text{OpenAPI Handler})
+```
+
+### 1. Mutual handler exclusion
+
+An endpoint can't define both a `pipeline` block and an `openapi` block.
+
+### 2. Single OpenAPI mode
+
+An endpoint can't declare multiple `openapi` blocks. To expose both a raw specification and a visual UI, declare separate endpoints.
+
+### 3. Ingress schema restrictions on OpenAPI handlers
+
+Endpoints using an `openapi` block are static engine handlers. They don't accept incoming request bodies or query validation schemas. Declaring a `request` block alongside `openapi` triggers a boot-time diagnostic:
+
+### 4. Method enforcement on OpenAPI handlers
+
+OpenAPI specifications and documentation portals only respond to safe read operations. Endpoints defining an `openapi` block must only use `GET` or `HEAD`.
 
 ## Path templates
 
-A single segment binds to `ctx.request.path.<param>`.
+A single path segment binds to `ctx.request.path.<param>`.
 
 ```hcl
 endpoint "GET /api/v1/organizations/{org_id}/members/{member_id}" {
@@ -71,7 +109,7 @@ endpoint "GET /api/v1/organizations/{org_id}/members/{member_id}" {
 }
 ```
 
-A trailing `...` matches all remaining segments:
+A trailing wildcard `...` binds all remaining path segments:
 
 ```hcl
 endpoint "GET /static/{filepath...}" {
@@ -86,29 +124,11 @@ endpoint "GET /static/{filepath...}" {
 
 ## Request validation
 
-The `request` block validates path, query, headers, and body independently.
+When an endpoint uses a `pipeline`, the optional `request` block validates inputs during ingress before pipeline execution begins:
 
 | Sub-block | Target                | Validates                    |
 | :-------- | :-------------------- | :--------------------------- |
 | `path`    | `ctx.request.path`    | Route parameter types        |
-| `query`   | `ctx.request.query`   | Query string and defaults    |
+| `query`   | `ctx.request.query`   | Query parameters and bounds  |
 | `headers` | `ctx.request.headers` | Required headers and formats |
-| `body`    | `ctx.request.body`    | JSON body against a schema   |
-
-## Authentication overrides
-
-An endpoint inherits global authentication guards unless it opts out explicitly.
-
-```hcl
-endpoint "GET /health/live" {
-  description = "Bypassed by load balancers"
-  auth        = []
-
-  pipeline {
-    respond {
-      status = 200
-      body   = { status = "healthy", timestamp = ctx.timestamp_epoch }
-    }
-  }
-}
-```
+| `body`    | `ctx.request.body`    | JSON payload schema          |

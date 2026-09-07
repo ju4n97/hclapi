@@ -11,59 +11,29 @@ import (
 	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
-// Manifest represents the root collection of merged HCL route definitions.
+// Manifest represents the root collection of merged HCL definitions.
 type Manifest struct {
 	Server      *ServerBlock      `hcl:"server,block"`
+	OpenAPI     *OpenAPIBlock     `hcl:"openapi,block"`
+	Problem     *ProblemBlock     `hcl:"problem,block"`
 	Connections []ConnectionBlock `hcl:"connection,block"`
 	Schemas     []SchemaBlock     `hcl:"schema,block"`
 	Endpoints   []EndpointBlock   `hcl:"endpoint,block"`
 	Remain      hcl.Body          `hcl:",remain"`
 }
 
-// ServerBlock represents the raw HCL server syntax block.
+// ServerBlock represents the raw transport listener block.
 type ServerBlock struct {
-	Host         string              `hcl:"host,optional"`
-	Port         int                 `hcl:"port,optional"`
-	ReadTimeout  *string             `hcl:"read_timeout,optional"`
-	WriteTimeout *string             `hcl:"write_timeout,optional"`
-	IdleTimeout  *string             `hcl:"idle_timeout,optional"`
-	MaxBodySize  *string             `hcl:"max_body_size,optional"`
-	Problem      *ServerProblemBlock `hcl:"problem,block"`
-	OpenAPI      *ServerOpenAPIBlock `hcl:"openapi,block"`
-	Remain       hcl.Body            `hcl:",remain"`
+	Host         string   `hcl:"host,optional"`
+	Port         int      `hcl:"port,optional"`
+	ReadTimeout  *string  `hcl:"read_timeout,optional"`
+	WriteTimeout *string  `hcl:"write_timeout,optional"`
+	IdleTimeout  *string  `hcl:"idle_timeout,optional"`
+	MaxBodySize  *string  `hcl:"max_body_size,optional"`
+	Remain       hcl.Body `hcl:",remain"`
 }
 
-// ServerProblemBlock represents the global problem {} metadata block in server.
-type ServerProblemBlock struct {
-	TypePrefix *string `hcl:"type_prefix,optional"`
-}
-
-// ServerOpenAPIBlock represents the global openapi {} metadata block in server.
-type ServerOpenAPIBlock struct {
-	Title       *string             `hcl:"title,optional"`
-	Version     *string             `hcl:"version,optional"`
-	Description *string             `hcl:"description,optional"`
-	Servers     hcl.Expression      `hcl:"servers,optional"`
-	Tags        hcl.Expression      `hcl:"tags,optional"`
-	Contact     *ServerContactBlock `hcl:"contact,block"`
-	License     *ServerLicenseBlock `hcl:"license,block"`
-	Remain      hcl.Body            `hcl:",remain"`
-}
-
-// ServerContactBlock represents the contact {} metadata block in openapi block.
-type ServerContactBlock struct {
-	Name  *string `hcl:"name,optional"`
-	Email *string `hcl:"email,optional"`
-	URL   *string `hcl:"url,optional"`
-}
-
-// ServerLicenseBlock represents the license {} metadata block in openapi block.
-type ServerLicenseBlock struct {
-	Name *string `hcl:"name,optional"`
-	URL  *string `hcl:"url,optional"`
-}
-
-// ToServer maps the AST ServerBlock into a pure domain manifest.Server with defaults applied.
+// ToServer maps ServerBlock to domain manifest.Server.
 func (s *ServerBlock) ToServer() (manifest.Server, error) {
 	def := manifest.DefaultServer()
 	if s == nil {
@@ -103,47 +73,135 @@ func (s *ServerBlock) ToServer() (manifest.Server, error) {
 		}
 		srv.MaxBodySize = b
 	}
-	if s.Problem != nil {
-		if s.Problem.TypePrefix != nil {
-			srv.Problem.TypePrefix = *s.Problem.TypePrefix
-		}
+
+	return srv.WithDefaults(), nil
+}
+
+// ProblemBlock represents the root problem {} configuration block.
+type ProblemBlock struct {
+	TypePrefix *string  `hcl:"type_prefix,optional"`
+	Remain     hcl.Body `hcl:",remain"`
+}
+
+// ToProblem maps ProblemBlock to domain manifest.ProblemConfig.
+func (p *ProblemBlock) ToProblem() manifest.ProblemConfig {
+	if p == nil || p.TypePrefix == nil {
+		return manifest.ProblemConfig{}
 	}
-	if s.OpenAPI != nil {
-		if s.OpenAPI.Title != nil {
-			srv.OpenAPI.Title = *s.OpenAPI.Title
+	return manifest.ProblemConfig{
+		TypePrefix: *p.TypePrefix,
+	}
+}
+
+// OpenAPIBlock represents the root openapi {} configuration block.
+type OpenAPIBlock struct {
+	Title       *string              `hcl:"title,optional"`
+	Version     *string              `hcl:"version,optional"`
+	Description *string              `hcl:"description,optional"`
+	Servers     hcl.Expression       `hcl:"servers,optional"`
+	Tags        hcl.Expression       `hcl:"tags,optional"`
+	Contact     *OpenAPIContactBlock `hcl:"contact,block"`
+	License     *OpenAPILicenseBlock `hcl:"license,block"`
+	Remain      hcl.Body             `hcl:",remain"`
+}
+
+type OpenAPIContactBlock struct {
+	Name  *string `hcl:"name,optional"`
+	Email *string `hcl:"email,optional"`
+	URL   *string `hcl:"url,optional"`
+}
+
+type OpenAPILicenseBlock struct {
+	Name *string `hcl:"name,optional"`
+	URL  *string `hcl:"url,optional"`
+}
+
+// ToOpenAPI maps OpenAPIBlock to domain manifest.OpenAPIConfig.
+func (o *OpenAPIBlock) ToOpenAPI(evalCtx *hcl.EvalContext) (manifest.OpenAPIConfig, error) {
+	def := manifest.DefaultOpenAPIConfig()
+	if o == nil {
+		return def, nil
+	}
+
+	cfg := manifest.OpenAPIConfig{}
+	if o.Title != nil {
+		cfg.Title = *o.Title
+	}
+	if o.Version != nil {
+		cfg.Version = *o.Version
+	}
+	if o.Description != nil {
+		cfg.Description = *o.Description
+	}
+
+	if o.Contact != nil {
+		contact := &manifest.OpenAPIContact{}
+		if o.Contact.Name != nil {
+			contact.Name = *o.Contact.Name
 		}
-		if s.OpenAPI.Version != nil {
-			srv.OpenAPI.Version = *s.OpenAPI.Version
+		if o.Contact.Email != nil {
+			contact.Email = *o.Contact.Email
 		}
-		if s.OpenAPI.Description != nil {
-			srv.OpenAPI.Description = *s.OpenAPI.Description
+		if o.Contact.URL != nil {
+			contact.URL = *o.Contact.URL
 		}
-		if s.OpenAPI.Contact != nil {
-			contact := &manifest.OpenAPIContact{}
-			if s.OpenAPI.Contact.Name != nil {
-				contact.Name = *s.OpenAPI.Contact.Name
-			}
-			if s.OpenAPI.Contact.Email != nil {
-				contact.Email = *s.OpenAPI.Contact.Email
-			}
-			if s.OpenAPI.Contact.URL != nil {
-				contact.URL = *s.OpenAPI.Contact.URL
-			}
-			srv.OpenAPI.Contact = contact
+		cfg.Contact = contact
+	}
+
+	if o.License != nil {
+		license := &manifest.OpenAPILicense{}
+		if o.License.Name != nil {
+			license.Name = *o.License.Name
 		}
-		if s.OpenAPI.License != nil {
-			license := &manifest.OpenAPILicense{}
-			if s.OpenAPI.License.Name != nil {
-				license.Name = *s.OpenAPI.License.Name
+		if o.License.URL != nil {
+			license.URL = *o.License.URL
+		}
+		cfg.License = license
+	}
+
+	if o.Servers != nil {
+		rawServers, err := eval.Any(o.Servers, nil)
+		if err != nil {
+			return manifest.OpenAPIConfig{}, fmt.Errorf("openapi servers: %w", err)
+		}
+		if list, ok := rawServers.([]any); ok {
+			for _, item := range list {
+				if m, ok := item.(map[string]any); ok {
+					srv := manifest.OpenAPIServer{}
+					if u, ok := m["url"].(string); ok {
+						srv.URL = u
+					}
+					if d, ok := m["description"].(string); ok {
+						srv.Description = d
+					}
+					cfg.Servers = append(cfg.Servers, srv)
+				}
 			}
-			if s.OpenAPI.License.URL != nil {
-				license.URL = *s.OpenAPI.License.URL
-			}
-			srv.OpenAPI.License = license
 		}
 	}
 
-	return srv.WithDefaults(), nil
+	if o.Tags != nil {
+		rawTags, err := eval.Any(o.Tags, nil)
+		if err != nil {
+			return manifest.OpenAPIConfig{}, fmt.Errorf("openapi tags: %w", err)
+		}
+		if list, ok := rawTags.([]any); ok {
+			for _, item := range list {
+				if m, ok := item.(map[string]any); ok {
+					tag := manifest.OpenAPITag{}
+					if n, ok := m["name"].(string); ok {
+						tag.Name = n
+					}
+					if d, ok := m["description"].(string); ok {
+						tag.Description = d
+					}
+					cfg.Tags = append(cfg.Tags, tag)
+				}
+			}
+		}
+	}
+
+	return cfg.WithDefaults(), nil
 }
 
 // ConnectionBlock represents a connection pool configuration block.

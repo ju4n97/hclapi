@@ -1,6 +1,7 @@
 import { defineConfig } from "@rspress/core";
 import { pluginSitemap } from "@rspress/plugin-sitemap";
 import path from "node:path";
+import pluginKatex from 'rspress-plugin-katex';
 
 export default defineConfig({
   root: "content",
@@ -17,6 +18,7 @@ export default defineConfig({
     pluginSitemap({
       siteUrl: "https://ju4n97.github.io/hclapi/",
     }),
+    pluginKatex(),
   ],
   llms: true,
   themeConfig: {

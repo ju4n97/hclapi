@@ -1,84 +1,148 @@
 # OpenAPI configuration
 
-OpenAPI document metadata, target servers, tags, and endpoint handler options are configured using standard HCL blocks.
+Configuring OpenAPI in `hclapi` is split into two concerns:
 
-## Global specification metadata (`server.openapi {}`)
+1. **Global specification metadata**: Declared inside `openapi {}` to configure document headers, contact info, licenses, tags, and deployment servers.
+2. **Endpoint handlers**: Declared inside `endpoint "GET /path"` using `openapi "<mode>"` to serve raw specifications or interactive UIs.
 
-Declared inside `server {}` to configure the global document header:
+## Global specification metadata (`openapi {}`)
+
+Declared as a top-level block to configure the global document header:
 
 ```hcl
-server {
-  host = "0.0.0.0"
-  port = 8080
+openapi {
+  title   = "Acme Storefront API"
+  version = "1.2.0"
 
-  openapi {
-    title   = "Acme Storefront API"
-    version = "1.2.0"
+  description = <<-MARKDOWN
+    ## Overview
+    Customer account and checkout management services.
+  MARKDOWN
 
-    description = <<-MARKDOWN
-      ## Overview
-      Production customer account and order management API service.
-
-      ### Authentication
-      Most endpoints require a valid API key passed via the `X-API-Key` header.
-    MARKDOWN
-
-    servers = [
-      {
-        url         = "https://api.example.com/v1"
-        description = "Production cluster"
-      },
-      {
-        url         = "http://localhost:8080"
-        description = "Local development server"
-      }
-    ]
-
-    tags = [
-      {
-        name        = "users"
-        description = "Customer accounts, authentication, and profiles"
-      },
-      {
-        name        = "orders"
-        description = "Order checkout, cart mutations, and payment history"
-      }
-    ]
-
-    contact {
-      name  = "API Engineering"
-      email = "support@example.com"
-      url   = "https://example.com/developers"
+  servers = [
+    {
+      url         = "https://api.example.com/v1"
+      description = "Production cluster"
+    },
+    {
+      url         = "http://localhost:8080"
+      description = "Local development server"
     }
+  ]
 
-    license {
-      name = "MIT"
-      url  = "https://opensource.org/licenses/MIT"
+  tags = [
+    {
+      name        = "users"
+      description = "Customer accounts and profiles"
+    },
+    {
+      name        = "orders"
+      description = "Cart mutations and order placement"
     }
+  ]
+
+  contact {
+    name  = "API Engineering"
+    email = "support@example.com"
+    url   = "https://example.com/developers"
+  }
+
+  license {
+    name = "Apache-2.0"
+    url  = "https://www.apache.org/licenses/LICENSE-2.0"
   }
 }
 ```
 
-## Global metadata attributes (`server.openapi`)
+### Global metadata attributes
 
-| Attribute     | Type           | Default               | Description                                                          |
-| :------------ | :------------- | :-------------------- | :------------------------------------------------------------------- |
-| `title`       | `string`       | `"API Documentation"` | Human-readable title in OpenAPI `info.title`                         |
-| `version`     | `string`       | `"1.0.0"`             | API version in OpenAPI `info.version`                                |
-| `description` | `string`       | `""`                  | Multi-line Markdown description in OpenAPI `info.description`        |
-| `servers`     | `list(object)` | `[]`                  | List of deployment servers (`url`, `description`)                    |
-| `tags`        | `list(object)` | `[]`                  | List of category tags for operation grouping (`name`, `description`) |
-| `contact`     | `block`        | `null`                | Contact information (`name`, `email`, `url`)                         |
-| `license`     | `block`        | `null`                | Legal license information (`name`, `url`)                            |
+| Attribute     | Type           | Default               | Description                                                  |
+| :------------ | :------------- | :-------------------- | :----------------------------------------------------------- |
+| `title`       | `string`       | `"API Documentation"` | Document title in `info.title`                               |
+| `version`     | `string`       | `"1.0.0"`             | Semantic version string in `info.version`                    |
+| `description` | `string`       | `""`                  | Markdown description in `info.description`                   |
+| `servers`     | `list(object)` | `[]`                  | Deployment targets (`url`, `description`)                    |
+| `tags`        | `list(object)` | `[]`                  | Category tags for operation grouping (`name`, `description`) |
+| `contact`     | `block`        | `null`                | Contact block containing `name`, `email`, `url`              |
+| `license`     | `block`        | `null`                | License block containing `name`, `url`                       |
 
-## Endpoint handler attributes (`endpoint.openapi`)
+## Endpoint handlers (`openapi "<mode>"`)
 
-Declared inside an `endpoint` block to serve a documentation UI or raw specification:
+OpenAPI handlers are mounted to endpoints using labeled blocks representing mutually exclusive operational modes:
 
-| Attribute       | Type     | Default      | Description                                                            |
-| :-------------- | :------- | :----------- | :--------------------------------------------------------------------- |
-| `ui`            | `string` | `"scalar"`   | Built-in UI renderer: `"scalar"`, `"elements"`, `"swagger"`, `"redoc"` |
-| `format`        | `string` | `null`       | Raw specification output format: `"json"` or `"yaml"`                  |
-| `spec_url`      | `string` | Auto-derived | URL path to the OpenAPI specification to load                          |
-| `template`      | `string` | `""`         | Custom HTML template string (heredoc)                                  |
-| `template_file` | `string` | `""`         | Path to custom HTML template file relative to manifest                 |
+### 1. `openapi "spec"`
+
+Serializes the compiled AST into a machine-readable document.
+
+```hcl
+endpoint "GET /openapi.json" {
+  openapi "spec" {
+    format = "json"
+  }
+}
+
+endpoint "GET /openapi.yaml" {
+  openapi "spec" {
+    format = "yaml"
+  }
+}
+```
+
+| Attribute | Type     | Default  | Allowed values     | Description                                 |
+| :-------- | :------- | :------- | :----------------- | :------------------------------------------ |
+| `format`  | `string` | `"json"` | `"json"`, `"yaml"` | Output serialization format of the document |
+
+### 2. `openapi "ui"`
+
+Renders a pre-compiled, embedded interactive reference viewer. Assets (CSS/JS) are embedded inside the `hclapi` binary with zero external CDN dependencies.
+
+```hcl
+endpoint "GET /docs" {
+  description = "Public developer documentation"
+
+  openapi "ui" {
+    renderer = "scalar"
+    spec_url = "/openapi.json"
+  }
+}
+```
+
+| Attribute  | Type     | Default        | Description                                                          |
+| :--------- | :------- | :------------- | :------------------------------------------------------------------- |
+| `renderer` | `string` | `"scalar"`     | Built-in UI engine: `"scalar"`, `"elements"`, `"swagger"`, `"redoc"` |
+| `spec_url` | `string` | `auto-derived` | Route path to the specification file to load                         |
+
+### 3. `openapi "template"`
+
+Renders a user-supplied HTML template populated with manifest metadata and specification coordinates.
+
+```hcl
+# External template file
+endpoint "GET /portal" {
+  openapi "template" {
+    file     = "./custom-portal.html"
+    spec_url = "/openapi.json"
+  }
+}
+
+# Inline template string
+endpoint "GET /docs" {
+  openapi "template" {
+    inline = <<-HTML
+      <!DOCTYPE html>
+      <html>
+        <head><title>{{ .Title }}</title></head>
+        <body><div id="scalar" data-spec-url="{{ .SpecURL }}"></div></body>
+      </html>
+    HTML
+  }
+}
+```
+
+| Attribute  | Type     | Required | Description                                                                                        |
+| :--------- | :------- | :------- | :------------------------------------------------------------------------------------------------- |
+| `file`     | `string` | one of   | Path to HTML template file, resolved relative to the directory of the manifest file where declared |
+| `inline`   | `string` | one of   | Inline template string (heredoc)                                                                   |
+| `spec_url` | `string` | no       | Route path passed into `.SpecURL` (auto-derived if omitted)                                        |
+
+_Exactly one of `file` or `inline` must be provided. Setting both or neither fails boot validation._

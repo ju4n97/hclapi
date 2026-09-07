@@ -638,11 +638,9 @@ func TestEngine_OpenAPIRoutes(t *testing.T) {
 	t.Parallel()
 
 	eng := newTestEngine(t, `
-server {
-  openapi {
-    title   = "Store API"
-    version = "1.0.0"
-  }
+openapi {
+  title   = "Store API"
+  version = "1.0.0"
 }
 
 endpoint "GET /docs" {

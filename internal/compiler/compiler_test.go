@@ -38,12 +38,16 @@ server {
   port          = 9000
   read_timeout  = "30s"
   max_body_size = "25MB"
+}
 
-  openapi {
-    title       = "Store API"
-    version     = "2.0.0"
-    description = "Production API"
-  }
+openapi {
+  title       = "Store API"
+  version     = "2.0.0"
+  description = "Production API"
+}
+
+problem {
+  type_prefix = "https://docs.example.com/errors/"
 }
 
 connection "postgres" "primary" {
@@ -109,8 +113,8 @@ endpoint "POST /api/v1/users" {
 	if service.Server.MaxBodySize.Bytes() != 25*1000*1000 {
 		t.Errorf("expected max_body_size 25MB, got %d", service.Server.MaxBodySize.Bytes())
 	}
-	if service.Server.OpenAPI.Title != "Store API" || service.Server.OpenAPI.Version != "2.0.0" {
-		t.Errorf("unexpected openapi title/version: %+v", service.Server.OpenAPI)
+	if service.OpenAPI.Title != "Store API" || service.OpenAPI.Version != "2.0.0" {
+		t.Errorf("unexpected openapi title/version: %+v", service.OpenAPI)
 	}
 
 	// Verify Connections compilation

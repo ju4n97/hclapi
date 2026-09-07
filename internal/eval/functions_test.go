@@ -110,10 +110,8 @@ func TestFunctions_System(t *testing.T) {
 		t.Parallel()
 
 		execCtx := &runtime.ExecutionContext{
-			Server: manifest.Server{
-				Problem: manifest.ProblemConfig{
-					TypePrefix: "https://docs.example.com/errors/",
-				},
+			Problem: manifest.ProblemConfig{
+				TypePrefix: "https://docs.example.com/errors/",
 			},
 			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/42", http.NoBody),
 		}

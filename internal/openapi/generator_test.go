@@ -18,27 +18,27 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	service := &compiler.CompiledService{
 		Server: manifest.Server{
 			MaxBodySize: scalar.ByteSize(10 * 1024 * 1024),
-			OpenAPI: manifest.OpenAPIConfig{
-				Title:       "Acme Store API",
-				Version:     "1.0.0",
-				Description: "Comprehensive API specification for testing.",
-				Servers: []manifest.OpenAPIServer{
-					{URL: "https://api.example.com/v1", Description: "Production"},
-					{URL: "http://localhost:8080", Description: "Local"},
-				},
-				Tags: []manifest.OpenAPITag{
-					{Name: "users", Description: "User account management"},
-					{Name: "orders", Description: "Order processing"},
-				},
-				Contact: &manifest.OpenAPIContact{
-					Name:  "API Support",
-					Email: "support@example.com",
-					URL:   "https://example.com/support",
-				},
-				License: &manifest.OpenAPILicense{
-					Name: "MIT",
-					URL:  "https://opensource.org/licenses/MIT",
-				},
+		},
+		OpenAPI: manifest.OpenAPIConfig{
+			Title:       "Acme Store API",
+			Version:     "1.0.0",
+			Description: "Comprehensive API specification for testing.",
+			Servers: []manifest.OpenAPIServer{
+				{URL: "https://api.example.com/v1", Description: "Production"},
+				{URL: "http://localhost:8080", Description: "Local"},
+			},
+			Tags: []manifest.OpenAPITag{
+				{Name: "users", Description: "User account management"},
+				{Name: "orders", Description: "Order processing"},
+			},
+			Contact: &manifest.OpenAPIContact{
+				Name:  "API Support",
+				Email: "support@example.com",
+				URL:   "https://example.com/support",
+			},
+			License: &manifest.OpenAPILicense{
+				Name: "MIT",
+				URL:  "https://opensource.org/licenses/MIT",
 			},
 		},
 		Schemas: map[string][]manifest.Field{

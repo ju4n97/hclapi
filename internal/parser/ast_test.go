@@ -35,9 +35,6 @@ func TestServerBlock_ToServer(t *testing.T) {
 			WriteTimeout: new("45s"),
 			IdleTimeout:  new("2m"),
 			MaxBodySize:  new("50MB"),
-			Problem: &parser.ServerProblemBlock{
-				TypePrefix: new("https://docs.example.com/errors/"),
-			},
 		}
 
 		srv, err := block.ToServer()
@@ -53,9 +50,6 @@ func TestServerBlock_ToServer(t *testing.T) {
 		}
 		if srv.MaxBodySize.Bytes() != 50*1000*1000 {
 			t.Errorf("expected max body size 50MB, got %d", srv.MaxBodySize.Bytes())
-		}
-		if srv.Problem.TypePrefix != "https://docs.example.com/errors/" {
-			t.Errorf("unexpected problem base URL: %q", srv.Problem.TypePrefix)
 		}
 	})
 
@@ -80,6 +74,79 @@ func TestServerBlock_ToServer(t *testing.T) {
 		_, err := block.ToServer()
 		if err == nil {
 			t.Fatal("expected error for invalid byte size, got nil")
+		}
+	})
+}
+
+func TestProblemBlock_ToProblem(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Maps prefix cleanly", func(t *testing.T) {
+		t.Parallel()
+
+		block := &parser.ProblemBlock{
+			TypePrefix: new("https://docs.example.com/errors/"),
+		}
+
+		p := block.ToProblem()
+		if p.TypePrefix != "https://docs.example.com/errors/" {
+			t.Errorf("expected prefix, got %q", p.TypePrefix)
+		}
+		if p.ProblemType("not-found") != "https://docs.example.com/errors/not-found" {
+			t.Errorf("unexpected ProblemType: %q", p.ProblemType("not-found"))
+		}
+	})
+
+	t.Run("Handles nil block", func(t *testing.T) {
+		t.Parallel()
+
+		var block *parser.ProblemBlock
+		p := block.ToProblem()
+		if p.TypePrefix != "" {
+			t.Errorf("expected empty prefix, got %q", p.TypePrefix)
+		}
+	})
+}
+
+func TestOpenAPIBlock_ToOpenAPI(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Maps metadata and evaluable servers and tags", func(t *testing.T) {
+		t.Parallel()
+
+		block := &parser.OpenAPIBlock{
+			Title:       new("Acme API"),
+			Version:     new("2.0.0"),
+			Description: new("API docs"),
+			Servers:     parseHCL(t, `[{ url = "https://api.example.com", description = "prod" }]`),
+			Tags:        parseHCL(t, `[{ name = "users", description = "User endpoints" }]`),
+			Contact: &parser.OpenAPIContactBlock{
+				Name: new("Support"),
+			},
+			License: &parser.OpenAPILicenseBlock{
+				Name: new("Apache-2.0"),
+			},
+		}
+
+		cfg, err := block.ToOpenAPI(eval.BaseContext())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if cfg.Title != "Acme API" || cfg.Version != "2.0.0" {
+			t.Errorf("unexpected title/version: %+v", cfg)
+		}
+		if len(cfg.Servers) != 1 || cfg.Servers[0].URL != "https://api.example.com" {
+			t.Errorf("unexpected servers: %+v", cfg.Servers)
+		}
+		if len(cfg.Tags) != 1 || cfg.Tags[0].Name != "users" {
+			t.Errorf("unexpected tags: %+v", cfg.Tags)
+		}
+		if cfg.Contact == nil || cfg.Contact.Name != "Support" {
+			t.Errorf("unexpected contact: %+v", cfg.Contact)
+		}
+		if cfg.License == nil || cfg.License.Name != "Apache-2.0" {
+			t.Errorf("unexpected license: %+v", cfg.License)
 		}
 	})
 }

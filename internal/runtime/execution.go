@@ -63,14 +63,15 @@ func (r *RequestState) Header(key string) string {
 	return r.Headers[strings.ToLower(key)]
 }
 
-// ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
+// Add to ExecutionContext struct:
 type ExecutionContext struct {
-	Request        *RequestState         `json:"request"`
-	Steps          map[string]StepResult `json:"steps"`
-	TimestampEpoch int64                 `json:"timestamp_epoch"`
-	IngressTime    time.Time             `json:"-"`
-	Server         manifest.Server       `json:"-"`
-	RawRequest     *http.Request         `json:"-"`
+	Request        *RequestState          `json:"request"`
+	Steps          map[string]StepResult  `json:"steps"`
+	TimestampEpoch int64                  `json:"timestamp_epoch"`
+	IngressTime    time.Time              `json:"-"`
+	Server         manifest.Server        `json:"-"`
+	Problem        manifest.ProblemConfig `json:"-"`
+	RawRequest     *http.Request          `json:"-"`
 
 	mu sync.RWMutex
 }
@@ -98,6 +99,7 @@ type StepHandler func(ctx context.Context, step *Step) (any, error)
 type executionContextConfig struct {
 	pathParams []string
 	server     manifest.Server
+	problem    manifest.ProblemConfig
 }
 
 // ExecutionContextOption configures optional behavior during context creation.
@@ -111,6 +113,11 @@ func WithPathParams(paramNames []string) ExecutionContextOption {
 // WithServer attaches the resolved server configuration to the execution context.
 func WithServer(server manifest.Server) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.server = server }
+}
+
+// WithProblem attaches the resolved problem configuration to the execution context.
+func WithProblem(problem manifest.ProblemConfig) ExecutionContextOption {
+	return func(c *executionContextConfig) { c.problem = problem }
 }
 
 // NewExecutionContext parses the incoming HTTP request, enforces body limits, and initializes state.
@@ -191,6 +198,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 		TimestampEpoch: ingressTime.Unix(),
 		IngressTime:    ingressTime,
 		Server:         cfg.server.WithDefaults(),
+		Problem:        cfg.problem,
 		RawRequest:     r,
 	}, nil
 }
@@ -266,6 +274,7 @@ func (e *ExecutionContext) WithContext(ctx context.Context) *ExecutionContext {
 		TimestampEpoch: e.TimestampEpoch,
 		IngressTime:    e.IngressTime,
 		Server:         e.Server,
+		Problem:        e.Problem,
 		RawRequest:     rawReq,
 	}
 }

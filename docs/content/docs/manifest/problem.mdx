@@ -1,0 +1,20 @@
+---
+title: problem
+description: Configure API-wide RFC 9457 Problem Details error type resolution.
+---
+
+Declares API-wide configuration for [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) error responses. Controls how error type URIs are generated across ingress validation, pipeline steps, and the compiled OpenAPI specification.
+
+## Declaration
+
+```hcl
+problem {
+  type_prefix = "https://docs.mycompany.com/errors/"
+}
+```
+
+## Attributes
+
+| Attribute     | Type     | Default | Description                                             |
+| :------------ | :------- | :------ | :------------------------------------------------------ |
+| `type_prefix` | `string` | `""`    | Base URI prefix for human-readable error documentation. |

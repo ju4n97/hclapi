@@ -105,13 +105,15 @@ func New(options manifest.Options) (*Engine, error) {
 		}
 	}
 
-	// Bind compiled endpoints to the HTTP router
 	for _, endpoint := range service.Endpoints {
 		if endpoint.OpenAPI != nil {
-			if endpoint.OpenAPI.Format != "" {
+			switch endpoint.OpenAPI.Mode {
+			case compiler.OpenAPIModeSpec:
 				logger.Info("mounted openapi specification", "route", endpoint.MethodAndPath, "format", endpoint.OpenAPI.Format)
-			} else {
-				logger.Info("mounted interactive documentation", "route", endpoint.MethodAndPath, "renderer", endpoint.OpenAPI.UI)
+			case compiler.OpenAPIModeUI:
+				logger.Info("mounted interactive documentation", "route", endpoint.MethodAndPath, "renderer", endpoint.OpenAPI.Renderer)
+			case compiler.OpenAPIModeTemplate:
+				logger.Info("mounted custom documentation template", "route", endpoint.MethodAndPath)
 			}
 			e.bindOpenAPIRoute(endpoint, specJSON, specYAML)
 		} else {
@@ -126,50 +128,51 @@ func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, 
 	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
 		handler := endpoint.OpenAPI
 
-		if strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml") {
-			w.Header().Set("Content-Type", "application/yaml")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(specYAML)
-			return
-		}
+		switch handler.Mode {
+		case compiler.OpenAPIModeSpec:
+			if strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml") {
+				w.Header().Set("Content-Type", "application/yaml")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(specYAML)
+				return
+			}
 
-		if strings.EqualFold(handler.Format, "json") {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(specJSON)
 			return
-		}
 
-		// Interactive documentation UI
-		specURL := handler.SpecURL
-		if specURL == "" {
-			specURL = "/openapi"
-		}
+		case compiler.OpenAPIModeUI, compiler.OpenAPIModeTemplate:
+			specURL := handler.SpecURL
+			if specURL == "" {
+				specURL = "/openapi"
+			}
 
-		data := openapi.TemplateData{
-			Title:       handler.Title,
-			Version:     handler.Version,
-			Description: handler.Description,
-			SpecURL:     specURL + ".json",
-			SpecYAMLURL: specURL + ".yaml",
-		}
+			data := openapi.TemplateData{
+				Title:       handler.Title,
+				Version:     handler.Version,
+				Description: handler.Description,
+				SpecURL:     specURL + ".json",
+				SpecYAMLURL: specURL + ".yaml",
+			}
 
-		htmlBytes, err := openapi.RenderHTML(handler.UI, data, handler.Template, handler.TemplateFile, handler.BaseDir)
-		if err != nil {
-			e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
-			e.errorHandler(w, r, problem.Problem{
-				Type:     e.problem.ProblemType("internal-error"),
-				Title:    "Documentation Render Error",
-				Status:   http.StatusInternalServerError,
-				Detail:   err.Error(),
-				Instance: r.URL.Path,
-			})
-			return
-		}
+			htmlBytes, err := openapi.RenderHTML(handler.Renderer, data, handler.Template, "", "")
+			if err != nil {
+				e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
+				e.errorHandler(w, r, problem.Problem{
+					Type:     e.problem.ProblemType("internal-error"),
+					Title:    "Documentation Render Error",
+					Status:   http.StatusInternalServerError,
+					Detail:   err.Error(),
+					Instance: r.URL.Path,
+				})
+				return
+			}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(htmlBytes)
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(htmlBytes)
+		}
 	})
 }
 

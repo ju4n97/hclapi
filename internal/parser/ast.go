@@ -426,22 +426,24 @@ func (r *RequestBlock) Decode(evalCtx *hcl.EvalContext) error {
 
 // EndpointBlock represents a single HTTP route declaration block.
 type EndpointBlock struct {
-	MethodAndPath string                `hcl:"name,label"`
-	Description   *string               `hcl:"description,attr"`
-	Request       *RequestBlock         `hcl:"request,block"`
-	Pipeline      *PipelineBlock        `hcl:"pipeline,block"`
-	OpenAPI       *EndpointOpenAPIBlock `hcl:"openapi,block"`
-	Remain        hcl.Body              `hcl:",remain"`
+	MethodAndPath string                 `hcl:"name,label"`
+	Description   *string                `hcl:"description,attr"`
+	Request       *RequestBlock          `hcl:"request,block"`
+	Pipeline      *PipelineBlock         `hcl:"pipeline,block"`
+	OpenAPI       []EndpointOpenAPIBlock `hcl:"openapi,block"`
+	Remain        hcl.Body               `hcl:",remain"`
 }
 
-// EndpointOpenAPIBlock represents the endpoint.openapi {} metadata block in endpoint.
+// EndpointOpenAPIBlock represents an endpoint.openapi "<mode>" {} block.
 type EndpointOpenAPIBlock struct {
-	UI           *string  `hcl:"ui,optional"`
+	Mode         string   `hcl:"mode,label"`
+	Renderer     *string  `hcl:"renderer,optional"`
 	Format       *string  `hcl:"format,optional"`
 	SpecURL      *string  `hcl:"spec_url,optional"`
-	Template     *string  `hcl:"template,optional"`
-	TemplateFile *string  `hcl:"template_file,optional"`
+	File         *string  `hcl:"file,optional"`
+	Inline       *string  `hcl:"inline,optional"`
 	Remain       hcl.Body `hcl:",remain"`
+	DeclaringDir string   // Injected during parsing for file-relative path resolution
 }
 
 // PipelineBlock encapsulates the raw HCL body of pipeline steps to preserve definition order.

@@ -2,6 +2,8 @@ package compiler
 
 import (
 	"fmt"
+	"net/http"
+	"os"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -18,17 +20,25 @@ type CompiledRequestRules struct {
 	BodyFields   []manifest.Field
 }
 
+// OpenAPIMode represents the operational mode of an openapi endpoint handler.
+type OpenAPIMode string
+
+const (
+	OpenAPIModeSpec     OpenAPIMode = "spec"
+	OpenAPIModeUI       OpenAPIMode = "ui"
+	OpenAPIModeTemplate OpenAPIMode = "template"
+)
+
 // CompiledOpenAPIHandler holds configuration for an endpoint that serves documentation or raw specifications.
 type CompiledOpenAPIHandler struct {
-	UI           string
-	Format       string
-	SpecURL      string
-	Template     string
-	TemplateFile string
-	BaseDir      string
-	Title        string
-	Version      string
-	Description  string
+	Mode        OpenAPIMode
+	Format      string
+	Renderer    string
+	SpecURL     string
+	Template    string
+	Title       string
+	Version     string
+	Description string
 }
 
 // CompiledEndpoint represents a fully verified and compiled HTTP route.
@@ -164,36 +174,151 @@ func compileEndpoints(
 		}
 
 		hasPipeline := ep.Pipeline != nil && ep.Pipeline.Body != nil
-		hasOpenAPI := ep.OpenAPI != nil
+		hasOpenAPI := len(ep.OpenAPI) > 0
 
+		// Invariant 1: Single OpenAPI block per endpoint
+		if len(ep.OpenAPI) > 1 {
+			modes := make([]string, len(ep.OpenAPI))
+			for i, o := range ep.OpenAPI {
+				modes[i] = fmt.Sprintf("%q", o.Mode)
+			}
+			return nil, fmt.Errorf(
+				"endpoint %q defines multiple openapi handlers (%s)",
+				ep.MethodAndPath,
+				strings.Join(modes, ", "),
+			)
+		}
+
+		// Invariant 2: Mutual exclusion between pipeline and openapi
+		if hasPipeline && hasOpenAPI {
+			return nil, fmt.Errorf(
+				"endpoint %q defines conflicting handlers: 'openapi %q' and 'pipeline'",
+				ep.MethodAndPath,
+				ep.OpenAPI[0].Mode,
+			)
+		}
+
+		// Invariant 3: Must declare at least one handler
 		if !hasPipeline && !hasOpenAPI {
 			return nil, fmt.Errorf("endpoint %q: must declare either a pipeline or an openapi block", ep.MethodAndPath)
 		}
-		if hasPipeline && hasOpenAPI {
-			return nil, fmt.Errorf("endpoint %q: cannot declare both pipeline and openapi blocks", ep.MethodAndPath)
-		}
 
+		// Compile OpenAPI Handler
 		if hasOpenAPI {
+			// Invariant 4: No request schema block allowed on openapi endpoints
+			if ep.Request != nil {
+				return nil, fmt.Errorf(
+					"endpoint %q: openapi endpoints are engine-managed and do not accept a 'request' block",
+					ep.MethodAndPath,
+				)
+			}
+
+			// Invariant 5: Method enforcement (GET and HEAD only)
+			method, _, err := splitMethodAndPath(ep.MethodAndPath)
+			if err != nil {
+				return nil, err
+			}
+			if method != http.MethodGet && method != http.MethodHead {
+				return nil, fmt.Errorf(
+					"endpoint %q is invalid; openapi endpoints only support HTTP GET and HEAD",
+					ep.MethodAndPath,
+				)
+			}
+
+			raw := ep.OpenAPI[0]
 			handler := &CompiledOpenAPIHandler{
-				UI:          "scalar",
 				Title:       openapiConfig.Title,
 				Version:     openapiConfig.Version,
 				Description: openapiConfig.Description,
 			}
-			if ep.OpenAPI.UI != nil {
-				handler.UI = *ep.OpenAPI.UI
+			if raw.SpecURL != nil {
+				handler.SpecURL = *raw.SpecURL
 			}
-			if ep.OpenAPI.Format != nil {
-				handler.Format = *ep.OpenAPI.Format
-			}
-			if ep.OpenAPI.SpecURL != nil {
-				handler.SpecURL = *ep.OpenAPI.SpecURL
-			}
-			if ep.OpenAPI.Template != nil {
-				handler.Template = *ep.OpenAPI.Template
-			}
-			if ep.OpenAPI.TemplateFile != nil {
-				handler.TemplateFile = *ep.OpenAPI.TemplateFile
+
+			switch OpenAPIMode(raw.Mode) {
+			case OpenAPIModeSpec:
+				if raw.Renderer != nil || raw.File != nil || raw.Inline != nil {
+					return nil, fmt.Errorf(
+						"endpoint %q: openapi \"spec\" only accepts the 'format' attribute",
+						ep.MethodAndPath,
+					)
+				}
+				format := "json"
+				if raw.Format != nil {
+					f := strings.ToLower(strings.TrimSpace(*raw.Format))
+					if f != "json" && f != "yaml" && f != "yml" {
+						return nil, fmt.Errorf(
+							"endpoint %q: invalid openapi format %q; must be 'json' or 'yaml'",
+							ep.MethodAndPath,
+							*raw.Format,
+						)
+					}
+					format = f
+				}
+				handler.Mode = OpenAPIModeSpec
+				handler.Format = format
+
+			case OpenAPIModeUI:
+				if raw.Format != nil || raw.File != nil || raw.Inline != nil {
+					return nil, fmt.Errorf(
+						"endpoint %q: openapi \"ui\" only accepts 'renderer' and 'spec_url' attributes",
+						ep.MethodAndPath,
+					)
+				}
+				renderer := "scalar"
+				if raw.Renderer != nil {
+					r := strings.ToLower(strings.TrimSpace(*raw.Renderer))
+					switch r {
+					case "scalar", "elements", "swagger", "redoc":
+						renderer = r
+					default:
+						return nil, fmt.Errorf(
+							"endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'",
+							ep.MethodAndPath,
+							*raw.Renderer,
+						)
+					}
+				}
+				handler.Mode = OpenAPIModeUI
+				handler.Renderer = renderer
+
+			case OpenAPIModeTemplate:
+				if raw.Format != nil || raw.Renderer != nil {
+					return nil, fmt.Errorf(
+						"endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes",
+						ep.MethodAndPath,
+					)
+				}
+				if (raw.File == nil && raw.Inline == nil) || (raw.File != nil && raw.Inline != nil) {
+					return nil, fmt.Errorf(
+						"endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'",
+						ep.MethodAndPath,
+					)
+				}
+
+				handler.Mode = OpenAPIModeTemplate
+				if raw.Inline != nil {
+					handler.Template = *raw.Inline
+				} else if raw.File != nil {
+					resolvedPath := manifest.ResolveRelativePath(*raw.File, raw.DeclaringDir)
+					content, err := os.ReadFile(resolvedPath)
+					if err != nil {
+						return nil, fmt.Errorf(
+							"endpoint %q: read template file %q: %w",
+							ep.MethodAndPath,
+							*raw.File,
+							err,
+						)
+					}
+					handler.Template = string(content)
+				}
+
+			default:
+				return nil, fmt.Errorf(
+					"endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"",
+					ep.MethodAndPath,
+					raw.Mode,
+				)
 			}
 
 			endpoints = append(endpoints, CompiledEndpoint{
@@ -316,4 +441,12 @@ func compileRequestRules(
 	}
 
 	return rules, nil
+}
+
+func splitMethodAndPath(raw string) (string, string, error) {
+	parts := strings.Fields(strings.TrimSpace(raw))
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid route label %q", raw)
+	}
+	return strings.ToUpper(parts[0]), parts[1], nil
 }

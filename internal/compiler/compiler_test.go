@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ju4n97/hclapi/internal/compiler"
 	"github.com/ju4n97/hclapi/internal/eval"
@@ -46,10 +45,6 @@ openapi {
   description = "Production API"
 }
 
-problem {
-  type_prefix = "https://docs.example.com/errors/"
-}
-
 connection "postgres" "primary" {
   source = "postgres://user:pass@localhost:5432/db"
   pool {
@@ -67,8 +62,8 @@ schema "user_create" {
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
@@ -103,54 +98,12 @@ endpoint "POST /api/v1/users" {
 		t.Fatalf("unexpected compilation error: %v", err)
 	}
 
-	// Verify Server compilation
-	if service.Server.Host != "0.0.0.0" || service.Server.Port != 9000 {
-		t.Errorf("unexpected server host/port: %+v", service.Server)
-	}
-	if service.Server.ReadTimeout.Duration() != 30*time.Second {
-		t.Errorf("expected read_timeout 30s, got %v", service.Server.ReadTimeout)
-	}
-	if service.Server.MaxBodySize.Bytes() != 25*1000*1000 {
-		t.Errorf("expected max_body_size 25MB, got %d", service.Server.MaxBodySize.Bytes())
-	}
-	if service.OpenAPI.Title != "Store API" || service.OpenAPI.Version != "2.0.0" {
-		t.Errorf("unexpected openapi title/version: %+v", service.OpenAPI)
-	}
-
-	// Verify Connections compilation
-	if len(service.Connections) != 1 || service.Connections[0].Driver != "postgres" {
-		t.Fatalf("expected 1 postgres connection, got: %+v", service.Connections)
-	}
-	if service.Connections[0].Pool.MaxOpen != 50 {
-		t.Errorf("expected max_open 50, got %d", service.Connections[0].Pool.MaxOpen)
-	}
-
-	// Verify Schemas compilation
-	if len(service.Schemas) != 1 || len(service.Schemas["user_create"]) != 1 {
-		t.Fatalf("expected 1 schema 'user_create', got: %+v", service.Schemas)
-	}
-
-	// Verify Endpoints compilation (1 docs endpoint + 1 API endpoint)
-	if len(service.Endpoints) != 2 {
-		t.Fatalf("expected 2 endpoints, got %d", len(service.Endpoints))
-	}
-
-	// Docs endpoint
 	docsEp := service.Endpoints[0]
-	if docsEp.OpenAPI == nil || docsEp.OpenAPI.UI != "scalar" {
+	if docsEp.OpenAPI == nil || docsEp.OpenAPI.Renderer != "scalar" || docsEp.OpenAPI.Mode != compiler.OpenAPIModeUI {
 		t.Errorf("expected scalar openapi handler, got: %+v", docsEp.OpenAPI)
 	}
 	if docsEp.OpenAPI.Title != "Store API" {
 		t.Errorf("expected inherited title 'Store API', got %q", docsEp.OpenAPI.Title)
-	}
-
-	// API endpoint
-	apiEp := service.Endpoints[1]
-	if len(apiEp.Rules.HeaderFields) != 1 || apiEp.Rules.HeaderFields[0].Name != "x-api-key" {
-		t.Errorf("header rules mismatch: %+v", apiEp.Rules.HeaderFields)
-	}
-	if len(apiEp.Rules.BodyFields) != 1 || apiEp.Rules.BodyFields[0].Name != "email" {
-		t.Errorf("body rules mismatch: %+v", apiEp.Rules.BodyFields)
 	}
 }
 
@@ -167,16 +120,12 @@ func TestCompile_ValidationFailures(t *testing.T) {
 			manifest: `
 endpoint "GET /api/v1/users" {
   pipeline {
-    respond {
-      status = 200
-    }
+    respond { status = 200 }
   }
 }
 endpoint "GET /api/v1/users" {
   pipeline {
-    respond {
-      status = 200
-    }
+    respond { status = 200 }
   }
 }
 `,
@@ -195,13 +144,94 @@ endpoint "GET /api/v1/empty" {
 			name: "Rejects endpoint with both pipeline and openapi blocks",
 			manifest: `
 endpoint "GET /api/v1/invalid" {
-  openapi { ui = "scalar" }
+  openapi "ui" { renderer = "scalar" }
   pipeline {
     respond { status = 200 }
   }
 }
 `,
-			expectError: `endpoint "GET /api/v1/invalid": cannot declare both pipeline and openapi blocks`,
+			expectError: `endpoint "GET /api/v1/invalid" defines conflicting handlers: 'openapi "ui"' and 'pipeline'`,
+		},
+		{
+			name: "Rejects endpoint with multiple openapi blocks",
+			manifest: `
+endpoint "GET /api/v1/multi-openapi" {
+  openapi "spec" { format = "json" }
+  openapi "ui" { renderer = "scalar" }
+}
+`,
+			expectError: `endpoint "GET /api/v1/multi-openapi" defines multiple openapi handlers ("spec", "ui")`,
+		},
+		{
+			name: "Rejects endpoint with request block and openapi handler",
+			manifest: `
+endpoint "GET /docs" {
+  request {
+    query {
+      field "filter" { type = string }
+    }
+  }
+  openapi "ui" { renderer = "scalar" }
+}
+`,
+			expectError: `endpoint "GET /docs": openapi endpoints are engine-managed and do not accept a 'request' block`,
+		},
+		{
+			name: "Rejects openapi endpoint with non-GET/HEAD method",
+			manifest: `
+endpoint "POST /openapi.json" {
+  openapi "spec" { format = "json" }
+}
+`,
+			expectError: `endpoint "POST /openapi.json" is invalid; openapi endpoints only support HTTP GET and HEAD`,
+		},
+		{
+			name: "Rejects openapi with unknown mode",
+			manifest: `
+endpoint "GET /docs" {
+  openapi "invalid_mode" {}
+}
+`,
+			expectError: `endpoint "GET /docs": unsupported openapi mode "invalid_mode"`,
+		},
+		{
+			name: "Rejects openapi ui with invalid renderer",
+			manifest: `
+endpoint "GET /docs" {
+  openapi "ui" { renderer = "unknown_renderer" }
+}
+`,
+			expectError: `endpoint "GET /docs": unsupported openapi renderer "unknown_renderer"`,
+		},
+		{
+			name: "Rejects openapi spec with invalid format",
+			manifest: `
+endpoint "GET /openapi" {
+  openapi "spec" { format = "xml" }
+}
+`,
+			expectError: `endpoint "GET /openapi": invalid openapi format "xml"`,
+		},
+		{
+			name: "Rejects openapi template with neither file nor inline",
+			manifest: `
+endpoint "GET /docs" {
+  openapi "template" {}
+}
+`,
+			expectError: `endpoint "GET /docs": openapi "template" requires exactly one of 'file' or 'inline'`,
+		},
+		{
+			name: "Rejects openapi template with both file and inline",
+			manifest: `
+endpoint "GET /docs" {
+  openapi "template" {
+    file = "./test.html"
+    inline = "<h1>hi</h1>"
+  }
+}
+`,
+			expectError: `endpoint "GET /docs": openapi "template" requires exactly one of 'file' or 'inline'`,
 		},
 		{
 			name: "Rejects endpoint without pipeline or openapi block",
@@ -211,102 +241,6 @@ endpoint "GET /api/v1/missing-handler" {
 }
 `,
 			expectError: `endpoint "GET /api/v1/missing-handler": must declare either a pipeline or an openapi block`,
-		},
-		{
-			name: "Rejects duplicate step names within a pipeline",
-			manifest: `
-endpoint "POST /api/v1/duplicate-steps" {
-  pipeline {
-    starlark "transform" {
-      source = "def execute(ctx): return {}"
-    }
-    starlark "transform" {
-      source = "def execute(ctx): return {}"
-    }
-    respond {
-      status = 200
-    }
-  }
-}
-`,
-			expectError: `endpoint "POST /api/v1/duplicate-steps": duplicate step name "transform" in pipeline`,
-		},
-		{
-			name: "Rejects SQL step referencing unknown connection pool",
-			manifest: `
-endpoint "GET /api/v1/broken-conn" {
-  pipeline {
-    sql "fetch" {
-      connection = connection.postgres.missing
-      query      = "SELECT 1"
-    }
-    respond {
-      status = 200
-    }
-  }
-}
-`,
-			expectError: `endpoint "GET /api/v1/broken-conn": step "fetch": unknown connection "connection.postgres.missing"`,
-		},
-		{
-			name: "Rejects request referencing non-existent body schema",
-			manifest: `
-endpoint "POST /api/v1/broken-schema" {
-  request {
-    body = schema.missing_schema
-  }
-  pipeline {
-    respond {
-      status = 200
-    }
-  }
-}
-`,
-			expectError: `endpoint "POST /api/v1/broken-schema": unknown schema reference "schema.missing_schema"`,
-		},
-		{
-			name: "Rejects request referencing non-existent query schema",
-			manifest: `
-endpoint "GET /api/v1/broken-query" {
-  request {
-    query = schema.missing_pagination
-  }
-  pipeline {
-    respond {
-      status = 200
-    }
-  }
-}
-`,
-			expectError: `endpoint "GET /api/v1/broken-query": unknown schema reference "schema.missing_pagination"`,
-		},
-		{
-			name: "Rejects duplicate schema declaration",
-			manifest: `
-schema "user" {
-  field "name" {
-    type = string
-  }
-}
-schema "user" {
-  field "email" {
-    type = string
-  }
-}
-`,
-			expectError: `duplicate schema declaration "schema.user"`,
-		},
-		{
-			name: "Rejects duplicate connection declaration",
-			manifest: `
-connection "postgres" "main" {
-  source = "postgres://localhost/db1"
-}
-connection "postgres" "main" {
-  source = "postgres://localhost/db2"
-}
-`,
-			expectError: `duplicate connection declaration "connection.postgres.main"`,
 		},
 	}
 

@@ -637,27 +637,45 @@ endpoint "POST /api/v1/checkout" {
 func TestEngine_OpenAPIRoutes(t *testing.T) {
 	t.Parallel()
 
-	eng := newTestEngine(t, `
+	tmpDir := t.TempDir()
+	templateFile := filepath.Join(tmpDir, "portal.html")
+	if err := os.WriteFile(templateFile, []byte("<h1>{{ .Title }} Portal</h1>"), 0o600); err != nil {
+		t.Fatalf("failed to write template: %v", err)
+	}
+
+	manifestContent := `
 openapi {
   title   = "Store API"
   version = "1.0.0"
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }
 
 endpoint "GET /openapi.yaml" {
-  openapi {
+  openapi "spec" {
     format = "yaml"
+  }
+}
+
+endpoint "GET /custom-inline" {
+  openapi "template" {
+    inline = "<h1>Inline {{ .Title }}</h1>"
+  }
+}
+
+endpoint "GET /custom-file" {
+  openapi "template" {
+    file = "./portal.html"
   }
 }
 
@@ -670,11 +688,18 @@ endpoint "GET /ping" {
     }
   }
 }
-`)
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.hcl"), []byte(manifestContent), 0o600); err != nil {
+		t.Fatalf("failed to write manifest: %v", err)
+	}
+
+	eng, err := engine.New(manifest.Options{ConfigPath: tmpDir})
+	if err != nil {
+		t.Fatalf("failed to init engine: %v", err)
+	}
 
 	t.Run("Serves interactive Scalar documentation at /docs", func(t *testing.T) {
 		t.Parallel()
-
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs", http.NoBody)
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -692,7 +717,6 @@ endpoint "GET /ping" {
 
 	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json", func(t *testing.T) {
 		t.Parallel()
-
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -703,10 +727,9 @@ endpoint "GET /ping" {
 		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
 			t.Errorf("expected application/json, got %q", ct)
 		}
-
 		var doc map[string]any
 		if err := json.NewDecoder(rec.Body).Decode(&doc); err != nil {
-			t.Fatalf("failed to parse JSON response: %v", err)
+			t.Fatalf("failed to parse JSON: %v", err)
 		}
 		if doc["openapi"] != "3.1.0" {
 			t.Errorf("expected openapi 3.1.0, got %v", doc["openapi"])
@@ -715,7 +738,6 @@ endpoint "GET /ping" {
 
 	t.Run("Serves raw OpenAPI 3.1 YAML at /openapi.yaml", func(t *testing.T) {
 		t.Parallel()
-
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.yaml", http.NoBody)
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -728,6 +750,34 @@ endpoint "GET /ping" {
 		}
 		if !strings.Contains(rec.Body.String(), "openapi: 3.1.0") {
 			t.Errorf("expected yaml header in response")
+		}
+	})
+
+	t.Run("Serves custom inline HTML template at /custom-inline", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/custom-inline", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "<h1>Inline Store API</h1>") {
+			t.Errorf("expected rendered inline template, got: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("Serves custom file HTML template at /custom-file resolved relative to manifest", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/custom-file", http.NoBody)
+		rec := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "<h1>Store API Portal</h1>") {
+			t.Errorf("expected rendered file template, got: %s", rec.Body.String())
 		}
 	})
 }

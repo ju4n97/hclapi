@@ -117,14 +117,19 @@ func parseFile(path string, p *hclparse.Parser, evalCtx *hcl.EvalContext) (*Mani
 		return nil, fmt.Errorf("decode %s: %s", path, diags.Error())
 	}
 
-	manifestDir, err := filepath.Abs(filepath.Dir(path))
-	if err == nil {
-		for i := range m.Connections {
-			m.Connections[i].Source = manifest.ResolveRelativePath(m.Connections[i].Source, manifestDir)
-		}
+	manifestDir := filepath.Dir(path)
+	if absDir, err := filepath.Abs(manifestDir); err == nil {
+		manifestDir = absDir
+	}
+
+	for i := range m.Connections {
+		m.Connections[i].Source = manifest.ResolveRelativePath(m.Connections[i].Source, manifestDir)
 	}
 
 	for i := range m.Endpoints {
+		for j := range m.Endpoints[i].OpenAPI {
+			m.Endpoints[i].OpenAPI[j].DeclaringDir = manifestDir
+		}
 		if m.Endpoints[i].Request != nil {
 			if err := m.Endpoints[i].Request.Decode(evalCtx); err != nil {
 				return nil, fmt.Errorf("endpoint %q: %w", m.Endpoints[i].MethodAndPath, err)

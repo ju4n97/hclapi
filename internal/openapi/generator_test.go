@@ -114,7 +114,8 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			{
 				MethodAndPath: "GET /docs",
 				OpenAPI: &compiler.CompiledOpenAPIHandler{
-					UI: "scalar",
+					Mode:     compiler.OpenAPIModeUI,
+					Renderer: "scalar",
 				},
 			},
 		},

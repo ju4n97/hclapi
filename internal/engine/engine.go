@@ -3,6 +3,8 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -85,8 +87,13 @@ func New(options manifest.Options) (*Engine, error) {
 		logger:       logger,
 	}
 
-	var specJSON []byte
-	var specYAML []byte
+	var (
+		specJSON     []byte
+		specYAML     []byte
+		specJSONETag string
+		specYAMLETag string
+	)
+
 	hasOpenAPI := false
 	for _, endpoint := range service.Endpoints {
 		if endpoint.OpenAPI != nil {
@@ -103,6 +110,12 @@ func New(options manifest.Options) (*Engine, error) {
 		if err != nil {
 			return nil, fmt.Errorf("generate OpenAPI 3.1 YAML: %w", err)
 		}
+
+		hJSON := sha256.Sum256(specJSON)
+		specJSONETag = fmt.Sprintf("%q", hex.EncodeToString(hJSON[:]))
+
+		hYAML := sha256.Sum256(specYAML)
+		specYAMLETag = fmt.Sprintf("%q", hex.EncodeToString(hYAML[:]))
 	}
 
 	for _, endpoint := range service.Endpoints {
@@ -115,7 +128,7 @@ func New(options manifest.Options) (*Engine, error) {
 			case compiler.OpenAPIModeTemplate:
 				logger.Info("mounted custom documentation template", "route", endpoint.MethodAndPath)
 			}
-			e.bindOpenAPIRoute(endpoint, specJSON, specYAML)
+			e.bindOpenAPIRoute(endpoint, specJSON, specYAML, specJSONETag, specYAMLETag)
 		} else {
 			e.bindRoute(endpoint)
 		}
@@ -124,36 +137,52 @@ func New(options manifest.Options) (*Engine, error) {
 	return e, nil
 }
 
-func (e *Engine) bindOpenAPIRoute(endpoint compiler.CompiledEndpoint, specJSON, specYAML []byte) {
+func (e *Engine) bindOpenAPIRoute(
+	endpoint compiler.CompiledEndpoint,
+	specJSON, specYAML []byte,
+	specJSONETag, specYAMLETag string,
+) {
 	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
 		handler := endpoint.OpenAPI
 
 		switch handler.Mode {
 		case compiler.OpenAPIModeSpec:
-			if strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml") {
-				w.Header().Set("Content-Type", "application/yaml")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write(specYAML)
+			isYAML := strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml")
+			contentType := "application/json"
+			body := specJSON
+			etag := specJSONETag
+			if isYAML {
+				contentType = "application/yaml"
+				body = specYAML
+				etag = specYAMLETag
+			}
+
+			w.Header().Set("Content-Type", contentType)
+			w.Header().Set("ETag", etag)
+
+			// RFC 7232 conditional evaluation
+			if match := r.Header.Get("If-None-Match"); match != "" && (match == etag || match == "*") {
+				w.WriteHeader(http.StatusNotModified)
 				return
 			}
 
-			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(specJSON)
+			_, _ = w.Write(body)
 			return
 
 		case compiler.OpenAPIModeUI, compiler.OpenAPIModeTemplate:
 			specURL := handler.SpecURL
-			if specURL == "" {
-				specURL = "/openapi"
+			specYAMLURL := strings.TrimSuffix(specURL, ".json") + ".yaml"
+			if strings.HasSuffix(specURL, ".yaml") || strings.HasSuffix(specURL, ".yml") {
+				specYAMLURL = specURL
 			}
 
 			data := openapi.TemplateData{
 				Title:       handler.Title,
 				Version:     handler.Version,
 				Description: handler.Description,
-				SpecURL:     specURL + ".json",
-				SpecYAMLURL: specURL + ".yaml",
+				SpecURL:     specURL,
+				SpecYAMLURL: specYAMLURL,
 			}
 
 			htmlBytes, err := openapi.RenderHTML(handler.Renderer, data, handler.Template, "", "")

@@ -781,3 +781,47 @@ endpoint "GET /ping" {
 		}
 	})
 }
+
+func TestEngine_OpenAPISpecCaching(t *testing.T) {
+	t.Parallel()
+
+	eng := newTestEngine(t, `
+openapi {
+  title   = "Cache API"
+  version = "1.0.0"
+}
+
+endpoint "GET /openapi.json" {
+  openapi "spec" {
+    format = "json"
+  }
+}
+`)
+
+	// Initial request returns ETag and 200 OK
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
+	rec := httptest.NewRecorder()
+	eng.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("expected ETag header on openapi spec response")
+	}
+
+	// Conditional request with matching If-None-Match returns 304 Not Modified
+	reqCond := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
+	reqCond.Header.Set("If-None-Match", etag)
+	recCond := httptest.NewRecorder()
+	eng.Handler().ServeHTTP(recCond, reqCond)
+
+	if recCond.Code != http.StatusNotModified {
+		t.Errorf("expected status 304 Not Modified, got %d", recCond.Code)
+	}
+	if recCond.Body.Len() != 0 {
+		t.Errorf("expected empty body on 304, got: %s", recCond.Body.String())
+	}
+}

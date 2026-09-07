@@ -167,6 +167,12 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 		if paths["/docs"] != nil {
 			t.Errorf("expected docs endpoint to be excluded from API routes")
 		}
+		if paths["/openapi.json"] != nil {
+			t.Errorf("expected openapi.json endpoint to be excluded from API routes")
+		}
+		if paths["/openapi.yaml"] != nil {
+			t.Errorf("expected openapi.yaml endpoint to be excluded from API routes")
+		}
 
 		// Verify Operation Parameters and Request Body
 		userPathItem := paths["/api/v1/users/{id}"].(map[string]any)

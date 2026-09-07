@@ -4,14 +4,14 @@ server {
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "elements"
+  openapi "ui" {
+    renderer = "elements"
   }
 }
 

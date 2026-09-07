@@ -1,12 +1,12 @@
 server {
   host = "127.0.0.1"
   port = 8080
+}
 
-  openapi {
-    title       = "ClickHouse Analytics API"
-    version     = "1.0.0"
-    description = "High-throughput telemetry ingestion and columnar aggregations in ClickHouse."
-  }
+openapi {
+  title       = "ClickHouse Analytics API"
+  version     = "1.0.0"
+  description = "High-throughput telemetry ingestion and columnar aggregations in ClickHouse."
 }
 
 connection "clickhouse" "main" {
@@ -18,20 +18,33 @@ connection "clickhouse" "main" {
 }
 
 schema "event_ingest" {
-  field "user_id" { type = int, required = true }
-  field "path" { type = string, required = true }
-  field "duration_ms" { type = int, required = true, min = 0 }
-  field "country" { type = string, default = "US" }
+  field "user_id" {
+    type     = int
+    required = true
+  }
+  field "path" {
+    type     = string
+    required = true
+  }
+  field "duration_ms" {
+    type     = int
+    required = true
+    min      = 0
+  }
+  field "country" {
+    type    = string
+    default = "US"
+  }
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }

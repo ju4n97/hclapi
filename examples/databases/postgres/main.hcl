@@ -1,12 +1,12 @@
 server {
   host = "127.0.0.1"
   port = 8080
+}
 
-  openapi {
-    title       = "PostgreSQL Members API"
-    version     = "1.0.0"
-    description = "Complete CRUD API backed by PostgreSQL with stored procedure execution."
-  }
+openapi {
+  title       = "PostgreSQL Members API"
+  version     = "1.0.0"
+  description = "Complete CRUD API backed by PostgreSQL with stored procedure execution."
 }
 
 connection "postgres" "main" {
@@ -62,13 +62,13 @@ schema "reward_points" {
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }

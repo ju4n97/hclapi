@@ -1,12 +1,12 @@
 server {
   host = "127.0.0.1"
   port = 8080
+}
 
-  openapi {
-    title       = "SQL Server 2022 Members API"
-    version     = "1.0.0"
-    description = "Complete CRUD API backed by Microsoft SQL Server with stored procedure execution."
-  }
+openapi {
+  title       = "SQL Server 2022 Members API"
+  version     = "1.0.0"
+  description = "Complete CRUD API backed by Microsoft SQL Server with stored procedure execution."
 }
 
 connection "sqlserver" "main" {
@@ -62,13 +62,13 @@ schema "reward_points" {
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }
@@ -110,13 +110,11 @@ endpoint "POST /api/v1/members" {
         tier  = ctx.request.body.tier
       }
 
-      # SQL Server Unique Constraint Violation Code (2627)
       catch "2627" {
         status = 409
         body   = problem(409, "Email address already registered", "email-collision")
       }
 
-      # SQL Server Unique Index Duplicate Key Code (2601)
       catch "2601" {
         status = 409
         body   = problem(409, "Email address already registered", "email-collision")

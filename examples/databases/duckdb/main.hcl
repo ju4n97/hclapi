@@ -1,12 +1,12 @@
 server {
   host = "127.0.0.1"
   port = 8080
+}
 
-  openapi {
-    title       = "DuckDB In-Memory Analytics"
-    version     = "1.0.0"
-    description = "In-process embedded columnar analytics with zero external servers."
-  }
+openapi {
+  title       = "DuckDB In-Memory Analytics"
+  version     = "1.0.0"
+  description = "In-process embedded columnar analytics with zero external servers."
 }
 
 connection "duckdb" "main" {
@@ -14,20 +14,33 @@ connection "duckdb" "main" {
 }
 
 schema "event_ingest" {
-  field "user_id" { type = int, required = true }
-  field "path" { type = string, required = true }
-  field "duration_ms" { type = int, required = true, min = 0 }
-  field "country" { type = string, default = "US" }
+  field "user_id" {
+    type     = int
+    required = true
+  }
+  field "path" {
+    type     = string
+    required = true
+  }
+  field "duration_ms" {
+    type     = int
+    required = true
+    min      = 0
+  }
+  field "country" {
+    type    = string
+    default = "US"
+  }
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }

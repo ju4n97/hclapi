@@ -4,7 +4,7 @@ server {
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }
@@ -12,8 +12,8 @@ endpoint "GET /openapi.json" {
 endpoint "GET /docs" {
   description = "Interactive API reference."
 
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
@@ -46,20 +46,20 @@ endpoint "POST /api/v1/sanitize" {
     starlark "format_tags" {
       source = <<-STARLARK
         def execute(ctx):
-            body = ctx.request.body or {}
-            prefix = body.get("prefix", "tag")
-            raw_tags = body.get("tags", [])
+          body = ctx.request.body or {}
+          prefix = body.get("prefix", "tag")
+          raw_tags = body.get("tags", [])
 
-            cleaned = list(set([
-                prefix + ":" + t.strip().lower()
-                for t in raw_tags
-                if len(t.strip()) > 0
-            ]))
+          cleaned = list(set([
+            prefix + ":" + t.strip().lower()
+            for t in raw_tags
+            if len(t.strip()) > 0
+          ]))
 
-            return {
-                "count": len(cleaned),
-                "tags": cleaned
-            }
+          return {
+            "count": len(cleaned),
+            "tags": cleaned
+          }
       STARLARK
     }
 

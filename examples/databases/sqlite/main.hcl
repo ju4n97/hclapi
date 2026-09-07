@@ -1,12 +1,12 @@
 server {
   host = "127.0.0.1"
   port = 8080
+}
 
-  openapi {
-    title       = "SQLite Members API"
-    version     = "1.0.0"
-    description = "Complete CRUD API backed by embedded SQLite with atomic mutation procedures."
-  }
+openapi {
+  title       = "SQLite Members API"
+  version     = "1.0.0"
+  description = "Complete CRUD API backed by embedded SQLite with atomic mutation procedures."
 }
 
 connection "sqlite" "main" {
@@ -60,13 +60,13 @@ schema "reward_points" {
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "scalar"
+  openapi "ui" {
+    renderer = "scalar"
   }
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }

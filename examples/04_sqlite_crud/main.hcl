@@ -30,18 +30,17 @@ schema "todo_update" {
 }
 
 endpoint "GET /openapi.json" {
-  openapi {
+  openapi "spec" {
     format = "json"
   }
 }
 
 endpoint "GET /docs" {
-  openapi {
-    ui = "swagger"
+  openapi "ui" {
+    renderer = "swagger"
   }
 }
 
-# List all todos
 endpoint "GET /api/v1/todos" {
   description = "Lists all stored todos."
 
@@ -58,7 +57,6 @@ endpoint "GET /api/v1/todos" {
   }
 }
 
-# Create todo
 endpoint "POST /api/v1/todos" {
   description = "Creates a new todo item."
 
@@ -96,7 +94,6 @@ endpoint "POST /api/v1/todos" {
   }
 }
 
-# Fetch single todo
 endpoint "GET /api/v1/todos/{id}" {
   description = "Fetches a single todo by ID."
 
@@ -129,7 +126,6 @@ endpoint "GET /api/v1/todos/{id}" {
   }
 }
 
-# Update todo
 endpoint "PUT /api/v1/todos/{id}" {
   description = "Updates an existing todo."
 
@@ -176,7 +172,6 @@ endpoint "PUT /api/v1/todos/{id}" {
   }
 }
 
-# Delete todo
 endpoint "DELETE /api/v1/todos/{id}" {
   description = "Deletes a todo item."
 

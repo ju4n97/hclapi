@@ -11,76 +11,69 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ju4n97/hclapi/internal/compiler"
+	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
-	"github.com/ju4n97/hclapi/internal/manifest"
-	"github.com/ju4n97/hclapi/internal/parser"
 )
 
-// Generate builds a validated OpenAPI 3.1.0 document from a CompiledService.
-func Generate(service *compiler.CompiledService) (*openapi3.T, error) {
+// Generate builds a validated OpenAPI 3.1.0 document from a validated *config.Config.
+func Generate(cfg *config.Config) (*openapi3.T, error) {
 	doc := &openapi3.T{
 		OpenAPI: "3.1.0",
 		Info: &openapi3.Info{
-			Title:       service.OpenAPI.Title,
-			Version:     service.OpenAPI.Version,
-			Description: service.OpenAPI.Description,
+			Title:       cfg.OpenAPI.Title,
+			Version:     cfg.OpenAPI.Version,
+			Description: cfg.OpenAPI.Description,
 		},
 		Paths:      openapi3.NewPaths(),
 		Components: &openapi3.Components{Schemas: make(openapi3.Schemas)},
 	}
 
-	if service.OpenAPI.Contact != nil {
+	if cfg.OpenAPI.Contact != nil {
 		doc.Info.Contact = &openapi3.Contact{
-			Name:  service.OpenAPI.Contact.Name,
-			Email: service.OpenAPI.Contact.Email,
-			URL:   service.OpenAPI.Contact.URL,
+			Name:  cfg.OpenAPI.Contact.Name,
+			Email: cfg.OpenAPI.Contact.Email,
+			URL:   cfg.OpenAPI.Contact.URL,
 		}
 	}
 
-	if service.OpenAPI.License != nil {
+	if cfg.OpenAPI.License != nil {
 		doc.Info.License = &openapi3.License{
-			Name: service.OpenAPI.License.Name,
-			URL:  service.OpenAPI.License.URL,
+			Name: cfg.OpenAPI.License.Name,
+			URL:  cfg.OpenAPI.License.URL,
 		}
 	}
 
-	for _, srv := range service.OpenAPI.Servers {
+	for _, srv := range cfg.OpenAPI.Servers {
 		doc.Servers = append(doc.Servers, &openapi3.Server{
 			URL:         srv.URL,
 			Description: srv.Description,
 		})
 	}
 
-	for _, tag := range service.OpenAPI.Tags {
+	for _, tag := range cfg.OpenAPI.Tags {
 		doc.Tags = append(doc.Tags, &openapi3.Tag{
 			Name:        tag.Name,
 			Description: tag.Description,
 		})
 	}
 
-	// Index standalone reusable schemas
-	for schemaName, fields := range service.Schemas {
-		schemaObj, err := fieldsToObjectSchema(fields)
+	// 1. Map reusable schema components
+	for schemaName, schema := range cfg.Schemas {
+		schemaObj, err := fieldsToObjectSchema(schema.Fields)
 		if err != nil {
 			return nil, fmt.Errorf("schema %q: %w", schemaName, err)
 		}
 		doc.Components.Schemas[schemaName] = &openapi3.SchemaRef{Value: schemaObj}
 	}
 
-	// Map API Endpoints
-	for _, endpoint := range service.Endpoints {
-		if endpoint.OpenAPI != nil {
-			continue // Skip documentation portal routes from API spec
+	// 2. Map API endpoints (excluding documentation UI and spec routes)
+	for _, endpoint := range cfg.Endpoints {
+		if _, isDocs := endpoint.Handler.(config.OpenAPIHandler); isDocs {
+			continue // Exclude documentation and spec routes from the operations catalog
 		}
 
-		method, pathPattern, err := splitMethodAndPath(endpoint.MethodAndPath)
-		if err != nil {
-			return nil, err
-		}
-
-		openapiPath := convertToOpenAPIPath(pathPattern)
-		op, err := buildOperation(endpoint, pathPattern)
+		openapiPath := convertToOpenAPIPath(endpoint.Path)
+		op, err := buildOperation(endpoint, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("endpoint %q: %w", endpoint.MethodAndPath, err)
 		}
@@ -90,10 +83,10 @@ func Generate(service *compiler.CompiledService) (*openapi3.T, error) {
 			pathItem = &openapi3.PathItem{}
 			doc.Paths.Set(openapiPath, pathItem)
 		}
-		pathItem.SetOperation(method, op)
+		pathItem.SetOperation(endpoint.Method, op)
 	}
 
-	// Built-in validation check via kin-openapi
+	// Validate spec adherence
 	if err := doc.Validate(context.Background()); err != nil {
 		return nil, fmt.Errorf("validate generated openapi spec: %w", err)
 	}
@@ -101,20 +94,19 @@ func Generate(service *compiler.CompiledService) (*openapi3.T, error) {
 	return doc, nil
 }
 
-func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3.Operation, error) {
+func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation, error) {
 	op := openapi3.NewOperation()
 	if ep.Description != "" {
 		op.Summary = ep.Description
 		op.Description = ep.Description
 	}
 
-	tag := deriveTag(pathPattern)
+	tag := deriveTag(ep.Path)
 	if tag != "" {
 		op.Tags = []string{tag}
 	}
 
-	// Path Parameters
-	for _, f := range ep.Rules.PathFields {
+	for _, f := range ep.RequestRules.PathFields {
 		s, err := fieldToSchema(f)
 		if err != nil {
 			return nil, err
@@ -127,8 +119,7 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 		op.AddParameter(param)
 	}
 
-	// Query Parameters
-	for _, f := range ep.Rules.QueryFields {
+	for _, f := range ep.RequestRules.QueryFields {
 		s, err := fieldToSchema(f)
 		if err != nil {
 			return nil, err
@@ -141,8 +132,7 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 		op.AddParameter(param)
 	}
 
-	// Header Parameters
-	for _, f := range ep.Rules.HeaderFields {
+	for _, f := range ep.RequestRules.HeaderFields {
 		s, err := fieldToSchema(f)
 		if err != nil {
 			return nil, err
@@ -155,9 +145,8 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 		op.AddParameter(param)
 	}
 
-	// Request Body
-	if len(ep.Rules.BodyFields) > 0 {
-		schema, err := fieldsToObjectSchema(ep.Rules.BodyFields)
+	if len(ep.RequestRules.BodyFields) > 0 {
+		schema, err := fieldsToObjectSchema(ep.RequestRules.BodyFields)
 		if err != nil {
 			return nil, err
 		}
@@ -167,18 +156,19 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 		op.RequestBody = &openapi3.RequestBodyRef{Value: reqBody}
 	}
 
-	// Responses derived statically from AST expressions
 	statusCodes := make(map[int]bool)
-	for _, step := range ep.Steps {
-		if step.Type == parser.StepTypeRespond && step.Respond != nil {
-			if code := evaluateStaticStatus(step.Respond.Status); code > 0 {
-				statusCodes[code] = true
-			}
-		}
-		if step.Type == parser.StepTypeSQL && step.SQL != nil {
-			for _, c := range step.SQL.Catches {
-				if code := evaluateStaticStatus(c.Status); code > 0 {
+	if pipeline, ok := ep.Handler.(config.PipelineHandler); ok {
+		for _, step := range pipeline.Steps {
+			if step.Type == config.StepTypeRespond && step.Respond != nil {
+				if code := evaluateStaticStatus(step.Respond.Status); code > 0 {
 					statusCodes[code] = true
+				}
+			}
+			if step.Type == config.StepTypeSQL && step.SQL != nil {
+				for _, c := range step.SQL.Catches {
+					if code := evaluateStaticStatus(c.Status); code > 0 {
+						statusCodes[code] = true
+					}
 				}
 			}
 		}
@@ -187,9 +177,12 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 	if len(statusCodes) == 0 {
 		statusCodes[http.StatusOK] = true
 	}
-	if len(ep.Rules.PathFields) > 0 || len(ep.Rules.QueryFields) > 0 || len(ep.Rules.HeaderFields) > 0 ||
-		len(ep.Rules.BodyFields) > 0 {
+	if len(ep.RequestRules.PathFields) > 0 || len(ep.RequestRules.QueryFields) > 0 ||
+		len(ep.RequestRules.HeaderFields) > 0 || len(ep.RequestRules.BodyFields) > 0 {
 		statusCodes[http.StatusUnprocessableEntity] = true
+	}
+	if cfg.Server.MaxBodySize > 0 {
+		statusCodes[http.StatusRequestEntityTooLarge] = true
 	}
 	statusCodes[http.StatusInternalServerError] = true
 
@@ -198,14 +191,13 @@ func buildOperation(ep compiler.CompiledEndpoint, pathPattern string) (*openapi3
 		if statusText == "" {
 			statusText = "Response"
 		}
-		resp := openapi3.NewResponse().WithDescription(statusText)
-		op.AddResponse(code, resp)
+		op.AddResponse(code, openapi3.NewResponse().WithDescription(statusText))
 	}
 
 	return op, nil
 }
 
-func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
+func fieldToSchema(f config.Field) (*openapi3.Schema, error) {
 	schema := &openapi3.Schema{}
 
 	switch {
@@ -250,7 +242,7 @@ func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeArray}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "list("), ")")
 		if elemType != "" && elemType != f.Type {
-			subSchema, err := fieldToSchema(manifest.Field{Type: elemType})
+			subSchema, err := fieldToSchema(config.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -269,7 +261,7 @@ func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeObject}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "map("), ")")
 		if elemType != "" && elemType != f.Type && elemType != "any" {
-			valSchema, err := fieldToSchema(manifest.Field{Type: elemType})
+			valSchema, err := fieldToSchema(config.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -279,7 +271,6 @@ func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
 		}
 
 	case f.Type == "any":
-		// Untyped in OpenAPI 3.1 is an empty schema
 		return &openapi3.Schema{}, nil
 
 	default:
@@ -299,7 +290,7 @@ func fieldToSchema(f manifest.Field) (*openapi3.Schema, error) {
 	return schema, nil
 }
 
-func fieldsToObjectSchema(fields []manifest.Field) (*openapi3.Schema, error) {
+func fieldsToObjectSchema(fields []config.Field) (*openapi3.Schema, error) {
 	obj := openapi3.NewObjectSchema()
 	for _, f := range fields {
 		s, err := fieldToSchema(f)
@@ -325,14 +316,6 @@ func evaluateStaticStatus(expr hcl.Expression) int {
 	return 0
 }
 
-func splitMethodAndPath(raw string) (string, string, error) {
-	parts := strings.Fields(strings.TrimSpace(raw))
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid route label %q", raw)
-	}
-	return strings.ToUpper(parts[0]), parts[1], nil
-}
-
 func convertToOpenAPIPath(p string) string {
 	return strings.ReplaceAll(p, "...}", "}")
 }
@@ -349,8 +332,8 @@ func deriveTag(p string) string {
 }
 
 // GenerateJSON serializes the OpenAPI 3.1 specification to formatted JSON.
-func GenerateJSON(service *compiler.CompiledService, pretty bool) ([]byte, error) {
-	doc, err := Generate(service)
+func GenerateJSON(cfg *config.Config, pretty bool) ([]byte, error) {
+	doc, err := Generate(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -360,9 +343,9 @@ func GenerateJSON(service *compiler.CompiledService, pretty bool) ([]byte, error
 	return json.Marshal(doc)
 }
 
-// GenerateYAML converts the canonical JSON representation into YAML to preserve custom kin-openapi tags.
-func GenerateYAML(service *compiler.CompiledService) ([]byte, error) {
-	jsonBytes, err := GenerateJSON(service, false)
+// GenerateYAML converts the specification into clean YAML.
+func GenerateYAML(cfg *config.Config) ([]byte, error) {
+	jsonBytes, err := GenerateJSON(cfg, false)
 	if err != nil {
 		return nil, err
 	}

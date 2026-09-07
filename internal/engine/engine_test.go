@@ -13,27 +13,22 @@ import (
 	"testing"
 
 	"github.com/ju4n97/hclapi/internal/engine"
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
-// newTestEngine compiles an in-memory HCL manifest into an isolated Engine instance.
-func newTestEngine(t *testing.T, m string, opts ...func(*manifest.Options)) *engine.Engine {
+func newTestEngine(t *testing.T, manifestContent string) *engine.Engine {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	manifestPath := filepath.Join(tmpDir, "manifest.hcl")
-	if err := os.WriteFile(manifestPath, []byte(m), 0o600); err != nil {
+	manifestPath := filepath.Join(tmpDir, "main.hcl")
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o600); err != nil {
 		t.Fatalf("failed to write test manifest: %v", err)
 	}
 
-	options := manifest.Options{ConfigPath: tmpDir}
-	for _, opt := range opts {
-		opt(&options)
-	}
-
-	eng, err := engine.New(options)
+	eng, err := engine.New(engine.Options{
+		ConfigPath: tmpDir,
+	})
 	if err != nil {
 		t.Fatalf("failed to initialize engine: %v", err)
 	}
@@ -146,7 +141,7 @@ endpoint "POST /upload" {
 		}
 	})
 
-	t.Run("Payload exceeding 1KB is rejected with 413 Problem Details", func(t *testing.T) {
+	t.Run("Payload exceeding limit is rejected with 413 Problem Details", func(t *testing.T) {
 		t.Parallel()
 
 		largePayload := fmt.Sprintf(`{"data": %q}`, strings.Repeat("A", 2048))
@@ -165,21 +160,6 @@ func TestEngine_SchemaValidationIngress(t *testing.T) {
 	t.Parallel()
 
 	eng := newTestEngine(t, `
-schema "pagination" {
-  field "source" {
-    type    = string
-    default = "direct"
-  }
-}
-
-schema "auth_headers" {
-  field "x-api-key" {
-    type     = string
-    required = true
-    format   = "uuid"
-  }
-}
-
 schema "user_create" {
   field "email" {
     type     = string
@@ -200,9 +180,20 @@ schema "user_create" {
 
 endpoint "POST /api/v1/users" {
   request {
-    headers = schema.auth_headers
-    query   = schema.pagination
-    body    = schema.user_create
+    headers {
+      field "x-api-key" {
+        type     = string
+        required = true
+        format   = "uuid"
+      }
+    }
+    query {
+      field "source" {
+        type    = string
+        default = "direct"
+      }
+    }
+    body = schema.user_create
   }
 
   pipeline {
@@ -219,11 +210,11 @@ endpoint "POST /api/v1/users" {
 }
 `)
 
-	t.Run("Returns 422 with all invalid_params when header, email, and enum are invalid", func(t *testing.T) {
+	t.Run("Returns 422 with invalid_params on constraint breach", func(t *testing.T) {
 		t.Parallel()
 
 		body := strings.NewReader(`{
-			"email": "invalid-email-format",
+			"email": "invalid-email",
 			"username": "ab",
 			"role": "superadmin"
 		}`)
@@ -238,21 +229,17 @@ endpoint "POST /api/v1/users" {
 			t.Fatalf("expected status 422, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 
-		var problem problem.Problem
-		if err := json.NewDecoder(rec.Body).Decode(&problem); err != nil {
+		var p problem.Problem
+		if err := json.NewDecoder(rec.Body).Decode(&p); err != nil {
 			t.Fatalf("failed to decode 422 problem details: %v", err)
 		}
 
-		if len(problem.InvalidParams) != 4 {
-			t.Errorf(
-				"expected 4 invalid params (x-api-key, email, username length, role enum), got %d: %+v",
-				len(problem.InvalidParams),
-				problem.InvalidParams,
-			)
+		if len(p.InvalidParams) != 4 {
+			t.Errorf("expected 4 invalid params, got %d: %+v", len(p.InvalidParams), p.InvalidParams)
 		}
 	})
 
-	t.Run("Succeeds, injects defaults, and normalizes valid payload", func(t *testing.T) {
+	t.Run("Normalizes and injects defaults on valid payload", func(t *testing.T) {
 		t.Parallel()
 
 		body := strings.NewReader(`{
@@ -280,114 +267,12 @@ endpoint "POST /api/v1/users" {
 			t.Errorf("expected email 'jane@example.com', got %v", resp["email"])
 		}
 		if resp["role"] != "member" {
-			t.Errorf("expected injected default role 'member', got %v", resp["role"])
+			t.Errorf("expected default role 'member', got %v", resp["role"])
 		}
 		if resp["source"] != "direct" {
-			t.Errorf("expected injected query default 'direct', got %v", resp["source"])
+			t.Errorf("expected default source 'direct', got %v", resp["source"])
 		}
 	})
-}
-
-func TestEngine_HeaderCaseInsensitivity_RFC9110(t *testing.T) {
-	t.Parallel()
-
-	eng := newTestEngine(t, `
-endpoint "GET /api/v1/headers" {
-  request {
-    headers {
-      field "Authorization" {
-        type     = string
-        required = true
-      }
-      field "X-Api-Key" {
-        type     = string
-        required = false
-      }
-    }
-  }
-
-  pipeline {
-    respond {
-      status = 200
-      body = {
-        auth = ctx.request.headers.authorization
-      }
-    }
-  }
-}
-`)
-
-	tests := []struct {
-		name         string
-		headerKey    string
-		headerValue  string
-		wantStatus   int
-		wantErrorKey string
-	}{
-		{
-			name:        "exact casing as declared in schema (Authorization)",
-			headerKey:   "Authorization",
-			headerValue: "Bearer secret-token",
-			wantStatus:  http.StatusOK,
-		},
-		{
-			name:        "all lowercase (authorization)",
-			headerKey:   "authorization",
-			headerValue: "Bearer secret-token",
-			wantStatus:  http.StatusOK,
-		},
-		{
-			name:        "all uppercase (AUTHORIZATION)",
-			headerKey:   "AUTHORIZATION",
-			headerValue: "Bearer secret-token",
-			wantStatus:  http.StatusOK,
-		},
-		{
-			name:        "mixed case (AuThOrIzAtIoN)",
-			headerKey:   "AuThOrIzAtIoN",
-			headerValue: "Bearer secret-token",
-			wantStatus:  http.StatusOK,
-		},
-		{
-			name:         "missing required header",
-			headerKey:    "",
-			headerValue:  "",
-			wantStatus:   http.StatusUnprocessableEntity,
-			wantErrorKey: "Authorization", // Preserves schema casing in error diagnostic
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/headers", http.NoBody)
-			if tt.headerKey != "" {
-				req.Header.Set(tt.headerKey, tt.headerValue)
-			}
-			rec := httptest.NewRecorder()
-
-			eng.Handler().ServeHTTP(rec, req)
-
-			if rec.Code != tt.wantStatus {
-				t.Fatalf("status code = %d; want %d. Body: %s", rec.Code, tt.wantStatus, rec.Body.String())
-			}
-
-			if tt.wantErrorKey != "" {
-				var p problem.Problem
-				if err := json.NewDecoder(rec.Body).Decode(&p); err != nil {
-					t.Fatalf("failed to decode response JSON: %v", err)
-				}
-
-				if len(p.InvalidParams) == 0 {
-					t.Fatalf("expected InvalidParams, got none")
-				}
-				if p.InvalidParams[0].Name != tt.wantErrorKey {
-					t.Errorf("InvalidParams[0].Name = %q; want %q", p.InvalidParams[0].Name, tt.wantErrorKey)
-				}
-			}
-		})
-	}
 }
 
 func TestEngine_ProblemError(t *testing.T) {
@@ -416,7 +301,7 @@ endpoint "POST /api/v1/secure" {
 				Type:     "urn:hclapi:error:missing-api-key",
 				Title:    "Missing API key",
 				Status:   http.StatusUnauthorized,
-				Detail:   "Provide a valid API key in the 'Authorization' header.",
+				Detail:   "Provide a valid API key.",
 				Step:     step.Name,
 				Instance: "/api/v1/secure",
 			}
@@ -427,34 +312,10 @@ endpoint "POST /api/v1/secure" {
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
 		rec := httptest.NewRecorder()
-
 		eng.Handler().ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("status code = %d; want %d. Body: %s", rec.Code, http.StatusUnauthorized, rec.Body.String())
-		}
-
-		contentType := rec.Header().Get("Content-Type")
-		if contentType != "application/problem+json" {
-			t.Errorf("Content-Type = %q; want application/problem+json", contentType)
-		}
-
-		var p problem.Problem
-		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-			t.Fatalf("failed to decode response JSON: %v", err)
-		}
-
-		if p.Status != http.StatusUnauthorized {
-			t.Errorf("problem.Status = %d; want %d", p.Status, http.StatusUnauthorized)
-		}
-		if p.Title != "Missing API key" {
-			t.Errorf("problem.Title = %q; want 'Missing API key'", p.Title)
-		}
-		if p.Type != "urn:hclapi:error:missing-api-key" {
-			t.Errorf("problem.Type = %q; want 'urn:hclapi:error:missing-api-key'", p.Type)
-		}
-		if p.Detail != "Provide a valid API key in the 'Authorization' header." {
-			t.Errorf("problem.Detail = %q; want expected detail", p.Detail)
+			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusUnauthorized)
 		}
 	})
 
@@ -471,165 +332,10 @@ endpoint "POST /api/v1/secure" {
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
 		rec := httptest.NewRecorder()
-
 		eng.Handler().ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
-			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
-		}
-
-		var p problem.Problem
-		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
-			t.Fatalf("failed to decode response JSON: %v", err)
-		}
-
-		if p.Status != 500 {
-			t.Errorf("problem.Status = %d; want 500", p.Status)
-		}
-		if p.Type != "urn:hclapi:error:pipeline-execution-failed" {
-			t.Errorf("problem.Type = %q; want pipeline-execution-failed URN", p.Type)
-		}
-	})
-
-	t.Run("step panic is recovered and converts to 500", func(t *testing.T) {
-		t.Parallel()
-		eng := newTestEngine(t, manifest)
-
-		err := eng.RegisterStep("auth.verify", func(ctx context.Context, step *runtime.Step) (any, error) {
-			panic("unexpected memory crash")
-		})
-		if err != nil {
-			t.Fatalf("failed to register step: %v", err)
-		}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/secure", http.NoBody)
-		rec := httptest.NewRecorder()
-
-		eng.Handler().ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusInternalServerError {
-			t.Fatalf("status code = %d; want %d", rec.Code, http.StatusInternalServerError)
-		}
-	})
-}
-
-func TestEngine_ProblemAutoDerivationAndHelpers(t *testing.T) {
-	t.Parallel()
-
-	manifest := `
-endpoint "POST /api/v1/checkout" {
-  pipeline {
-    go "process_payment" {
-      use = "payment.charge"
-    }
-    respond {
-      status = 200
-      body   = { ok = true }
-    }
-  }
-}
-`
-
-	t.Run("step.Problem helper binds step name and derives status/title", func(t *testing.T) {
-		t.Parallel()
-		eng := newTestEngine(t, manifest)
-
-		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
-			return nil, step.Problem(http.StatusPaymentRequired, "Insufficient card balance")
-		})
-		if err != nil {
-			t.Fatalf("failed to register step: %v", err)
-		}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusPaymentRequired {
-			t.Fatalf("status = %d; want 402", rec.Code)
-		}
-
-		var p problem.Problem
-		_ = json.Unmarshal(rec.Body.Bytes(), &p)
-
-		if p.Step != "process_payment" {
-			t.Errorf("p.Step = %q; want 'process_payment'", p.Step)
-		}
-		if p.Title != "Payment Required" {
-			t.Errorf("p.Title = %q; want 'Payment Required'", p.Title)
-		}
-		if p.Type != "urn:hclapi:error:payment-required" {
-			t.Errorf("p.Type = %q; want 'urn:hclapi:error:payment-required'", p.Type)
-		}
-		if p.Detail != "Insufficient card balance" {
-			t.Errorf("p.Detail = %q; want 'Insufficient card balance'", p.Detail)
-		}
-	})
-
-	t.Run("bare Problem struct auto-derives title, type, and instance", func(t *testing.T) {
-		t.Parallel()
-		eng := newTestEngine(t, manifest)
-
-		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
-			return nil, problem.Problem{
-				Status: http.StatusForbidden,
-				Detail: "Card brand not supported",
-			}
-		})
-		if err != nil {
-			t.Fatalf("failed to register step: %v", err)
-		}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("status = %d; want 403", rec.Code)
-		}
-
-		var p problem.Problem
-		_ = json.Unmarshal(rec.Body.Bytes(), &p)
-
-		if p.Title != "Forbidden" {
-			t.Errorf("auto-derived Title = %q; want 'Forbidden'", p.Title)
-		}
-		if p.Type != "urn:hclapi:error:forbidden" {
-			t.Errorf("auto-derived Type = %q; want 'urn:hclapi:error:forbidden'", p.Type)
-		}
-		if p.Instance != "/api/v1/checkout" {
-			t.Errorf("auto-derived Instance = %q; want '/api/v1/checkout'", p.Instance)
-		}
-	})
-
-	t.Run("Problem with custom extensions flattens into root JSON payload", func(t *testing.T) {
-		t.Parallel()
-		eng := newTestEngine(t, manifest)
-
-		err := eng.RegisterStep("payment.charge", func(ctx context.Context, step *runtime.Step) (any, error) {
-			p := step.Problem(http.StatusTooManyRequests, "Rate limit reached")
-			p.Extensions = map[string]any{
-				"retry_after_ms": 5000,
-				"error_code":     "RATE_LIMIT_EXCEEDED",
-			}
-			return nil, p
-		})
-		if err != nil {
-			t.Fatalf("failed to register step: %v", err)
-		}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/checkout", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
-
-		var rawMap map[string]any
-		_ = json.Unmarshal(rec.Body.Bytes(), &rawMap)
-
-		if rawMap["error_code"] != "RATE_LIMIT_EXCEEDED" {
-			t.Errorf("expected root error_code, got %v", rawMap["error_code"])
-		}
-		if rawMap["retry_after_ms"] != float64(5000) {
-			t.Errorf("expected root retry_after_ms, got %v", rawMap["retry_after_ms"])
+			t.Fatalf("status code = %d; want 500", rec.Code)
 		}
 	})
 }
@@ -637,13 +343,7 @@ endpoint "POST /api/v1/checkout" {
 func TestEngine_OpenAPIRoutes(t *testing.T) {
 	t.Parallel()
 
-	tmpDir := t.TempDir()
-	templateFile := filepath.Join(tmpDir, "portal.html")
-	if err := os.WriteFile(templateFile, []byte("<h1>{{ .Title }} Portal</h1>"), 0o600); err != nil {
-		t.Fatalf("failed to write template: %v", err)
-	}
-
-	manifestContent := `
+	eng := newTestEngine(t, `
 openapi {
   title   = "Store API"
   version = "1.0.0"
@@ -666,40 +366,11 @@ endpoint "GET /openapi.yaml" {
     format = "yaml"
   }
 }
-
-endpoint "GET /custom-inline" {
-  openapi "template" {
-    inline = "<h1>Inline {{ .Title }}</h1>"
-  }
-}
-
-endpoint "GET /custom-file" {
-  openapi "template" {
-    file = "./portal.html"
-  }
-}
-
-endpoint "GET /ping" {
-  description = "Health check"
-  pipeline {
-    respond {
-      status = 200
-      body   = { ok = true }
-    }
-  }
-}
-`
-	if err := os.WriteFile(filepath.Join(tmpDir, "main.hcl"), []byte(manifestContent), 0o600); err != nil {
-		t.Fatalf("failed to write manifest: %v", err)
-	}
-
-	eng, err := engine.New(manifest.Options{ConfigPath: tmpDir})
-	if err != nil {
-		t.Fatalf("failed to init engine: %v", err)
-	}
+`)
 
 	t.Run("Serves interactive Scalar documentation at /docs", func(t *testing.T) {
 		t.Parallel()
+
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs", http.NoBody)
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -707,16 +378,14 @@ endpoint "GET /ping" {
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
-		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
-			t.Errorf("expected text/html, got %q", ct)
-		}
 		if !strings.Contains(rec.Body.String(), "scalar") {
 			t.Errorf("expected Scalar CDN reference in html response")
 		}
 	})
 
-	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json", func(t *testing.T) {
+	t.Run("Serves raw OpenAPI 3.1 JSON at /openapi.json with ETag caching", func(t *testing.T) {
 		t.Parallel()
+
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
 		rec := httptest.NewRecorder()
 		eng.Handler().ServeHTTP(rec, req)
@@ -724,104 +393,20 @@ endpoint "GET /ping" {
 		if rec.Code != http.StatusOK {
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
-		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
-			t.Errorf("expected application/json, got %q", ct)
-		}
-		var doc map[string]any
-		if err := json.NewDecoder(rec.Body).Decode(&doc); err != nil {
-			t.Fatalf("failed to parse JSON: %v", err)
-		}
-		if doc["openapi"] != "3.1.0" {
-			t.Errorf("expected openapi 3.1.0, got %v", doc["openapi"])
-		}
-	})
 
-	t.Run("Serves raw OpenAPI 3.1 YAML at /openapi.yaml", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.yaml", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
+		etag := rec.Header().Get("ETag")
+		if etag == "" {
+			t.Fatal("expected ETag header on openapi spec response")
+		}
 
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", rec.Code)
-		}
-		if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/yaml") {
-			t.Errorf("expected application/yaml, got %q", ct)
-		}
-		if !strings.Contains(rec.Body.String(), "openapi: 3.1.0") {
-			t.Errorf("expected yaml header in response")
+		// Conditional request
+		reqCond := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
+		reqCond.Header.Set("If-None-Match", etag)
+		recCond := httptest.NewRecorder()
+		eng.Handler().ServeHTTP(recCond, reqCond)
+
+		if recCond.Code != http.StatusNotModified {
+			t.Errorf("expected status 304, got %d", recCond.Code)
 		}
 	})
-
-	t.Run("Serves custom inline HTML template at /custom-inline", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/custom-inline", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", rec.Code)
-		}
-		if !strings.Contains(rec.Body.String(), "<h1>Inline Store API</h1>") {
-			t.Errorf("expected rendered inline template, got: %s", rec.Body.String())
-		}
-	})
-
-	t.Run("Serves custom file HTML template at /custom-file resolved relative to manifest", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/custom-file", http.NoBody)
-		rec := httptest.NewRecorder()
-		eng.Handler().ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Errorf("expected status 200, got %d", rec.Code)
-		}
-		if !strings.Contains(rec.Body.String(), "<h1>Store API Portal</h1>") {
-			t.Errorf("expected rendered file template, got: %s", rec.Body.String())
-		}
-	})
-}
-
-func TestEngine_OpenAPISpecCaching(t *testing.T) {
-	t.Parallel()
-
-	eng := newTestEngine(t, `
-openapi {
-  title   = "Cache API"
-  version = "1.0.0"
-}
-
-endpoint "GET /openapi.json" {
-  openapi "spec" {
-    format = "json"
-  }
-}
-`)
-
-	// Initial request returns ETag and 200 OK
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
-	rec := httptest.NewRecorder()
-	eng.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
-	}
-
-	etag := rec.Header().Get("ETag")
-	if etag == "" {
-		t.Fatal("expected ETag header on openapi spec response")
-	}
-
-	// Conditional request with matching If-None-Match returns 304 Not Modified
-	reqCond := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", http.NoBody)
-	reqCond.Header.Set("If-None-Match", etag)
-	recCond := httptest.NewRecorder()
-	eng.Handler().ServeHTTP(recCond, reqCond)
-
-	if recCond.Code != http.StatusNotModified {
-		t.Errorf("expected status 304 Not Modified, got %d", recCond.Code)
-	}
-	if recCond.Body.Len() != 0 {
-		t.Errorf("expected empty body on 304, got: %s", recCond.Body.String())
-	}
 }

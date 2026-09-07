@@ -8,10 +8,9 @@ import (
 
 	"github.com/urfave/cli/v3"
 
-	"github.com/ju4n97/hclapi/internal/compiler"
+	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/openapi"
-	"github.com/ju4n97/hclapi/internal/parser"
 )
 
 func newOpenAPICommand() *cli.Command {
@@ -44,21 +43,16 @@ func newOpenAPICommand() *cli.Command {
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			evalCtx := eval.BaseContext()
-			manifest, err := parser.Parse(cmd.String("config"), evalCtx)
+			cfg, err := config.Load(cmd.String("config"), evalCtx)
 			if err != nil {
-				return fmt.Errorf("parse manifests: %w", err)
-			}
-
-			service, err := compiler.Compile(manifest, evalCtx)
-			if err != nil {
-				return fmt.Errorf("compile: %w", err)
+				return fmt.Errorf("load config: %w", err)
 			}
 
 			var outBytes []byte
 			if strings.EqualFold(cmd.String("format"), "yaml") || strings.EqualFold(cmd.String("format"), "yml") {
-				outBytes, err = openapi.GenerateYAML(service)
+				outBytes, err = openapi.GenerateYAML(cfg)
 			} else {
-				outBytes, err = openapi.GenerateJSON(service, cmd.Bool("pretty"))
+				outBytes, err = openapi.GenerateJSON(cfg, cmd.Bool("pretty"))
 			}
 			if err != nil {
 				return fmt.Errorf("generate openapi: %w", err)

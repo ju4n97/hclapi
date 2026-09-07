@@ -3,7 +3,6 @@ package hclapi
 
 import (
 	"github.com/ju4n97/hclapi/internal/engine"
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
 	"github.com/ju4n97/hclapi/internal/scalar"
@@ -11,6 +10,9 @@ import (
 
 // Engine is the root coordinator managing manifests, step registries, and HTTP routing.
 type Engine = engine.Engine
+
+// Options defines configuration parameters for the hclapi engine.
+type Options = engine.Options
 
 // Runtime
 
@@ -26,34 +28,11 @@ type Args = runtime.Args
 // ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
 type ExecutionContext = runtime.ExecutionContext
 
-// ExecutionContextOption configures optional behavior during ExecutionContext creation.
-type ExecutionContextOption = runtime.ExecutionContextOption
-
 // RequestState represents normalized HTTP request metadata extracted at runtime.
 type RequestState = runtime.RequestState
 
 // StepResult represents arbitrary step-specific outputs.
 type StepResult = runtime.StepResult
-
-// Manifest models
-
-// Options defines configuration parameters for the hclapi engine.
-type Options = manifest.Options
-
-// Server defines the resolved HTTP server transport configuration.
-type Server = manifest.Server
-
-// Connection represents a resolved database, cache, or storage backend configuration.
-type Connection = manifest.Connection
-
-// PoolConfig defines connection pool sizing and lifecycle settings.
-type PoolConfig = manifest.PoolConfig
-
-// Schema represents a compiled, named validation schema.
-type Schema = manifest.Schema
-
-// Field represents a compiled, type-safe schema field constraint rule.
-type Field = manifest.Field
 
 // Scalar unit types
 

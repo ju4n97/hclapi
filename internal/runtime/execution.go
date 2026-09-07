@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/problem"
 )
 
@@ -29,7 +28,6 @@ type RequestState struct {
 	Body    any               `json:"body"`
 }
 
-// PathParam returns the route path parameter value, or fallback if absent.
 func (r *RequestState) PathParam(key string, fallback ...string) string {
 	if r != nil && r.Path != nil {
 		if val, ok := r.Path[key]; ok && val != "" {
@@ -42,7 +40,6 @@ func (r *RequestState) PathParam(key string, fallback ...string) string {
 	return ""
 }
 
-// QueryParam returns the query parameter value, or fallback if absent.
 func (r *RequestState) QueryParam(key string, fallback ...string) string {
 	if r != nil && r.Query != nil {
 		if val, ok := r.Query[key]; ok {
@@ -55,7 +52,6 @@ func (r *RequestState) QueryParam(key string, fallback ...string) string {
 	return ""
 }
 
-// Header returns the header value for key (case-insensitive).
 func (r *RequestState) Header(key string) string {
 	if r == nil || r.Headers == nil {
 		return ""
@@ -63,20 +59,20 @@ func (r *RequestState) Header(key string) string {
 	return r.Headers[strings.ToLower(key)]
 }
 
-// Add to ExecutionContext struct:
+// ExecutionContext encapsulates runtime state for a single HTTP request pipeline.
 type ExecutionContext struct {
-	Request        *RequestState          `json:"request"`
-	Steps          map[string]StepResult  `json:"steps"`
-	TimestampEpoch int64                  `json:"timestamp_epoch"`
-	IngressTime    time.Time              `json:"-"`
-	Server         manifest.Server        `json:"-"`
-	Problem        manifest.ProblemConfig `json:"-"`
-	RawRequest     *http.Request          `json:"-"`
+	Request           *RequestState         `json:"request"`
+	Steps             map[string]StepResult `json:"steps"`
+	TimestampEpoch    int64                 `json:"timestamp_epoch"`
+	IngressTime       time.Time             `json:"-"`
+	MaxBodySize       int64                 `json:"-"`
+	ProblemTypePrefix string                `json:"-"`
+	RawRequest        *http.Request         `json:"-"`
 
 	mu sync.RWMutex
 }
 
-// Step encapsulates the invocation state and arguments for a single Go step.
+// Step encapsulates invocation state and evaluated arguments for a Go step.
 type Step struct {
 	*ExecutionContext
 	Name string `json:"name"`
@@ -90,37 +86,40 @@ func (s *Step) Problem(status int, detail string) problem.Problem {
 	if s.RawRequest != nil && s.RawRequest.URL != nil {
 		p.Instance = s.RawRequest.URL.Path
 	}
+	if s.ProblemTypePrefix != "" {
+		slug := problem.Slugify(p.Title)
+		if strings.HasPrefix(s.ProblemTypePrefix, "http://") || strings.HasPrefix(s.ProblemTypePrefix, "https://") {
+			p.Type = strings.TrimSuffix(s.ProblemTypePrefix, "/") + "/" + slug
+		} else {
+			p.Type = s.ProblemTypePrefix + slug
+		}
+	}
 	return p
 }
 
-// StepHandler defines the signature for custom native Go step callbacks.
 type StepHandler func(ctx context.Context, step *Step) (any, error)
 
 type executionContextConfig struct {
-	pathParams []string
-	server     manifest.Server
-	problem    manifest.ProblemConfig
+	pathParams        []string
+	maxBodySize       int64
+	problemTypePrefix string
 }
 
-// ExecutionContextOption configures optional behavior during context creation.
 type ExecutionContextOption func(*executionContextConfig)
 
-// WithPathParams configures route parameter names to extract from the request.
 func WithPathParams(paramNames []string) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.pathParams = paramNames }
 }
 
-// WithServer attaches the resolved server configuration to the execution context.
-func WithServer(server manifest.Server) ExecutionContextOption {
-	return func(c *executionContextConfig) { c.server = server }
+func WithMaxBodySize(maxBytes int64) ExecutionContextOption {
+	return func(c *executionContextConfig) { c.maxBodySize = maxBytes }
 }
 
-// WithProblem attaches the resolved problem configuration to the execution context.
-func WithProblem(problem manifest.ProblemConfig) ExecutionContextOption {
-	return func(c *executionContextConfig) { c.problem = problem }
+func WithProblemTypePrefix(prefix string) ExecutionContextOption {
+	return func(c *executionContextConfig) { c.problemTypePrefix = prefix }
 }
 
-// NewExecutionContext parses the incoming HTTP request, enforces body limits, and initializes state.
+// NewExecutionContext parses the request, enforces body limits, and initializes execution state.
 func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...ExecutionContextOption) (*ExecutionContext, error) {
 	var cfg executionContextConfig
 	for _, opt := range opts {
@@ -129,13 +128,11 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 
 	ingressTime := time.Now().UTC()
 
-	// Extract path parameters
 	pathParams := make(map[string]string, len(cfg.pathParams))
 	for _, name := range cfg.pathParams {
 		pathParams[name] = r.PathValue(name)
 	}
 
-	// Extract query parameters
 	queryParams := make(map[string]string, len(r.URL.Query()))
 	for k, v := range r.URL.Query() {
 		if len(v) > 0 {
@@ -143,7 +140,6 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 		}
 	}
 
-	// Extract lowercased headers
 	headers := make(map[string]string, len(r.Header))
 	for k, v := range r.Header {
 		if len(v) > 0 {
@@ -151,29 +147,26 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 		}
 	}
 
-	// Ingest and validate request body
 	var bodyData any
 	if r.Body != nil && r.Body != http.NoBody {
 		bodyReader := r.Body
-		maxBodySize := cfg.server.MaxBodySize.Bytes()
-		if maxBodySize > 0 && w != nil {
-			bodyReader = http.MaxBytesReader(w, r.Body, maxBodySize)
+		if cfg.maxBodySize > 0 && w != nil {
+			bodyReader = http.MaxBytesReader(w, r.Body, cfg.maxBodySize)
 		}
 
 		bodyBytes, err := io.ReadAll(bodyReader)
 		if err != nil {
-			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
 				return nil, fmt.Errorf("request body too large: %w", maxBytesErr)
 			}
 			return nil, fmt.Errorf("failed to read request body: %w", err)
 		}
 
-		// Restore r.Body with the consumed bytes so subsequent readers don't fail
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 		if len(bodyBytes) > 0 {
 			contentType := strings.ToLower(r.Header.Get("Content-Type"))
-
 			if contentType != "" && !strings.Contains(contentType, "json") {
 				bodyData = string(bodyBytes)
 			} else {
@@ -194,16 +187,15 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 			Headers: headers,
 			Body:    bodyData,
 		},
-		Steps:          make(map[string]StepResult),
-		TimestampEpoch: ingressTime.Unix(),
-		IngressTime:    ingressTime,
-		Server:         cfg.server.WithDefaults(),
-		Problem:        cfg.problem,
-		RawRequest:     r,
+		Steps:             make(map[string]StepResult),
+		TimestampEpoch:    ingressTime.Unix(),
+		IngressTime:       ingressTime,
+		MaxBodySize:       cfg.maxBodySize,
+		ProblemTypePrefix: cfg.problemTypePrefix,
+		RawRequest:        r,
 	}, nil
 }
 
-// NewStep creates an isolated, thread-safe Step invocation referencing this ExecutionContext.
 func (e *ExecutionContext) NewStep(name string, args Args) *Step {
 	return &Step{
 		ExecutionContext: e,
@@ -212,7 +204,6 @@ func (e *ExecutionContext) NewStep(name string, args Args) *Step {
 	}
 }
 
-// SetStepResult safely records the output of a step (concurrent-safe for parallel execution).
 func (e *ExecutionContext) SetStepResult(stepName string, result StepResult) {
 	if e == nil || stepName == "" {
 		return
@@ -222,7 +213,6 @@ func (e *ExecutionContext) SetStepResult(stepName string, result StepResult) {
 	e.Steps[stepName] = result
 }
 
-// GetStepResult safely retrieves prior step output (concurrent-safe).
 func (e *ExecutionContext) GetStepResult(stepName string) (StepResult, bool) {
 	if e == nil {
 		return nil, false
@@ -233,8 +223,6 @@ func (e *ExecutionContext) GetStepResult(stepName string) (StepResult, bool) {
 	return res, ok
 }
 
-// SnapshotSteps returns a shallow copy of all step results recorded so far.
-// Use this when passing steps to the HCL evaluation engine to prevent concurrent map read/write panics.
 func (e *ExecutionContext) SnapshotSteps() map[string]StepResult {
 	if e == nil {
 		return nil
@@ -247,7 +235,6 @@ func (e *ExecutionContext) SnapshotSteps() map[string]StepResult {
 	return snapshot
 }
 
-// Context returns the underlying standard Go request context.
 func (e *ExecutionContext) Context() context.Context {
 	if e != nil && e.RawRequest != nil {
 		return e.RawRequest.Context()
@@ -255,7 +242,6 @@ func (e *ExecutionContext) Context() context.Context {
 	return context.Background()
 }
 
-// WithContext returns a shallow copy of ExecutionContext with an updated standard library context.
 func (e *ExecutionContext) WithContext(ctx context.Context) *ExecutionContext {
 	if e == nil {
 		return nil
@@ -269,12 +255,12 @@ func (e *ExecutionContext) WithContext(ctx context.Context) *ExecutionContext {
 	}
 
 	return &ExecutionContext{
-		Request:        e.Request,
-		Steps:          e.Steps,
-		TimestampEpoch: e.TimestampEpoch,
-		IngressTime:    e.IngressTime,
-		Server:         e.Server,
-		Problem:        e.Problem,
-		RawRequest:     rawReq,
+		Request:           e.Request,
+		Steps:             e.Steps,
+		TimestampEpoch:    e.TimestampEpoch,
+		IngressTime:       e.IngressTime,
+		MaxBodySize:       e.MaxBodySize,
+		ProblemTypePrefix: e.ProblemTypePrefix,
+		RawRequest:        rawReq,
 	}
 }

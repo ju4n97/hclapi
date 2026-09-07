@@ -4,17 +4,14 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
-	"os"
 	"strings"
 	"text/template"
-
-	"github.com/ju4n97/hclapi/internal/manifest"
 )
 
 //go:embed templates/*
 var templateFS embed.FS
 
-// TemplateData holds view context data for OpenAPI HTML renderers.
+// TemplateData holds template context data for OpenAPI HTML documentation viewers.
 type TemplateData struct {
 	Title       string
 	Version     string
@@ -23,29 +20,21 @@ type TemplateData struct {
 	SpecYAMLURL string
 }
 
-// RenderHTML generates the HTML page for the selected interactive documentation renderer.
-func RenderHTML(ui string, data TemplateData, rawTemplate, templateFile, manifestDir string) ([]byte, error) {
+// RenderHTML generates the HTML page for a documentation UI renderer or custom template.
+func RenderHTML(renderer, customTemplate string, data TemplateData) ([]byte, error) {
 	var tmplContent string
 
-	switch {
-	case rawTemplate != "":
-		tmplContent = rawTemplate
-	case templateFile != "":
-		resolvedPath := manifest.ResolveRelativePath(templateFile, manifestDir)
-		content, err := os.ReadFile(resolvedPath)
-		if err != nil {
-			return nil, fmt.Errorf("read custom template file: %w", err)
+	if customTemplate != "" {
+		tmplContent = customTemplate
+	} else {
+		r := strings.ToLower(strings.TrimSpace(renderer))
+		if r == "" {
+			r = "scalar"
 		}
-		tmplContent = string(content)
-	default:
-		rendererName := strings.ToLower(strings.TrimSpace(ui))
-		if rendererName == "" {
-			rendererName = "scalar"
-		}
-		embeddedPath := fmt.Sprintf("templates/%s.html", rendererName)
+		embeddedPath := fmt.Sprintf("templates/%s.html", r)
 		content, err := templateFS.ReadFile(embeddedPath)
 		if err != nil {
-			return nil, fmt.Errorf("unsupported or missing documentation renderer %q", ui)
+			return nil, fmt.Errorf("unsupported or missing documentation renderer %q", renderer)
 		}
 		tmplContent = string(content)
 	}

@@ -4,10 +4,9 @@ import (
 	"maps"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/ju4n97/hclapi/internal/runtime"
 	"github.com/zclconf/go-cty/cty"
 	"github.com/zclconf/go-cty/cty/function"
-
-	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
 // buildBaseFunctions combines standard runtime functions with schema type constructors.

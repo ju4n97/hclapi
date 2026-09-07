@@ -39,3 +39,10 @@ func (d *Duration) UnmarshalText(text []byte) error {
 func (d Duration) MarshalText() ([]byte, error) {
 	return []byte(d.String()), nil
 }
+
+// ParseDuration parses human-readable duration strings like "30s", "15m", "1h".
+func ParseDuration(s string) (Duration, error) {
+	var d Duration
+	err := d.UnmarshalText([]byte(s))
+	return d, err
+}

@@ -1,4 +1,3 @@
-// Package engine provides route binding, HTTP multiplexing, and pipeline initialization.
 package engine
 
 import (
@@ -12,64 +11,60 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ju4n97/hclapi/internal/compiler"
-	"github.com/ju4n97/hclapi/internal/connectors/connsql"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/zclconf/go-cty/cty"
+
+	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/openapi"
-	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
-	"github.com/ju4n97/hclapi/internal/validator"
+	"github.com/ju4n97/hclapi/internal/sqldb"
 )
 
 var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
-// Engine is the central HTTP coordinator.
+// Engine is the central HTTP coordinator managing routing, pools, and pipelines.
 type Engine struct {
-	options      manifest.Options
-	server       manifest.Server
-	openapi      manifest.OpenAPIConfig
-	problem      manifest.ProblemConfig
-	mux          *http.ServeMux
-	sqlManager   *connsql.Manager
-	goSteps      map[string]runtime.StepHandler
-	errorHandler problem.Handler
-	logger       *slog.Logger
+	options    Options
+	config     *config.Config
+	mux        *http.ServeMux
+	sqlManager *sqldb.Manager
+	registry   *StepRegistry
+	errors     *ErrorResponder
+	logger     *slog.Logger
 }
 
-// New initializes an Engine by parsing manifests, statically compiling services, and registering routes.
-func New(options manifest.Options) (*Engine, error) {
+// New initializes an Engine by loading and verifying manifests from ConfigPath.
+func New(options Options) (*Engine, error) {
 	logger := options.Logger
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
 
-	errorHandler := options.ProblemHandler
-	if errorHandler == nil {
-		errorHandler = problem.DefaultHandler
-	}
-
 	evalCtx := eval.BaseContext()
-	manifest, err := parser.Parse(options.ConfigPath, evalCtx)
+	cfg, err := config.Load(options.ConfigPath, evalCtx)
 	if err != nil {
-		return nil, fmt.Errorf("parse manifests: %w", err)
-	}
-
-	// Static compilation and reference verification pass
-	service, err := compiler.Compile(manifest, evalCtx)
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
 	bootCtx := context.Background()
+	sqlManager := sqldb.NewManager()
 
-	// Initialize database connection pools for compiled connections
-	sqlManager := connsql.NewManager()
-
-	for _, conn := range service.Connections {
-		if connsql.IsSupportedDriver(conn.Driver) {
-			if err := sqlManager.Open(bootCtx, conn); err != nil {
+	for _, conn := range cfg.Connections {
+		if sqldb.IsSupportedDriver(conn.Driver) {
+			dbCfg := sqldb.Config{
+				Driver: conn.Driver,
+				Name:   conn.Name,
+				Source: conn.Source,
+				Pool: sqldb.PoolConfig{
+					MaxOpen:     conn.Pool.MaxOpen,
+					MaxIdle:     conn.Pool.MaxIdle,
+					MaxLifetime: conn.Pool.MaxLifetime.Duration(),
+					IdleTimeout: conn.Pool.IdleTimeout.Duration(),
+				},
+			}
+			if err := sqlManager.Open(bootCtx, dbCfg); err != nil {
 				_ = sqlManager.Close()
 				return nil, fmt.Errorf("init connection %q: %w", conn.Reference(), err)
 			}
@@ -77,16 +72,20 @@ func New(options manifest.Options) (*Engine, error) {
 		}
 	}
 
+	registry := NewStepRegistry()
+	errorResponder := NewErrorResponder(cfg.Problem, options.ProblemHandler, logger)
+
 	e := &Engine{
-		options:      options,
-		server:       service.Server,
-		mux:          http.NewServeMux(),
-		sqlManager:   sqlManager,
-		goSteps:      make(map[string]runtime.StepHandler),
-		errorHandler: errorHandler,
-		logger:       logger,
+		options:    options,
+		config:     cfg,
+		mux:        http.NewServeMux(),
+		sqlManager: sqlManager,
+		registry:   registry,
+		errors:     errorResponder,
+		logger:     logger,
 	}
 
+	// Precompute OpenAPI specifications and ETags
 	var (
 		specJSON     []byte
 		specYAML     []byte
@@ -95,42 +94,36 @@ func New(options manifest.Options) (*Engine, error) {
 	)
 
 	hasOpenAPI := false
-	for _, endpoint := range service.Endpoints {
-		if endpoint.OpenAPI != nil {
+	for _, endpoint := range cfg.Endpoints {
+		if _, ok := endpoint.Handler.(config.OpenAPIHandler); ok {
 			hasOpenAPI = true
 			break
 		}
 	}
+
 	if hasOpenAPI {
-		specJSON, err = openapi.GenerateJSON(service, true)
+		specJSON, err = openapi.GenerateJSON(cfg, true)
 		if err != nil {
 			return nil, fmt.Errorf("generate OpenAPI 3.1 JSON: %w", err)
 		}
-		specYAML, err = openapi.GenerateYAML(service)
+		specYAML, err = openapi.GenerateYAML(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("generate OpenAPI 3.1 YAML: %w", err)
 		}
 
 		hJSON := sha256.Sum256(specJSON)
 		specJSONETag = fmt.Sprintf("%q", hex.EncodeToString(hJSON[:]))
-
 		hYAML := sha256.Sum256(specYAML)
 		specYAMLETag = fmt.Sprintf("%q", hex.EncodeToString(hYAML[:]))
 	}
 
-	for _, endpoint := range service.Endpoints {
-		if endpoint.OpenAPI != nil {
-			switch endpoint.OpenAPI.Mode {
-			case compiler.OpenAPIModeSpec:
-				logger.Info("mounted openapi specification", "route", endpoint.MethodAndPath, "format", endpoint.OpenAPI.Format)
-			case compiler.OpenAPIModeUI:
-				logger.Info("mounted interactive documentation", "route", endpoint.MethodAndPath, "renderer", endpoint.OpenAPI.Renderer)
-			case compiler.OpenAPIModeTemplate:
-				logger.Info("mounted custom documentation template", "route", endpoint.MethodAndPath)
-			}
-			e.bindOpenAPIRoute(endpoint, specJSON, specYAML, specJSONETag, specYAMLETag)
-		} else {
-			e.bindRoute(endpoint)
+	// Mount all endpoints onto http.ServeMux using sealed interface dispatch
+	for _, ep := range cfg.Endpoints {
+		switch h := ep.Handler.(type) {
+		case config.OpenAPIHandler:
+			e.bindOpenAPIRoute(ep, h, specJSON, specYAML, specJSONETag, specYAMLETag)
+		case config.PipelineHandler:
+			e.bindPipelineRoute(ep, h)
 		}
 	}
 
@@ -138,16 +131,15 @@ func New(options manifest.Options) (*Engine, error) {
 }
 
 func (e *Engine) bindOpenAPIRoute(
-	endpoint compiler.CompiledEndpoint,
+	ep config.Endpoint,
+	h config.OpenAPIHandler,
 	specJSON, specYAML []byte,
 	specJSONETag, specYAMLETag string,
 ) {
-	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
-		handler := endpoint.OpenAPI
-
-		switch handler.Mode {
-		case compiler.OpenAPIModeSpec:
-			isYAML := strings.EqualFold(handler.Format, "yaml") || strings.EqualFold(handler.Format, "yml")
+	e.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+		switch h.Mode {
+		case "spec":
+			isYAML := strings.EqualFold(h.Format, "yaml") || strings.EqualFold(h.Format, "yml")
 			contentType := "application/json"
 			body := specJSON
 			etag := specJSONETag
@@ -160,7 +152,6 @@ func (e *Engine) bindOpenAPIRoute(
 			w.Header().Set("Content-Type", contentType)
 			w.Header().Set("ETag", etag)
 
-			// RFC 7232 conditional evaluation
 			if match := r.Header.Get("If-None-Match"); match != "" && (match == etag || match == "*") {
 				w.WriteHeader(http.StatusNotModified)
 				return
@@ -168,28 +159,20 @@ func (e *Engine) bindOpenAPIRoute(
 
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(body)
-			return
 
-		case compiler.OpenAPIModeUI, compiler.OpenAPIModeTemplate:
-			specURL := handler.SpecURL
-			specYAMLURL := strings.TrimSuffix(specURL, ".json") + ".yaml"
-			if strings.HasSuffix(specURL, ".yaml") || strings.HasSuffix(specURL, ".yml") {
-				specYAMLURL = specURL
-			}
-
+		case "ui", "template":
 			data := openapi.TemplateData{
-				Title:       handler.Title,
-				Version:     handler.Version,
-				Description: handler.Description,
-				SpecURL:     specURL,
-				SpecYAMLURL: specYAMLURL,
+				Title:       h.Title,
+				Version:     h.Version,
+				Description: h.Description,
+				SpecURL:     h.SpecURL,
+				SpecYAMLURL: strings.TrimSuffix(h.SpecURL, ".json") + ".yaml",
 			}
 
-			htmlBytes, err := openapi.RenderHTML(handler.Renderer, data, handler.Template, "", "")
+			htmlBytes, err := openapi.RenderHTML(h.Renderer, h.Template, data)
 			if err != nil {
-				e.logger.ErrorContext(r.Context(), "failed to render docs", "error", err)
-				e.errorHandler(w, r, problem.Problem{
-					Type:     e.problem.ProblemType("internal-error"),
+				e.errors.Respond(w, r, problem.Problem{
+					Type:     e.config.Problem.FormatType("internal-error"),
 					Title:    "Documentation Render Error",
 					Status:   http.StatusInternalServerError,
 					Detail:   err.Error(),
@@ -205,38 +188,39 @@ func (e *Engine) bindOpenAPIRoute(
 	})
 }
 
-func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
+func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler) {
 	var paramNames []string
-	matches := pathParamRegex.FindAllStringSubmatch(endpoint.MethodAndPath, -1)
+	matches := pathParamRegex.FindAllStringSubmatch(ep.MethodAndPath, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
 			paramNames = append(paramNames, match[1])
 		}
 	}
 
-	executor := NewPipelineExecutor(endpoint.Steps, e.goSteps, e.sqlManager)
+	steps := e.buildSteps(h.Steps)
+	pipeline := NewPipeline(steps...)
 
-	e.mux.HandleFunc(endpoint.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+	e.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
 		execCtx, err := runtime.NewExecutionContext(w, r,
 			runtime.WithPathParams(paramNames),
-			runtime.WithServer(e.server),
+			runtime.WithMaxBodySize(e.config.Server.MaxBodySize.Bytes()),
+			runtime.WithProblemTypePrefix(e.config.Problem.TypePrefix),
 		)
 		if err != nil {
-			if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
-				e.logger.WarnContext(r.Context(), "request payload too large", "error", maxBytesErr, "path", r.URL.Path)
-				e.errorHandler(w, r, problem.Problem{
-					Type:     e.problem.ProblemType("payload-too-large"),
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				e.errors.Respond(w, r, problem.Problem{
+					Type:     e.config.Problem.FormatType("payload-too-large"),
 					Title:    "Request Entity Too Large",
 					Status:   http.StatusRequestEntityTooLarge,
-					Detail:   "request body exceeded maximum size limit of " + e.server.MaxBodySize.String(),
+					Detail:   "request body exceeded maximum allowed size",
 					Instance: r.URL.Path,
 				})
 				return
 			}
 
-			e.logger.WarnContext(r.Context(), "invalid request payload", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, problem.Problem{
-				Type:     e.problem.ProblemType("bad-request"),
+			// Malformed JSON payload or unreadable request body -> HTTP 400 Bad Request
+			e.errors.Respond(w, r, problem.Problem{
+				Type:     e.config.Problem.FormatType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -245,19 +229,12 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			return
 		}
 
-		// Ingress schema validation and normalization
-		invalidParams := e.validateRequest(execCtx, endpoint.Rules)
+		// Ingress schema validation
+		invalidParams := validateRequest(execCtx, ep.RequestRules)
 		if len(invalidParams) > 0 {
-			e.logger.WarnContext(
-				r.Context(),
-				"request schema validation failed",
-				"path",
-				r.URL.Path,
-				"invalid_count",
-				len(invalidParams),
-			)
-			e.errorHandler(w, r, problem.Problem{
-				Type:          e.problem.ProblemType("validation-error"),
+			e.logger.WarnContext(r.Context(), "request schema validation failed", "path", r.URL.Path, "invalid_count", len(invalidParams))
+			e.errors.Respond(w, r, problem.Problem{
+				Type:          e.config.Problem.FormatType("validation-error"),
 				Title:         "Unprocessable Entity",
 				Status:        http.StatusUnprocessableEntity,
 				Detail:        "Request payload failed schema validation constraints",
@@ -267,95 +244,73 @@ func (e *Engine) bindRoute(endpoint compiler.CompiledEndpoint) {
 			return
 		}
 
-		// Execute pipeline
-		if err := executor.Execute(w, execCtx); err != nil {
-			if p, ok := errors.AsType[problem.Problem](err); ok {
-				if p.Status == 0 {
-					p.Status = http.StatusInternalServerError
-				}
-				if p.Title == "" {
-					p.Title = http.StatusText(p.Status)
-					if p.Title == "" {
-						p.Title = "Error"
-					}
-				}
-				if p.Type == "" {
-					p.Type = e.problem.ProblemType(problem.Slugify(p.Title))
-				}
-				if p.Instance == "" {
-					p.Instance = r.URL.Path
-				}
-				if p.Status >= 500 {
-					e.logger.ErrorContext(r.Context(), "step execution failed", "error", p, "path", r.URL.Path)
-				} else {
-					e.logger.WarnContext(
-						r.Context(),
-						"step rejected request",
-						"status",
-						p.Status,
-						"title",
-						p.Title,
-						"path",
-						r.URL.Path,
-					)
-				}
-
-				e.errorHandler(w, r, p)
-				return
-			}
-
-			e.logger.ErrorContext(r.Context(), "pipeline execution failed", "error", err, "path", r.URL.Path)
-			e.errorHandler(w, r, problem.Problem{
-				Type:     e.problem.ProblemType("pipeline-execution-failed"),
-				Title:    "Pipeline Execution Error",
-				Status:   http.StatusInternalServerError,
-				Detail:   err.Error(),
-				Instance: r.URL.Path,
-			})
+		// Execute pipeline steps
+		if err := pipeline.Execute(execCtx, w); err != nil {
+			e.errors.Respond(w, r, err)
 		}
 	})
 }
 
-func (e *Engine) validateRequest(execCtx *runtime.ExecutionContext, rules compiler.CompiledRequestRules) []problem.InvalidParam {
-	var invalidParams []problem.InvalidParam
+func (e *Engine) buildSteps(parsedSteps []config.ParsedStep) []Step {
+	steps := make([]Step, 0, len(parsedSteps))
 
-	if len(rules.PathFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateStringMap(execCtx.Request.Path, rules.PathFields)...)
-	}
+	for _, ps := range parsedSteps {
+		switch ps.Type {
+		case config.StepTypeGo:
+			steps = append(steps, &GoStep{
+				Name:     ps.Name,
+				Use:      ps.Go.Use,
+				Args:     ps.Go.Args,
+				Registry: e.registry,
+			})
 
-	if len(rules.QueryFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateStringMap(execCtx.Request.Query, rules.QueryFields)...)
-	}
+		case config.StepTypeStarlark:
+			steps = append(steps, &StarlarkStep{
+				Name:   ps.Name,
+				Source: ps.Starlark.Source,
+			})
 
-	if len(rules.HeaderFields) > 0 {
-		invalidParams = append(invalidParams, validator.ValidateHeaders(execCtx.Request.Headers, rules.HeaderFields)...)
-	}
+		case config.StepTypeSQL:
+			connRef, _ := resolveConnectionRef(ps.SQL.Connection)
+			pool, _ := e.sqlManager.Get(connRef)
+			steps = append(steps, &SQLStep{
+				Name:    ps.Name,
+				Pool:    pool,
+				Query:   ps.SQL.Query,
+				Args:    ps.SQL.Args,
+				Catches: ps.SQL.Catches,
+			})
 
-	if len(rules.BodyFields) > 0 {
-		bodyMap, ok := execCtx.Request.Body.(map[string]any)
-		if !ok {
-			if execCtx.Request.Body == nil {
-				bodyMap = make(map[string]any)
-			} else {
-				return append(invalidParams, problem.InvalidParam{
-					Name:   "body",
-					Reason: "request body must be a JSON object",
-				})
-			}
+		case config.StepTypeRespond:
+			steps = append(steps, &RespondStep{
+				Condition: ps.Respond.Condition,
+				Status:    ps.Respond.Status,
+				Headers:   ps.Respond.Headers,
+				Body:      ps.Respond.Body,
+			})
 		}
-
-		normalizedBody, errs := validator.ValidateBody(bodyMap, rules.BodyFields)
-		if len(errs) > 0 {
-			invalidParams = append(invalidParams, errs...)
-		} else {
-			execCtx.Request.Body = normalizedBody
-		}
 	}
 
-	return invalidParams
+	return steps
 }
 
-// Close gracefully closes all active database and cache connection pools.
+// RegisterStep registers a native Go handler callback on the engine.
+func (e *Engine) RegisterStep(name string, handler runtime.StepHandler) error {
+	return e.registry.Register(name, handler)
+}
+
+func (e *Engine) Handler() http.Handler {
+	return e.mux
+}
+
+func (e *Engine) Server() config.Server {
+	return e.config.Server
+}
+
+func (e *Engine) Config() *config.Config {
+	return e.config
+}
+
 func (e *Engine) Close() error {
 	if e.sqlManager != nil {
 		return e.sqlManager.Close()
@@ -363,22 +318,26 @@ func (e *Engine) Close() error {
 	return nil
 }
 
-// RegisterStep registers a named custom Go function for the pipeline runtime.
-func (e *Engine) RegisterStep(name string, handler runtime.StepHandler) error {
-	if _, exists := e.goSteps[name]; exists {
-		return fmt.Errorf("step %q already registered", name)
+func resolveConnectionRef(expr hcl.Expression) (string, error) {
+	if expr == nil {
+		return "", fmt.Errorf("missing connection reference expression")
 	}
-
-	e.goSteps[name] = handler
-	return nil
-}
-
-// Handler returns the underlying http.Handler multiplexer.
-func (e *Engine) Handler() http.Handler {
-	return e.mux
-}
-
-// Server returns the server configuration with defaults applied.
-func (e *Engine) Server() manifest.Server {
-	return e.server
+	vars := expr.Variables()
+	if len(vars) > 0 {
+		var parts []string
+		for _, split := range vars[0] {
+			switch step := split.(type) {
+			case hcl.TraverseRoot:
+				parts = append(parts, step.Name)
+			case hcl.TraverseAttr:
+				parts = append(parts, step.Name)
+			}
+		}
+		return strings.Join(parts, "."), nil
+	}
+	val, diags := expr.Value(nil)
+	if !diags.HasErrors() && val.Type().Equals(cty.String) {
+		return val.AsString(), nil
+	}
+	return "", fmt.Errorf("invalid connection reference expression")
 }

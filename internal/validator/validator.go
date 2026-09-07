@@ -1,4 +1,4 @@
-// Package validator enforces OpenAPI 3.1 schema types, format constraints, and default value normalization.
+// Package validator enforces schema types, format constraints, and default value normalization.
 package validator
 
 import (
@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/scalar"
 )
@@ -26,13 +26,11 @@ var (
 	hostnameRegex = regexp.MustCompile(
 		`^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$`,
 	)
-	// patternCache is a thread-safe cache to avoid recompiling regex patterns on every HTTP request.
 	patternCache sync.Map
 )
 
-// ValidateBody validates and normalizes a JSON request body in a single pass.
-// It applies defaults, normalizes missing optional fields to nil, and validates all constraints.
-func ValidateBody(data map[string]any, fields []manifest.Field) (map[string]any, []problem.InvalidParam) {
+// ValidateBody validates and normalizes a JSON request body against schema fields.
+func ValidateBody(data map[string]any, fields []config.Field) (map[string]any, []problem.InvalidParam) {
 	result := make(map[string]any, len(fields)+len(data))
 	if len(data) > 0 {
 		maps.Copy(result, data)
@@ -54,7 +52,7 @@ func ValidateBody(data map[string]any, fields []manifest.Field) (map[string]any,
 				})
 				continue
 			default:
-				result[field.Name] = nil // Explicit nil so HCL can traverse as null
+				result[field.Name] = nil // Explicit nil so HCL expressions can check != null
 				continue
 			}
 		}
@@ -81,22 +79,20 @@ func ValidateBody(data map[string]any, fields []manifest.Field) (map[string]any,
 }
 
 // ValidateStringMap validates string-keyed parameter maps (Path, Query) and injects defaults.
-func ValidateStringMap(data map[string]string, fields []manifest.Field) []problem.InvalidParam {
+func ValidateStringMap(data map[string]string, fields []config.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(data, fields, func(name string) string {
 		return name
 	})
 }
 
-// ValidateHeaders validates incoming HTTP headers against schema fields in a single pass.
-// Per RFC 9110, header lookup is case-insensitive against lowercased ingress headers,
-// defaults are injected, and error diagnostics retain the author's declared schema casing.
-func ValidateHeaders(headers map[string]string, fields []manifest.Field) []problem.InvalidParam {
+// ValidateHeaders validates incoming HTTP headers against schema fields case-insensitively.
+func ValidateHeaders(headers map[string]string, fields []config.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(headers, fields, strings.ToLower)
 }
 
 func validateStringMapWithLookup(
 	data map[string]string,
-	fields []manifest.Field,
+	fields []config.Field,
 	keyLookup func(string) string,
 ) []problem.InvalidParam {
 	var invalidParams []problem.InvalidParam
@@ -139,7 +135,7 @@ func validateStringMapWithLookup(
 	return invalidParams
 }
 
-func validateValue(val any, field manifest.Field) string {
+func validateValue(val any, field config.Field) string {
 	switch {
 	case field.Type == "string":
 		strVal, ok := val.(string)
@@ -183,7 +179,7 @@ func validateValue(val any, field manifest.Field) string {
 	return ""
 }
 
-func checkStringConstraints(val string, field manifest.Field) string {
+func checkStringConstraints(val string, field config.Field) string {
 	runes := []rune(val)
 	if field.MinLength != nil && len(runes) < *field.MinLength {
 		return fmt.Sprintf("length must be at least %d characters", *field.MinLength)
@@ -222,7 +218,7 @@ func matchPattern(pattern, val string) bool {
 	return re.MatchString(val)
 }
 
-func checkNumericConstraints(val float64, rawVal any, field manifest.Field) string {
+func checkNumericConstraints(val float64, rawVal any, field config.Field) string {
 	if field.Min != nil && val < *field.Min {
 		return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
 	}
@@ -235,7 +231,7 @@ func checkNumericConstraints(val float64, rawVal any, field manifest.Field) stri
 	return ""
 }
 
-func checkListConstraints(val any, field manifest.Field) string {
+func checkListConstraints(val any, field config.Field) string {
 	rv := reflect.ValueOf(val)
 	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
 		return "must be of type list"

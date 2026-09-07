@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
@@ -93,9 +92,7 @@ func TestNewContext(t *testing.T) {
 
 			ctx, err := runtime.NewExecutionContext(nil, req,
 				runtime.WithPathParams(paramNames),
-				runtime.WithServer(manifest.Server{
-					MaxBodySize: 10 * 1024 * 1024,
-				}),
+				runtime.WithMaxBodySize(10*1024*1024),
 			)
 			if tt.expectError {
 				if err == nil {

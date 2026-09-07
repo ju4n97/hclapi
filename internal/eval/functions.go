@@ -167,7 +167,7 @@ func problemFunc(execCtx *runtime.ExecutionContext) function.Function {
 	var typePrefix string
 
 	if execCtx != nil {
-		typePrefix = execCtx.Problem.TypePrefix
+		typePrefix = execCtx.ProblemTypePrefix
 		if execCtx.RawRequest != nil && execCtx.RawRequest.URL != nil {
 			instancePath = execCtx.RawRequest.URL.Path
 		}

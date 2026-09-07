@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ju4n97/hclapi/internal/eval"
-	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/runtime"
 )
 
@@ -110,10 +109,8 @@ func TestFunctions_System(t *testing.T) {
 		t.Parallel()
 
 		execCtx := &runtime.ExecutionContext{
-			Problem: manifest.ProblemConfig{
-				TypePrefix: "https://docs.example.com/errors/",
-			},
-			RawRequest: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/42", http.NoBody),
+			ProblemTypePrefix: "https://docs.example.com/errors/",
+			RawRequest:        httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/42", http.NoBody),
 		}
 
 		// Standard status and detail

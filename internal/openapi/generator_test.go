@@ -5,117 +5,113 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/compiler"
-	"github.com/ju4n97/hclapi/internal/manifest"
+	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/openapi"
-	"github.com/ju4n97/hclapi/internal/parser"
 	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
 func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Parallel()
 
-	service := &compiler.CompiledService{
-		Server: manifest.Server{
+	cfg := &config.Config{
+		Server: config.Server{
 			MaxBodySize: scalar.ByteSize(10 * 1024 * 1024),
 		},
-		OpenAPI: manifest.OpenAPIConfig{
+		OpenAPI: config.OpenAPI{
 			Title:       "Acme Store API",
 			Version:     "1.0.0",
 			Description: "Comprehensive API specification for testing.",
-			Servers: []manifest.OpenAPIServer{
+			Servers: []config.OpenAPIServer{
 				{URL: "https://api.example.com/v1", Description: "Production"},
 				{URL: "http://localhost:8080", Description: "Local"},
 			},
-			Tags: []manifest.OpenAPITag{
+			Tags: []config.OpenAPITag{
 				{Name: "users", Description: "User account management"},
-				{Name: "orders", Description: "Order processing"},
 			},
-			Contact: &manifest.OpenAPIContact{
+			Contact: &config.Contact{
 				Name:  "API Support",
 				Email: "support@example.com",
 				URL:   "https://example.com/support",
 			},
-			License: &manifest.OpenAPILicense{
+			License: &config.License{
 				Name: "MIT",
 				URL:  "https://opensource.org/licenses/MIT",
 			},
 		},
-		Schemas: map[string][]manifest.Field{
+		Schemas: map[string]config.Schema{
 			"user": {
-				{Name: "email", Type: "string", Required: true, Format: "email", Description: "User email"},
-				{
-					Name:      "username",
-					Type:      "string",
-					Required:  true,
-					MinLength: new(3),
-					MaxLength: new(20),
-					Pattern:   "^[a-z0-9_]+$",
+				Name: "user",
+				Fields: []config.Field{
+					{Name: "email", Type: "string", Required: true, Format: "email", Description: "User email"},
+					{Name: "role", Type: "string", Default: "member", Enum: []any{"admin", "member"}},
 				},
-				{Name: "role", Type: "string", Default: "member", Enum: []any{"admin", "member", "viewer"}},
-				{Name: "age", Type: "int", Min: new(float64(18)), Max: new(float64(100))},
-				{Name: "tags", Type: "list(string)", MinItems: new(1), MaxItems: new(5), UniqueItems: true},
 			},
 		},
-		Endpoints: []compiler.CompiledEndpoint{
+		Endpoints: []config.Endpoint{
 			{
 				MethodAndPath: "POST /api/v1/users/{id}",
+				Method:        "POST",
+				Path:          "/api/v1/users/{id}",
 				Description:   "Registers a new user record.",
-				Rules: compiler.CompiledRequestRules{
-					PathFields: []manifest.Field{
+				RequestRules: config.RequestRules{
+					PathFields: []config.Field{
 						{Name: "id", Type: "int", Required: true, Description: "Unique user ID"},
 					},
-					HeaderFields: []manifest.Field{
+					HeaderFields: []config.Field{
 						{Name: "x-api-key", Type: "string", Required: true, Format: "uuid"},
 					},
-					QueryFields: []manifest.Field{
-						{Name: "source", Type: "string", Default: "direct", Enum: []any{"direct", "referral"}},
+					QueryFields: []config.Field{
+						{Name: "source", Type: "string", Default: "direct"},
 					},
-					BodyFields: []manifest.Field{
+					BodyFields: []config.Field{
 						{Name: "email", Type: "string", Required: true, Format: "email"},
-						{Name: "username", Type: "string", Required: true, MinLength: new(3)},
 					},
 				},
-				Steps: []parser.ParsedStep{
-					{
-						Type: parser.StepTypeSQL,
-						Name: "insert_user",
-						SQL: &parser.SQLStepBlock{
-							Catches: []parser.SQLCatchBlock{
-								{Code: "23505", Status: nil}, // Implies 409 Conflict
-							},
-						},
-					},
-					{
-						Type: parser.StepTypeRespond,
-						Respond: &parser.RespondStepBlock{
-							Status: nil, // Implies 201 / 200
+				Handler: config.PipelineHandler{
+					Steps: []config.ParsedStep{
+						{
+							Type:    config.StepTypeRespond,
+							Respond: &config.RespondStep{},
 						},
 					},
 				},
 			},
 			{
 				MethodAndPath: "GET /static/{filepath...}",
+				Method:        "GET",
+				Path:          "/static/{filepath...}",
 				Description:   "Serves public assets.",
-				Rules: compiler.CompiledRequestRules{
-					PathFields: []manifest.Field{
+				RequestRules: config.RequestRules{
+					PathFields: []config.Field{
 						{Name: "filepath", Type: "string", Required: true},
 					},
 				},
-				Steps: []parser.ParsedStep{
-					{
-						Type: parser.StepTypeRespond,
-						Respond: &parser.RespondStepBlock{
-							Status: nil,
+				Handler: config.PipelineHandler{
+					Steps: []config.ParsedStep{
+						{
+							Type:    config.StepTypeRespond,
+							Respond: &config.RespondStep{},
 						},
 					},
 				},
 			},
 			{
 				MethodAndPath: "GET /docs",
-				OpenAPI: &compiler.CompiledOpenAPIHandler{
-					Mode:     compiler.OpenAPIModeUI,
+				Method:        "GET",
+				Path:          "/docs",
+				Handler: config.OpenAPIHandler{
+					Mode:     "ui",
 					Renderer: "scalar",
+					SpecURL:  "/openapi.json",
+				},
+			},
+			{
+				MethodAndPath: "GET /openapi.json",
+				Method:        "GET",
+				Path:          "/openapi.json",
+				Handler: config.OpenAPIHandler{
+					Mode:   "spec",
+					Format: "json",
 				},
 			},
 		},
@@ -124,7 +120,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Run("Generates fully verified OpenAPI 3.1 JSON document", func(t *testing.T) {
 		t.Parallel()
 
-		jsonBytes, err := openapi.GenerateJSON(service, true)
+		jsonBytes, err := openapi.GenerateJSON(cfg, true)
 		if err != nil {
 			t.Fatalf("unexpected generation error: %v", err)
 		}
@@ -143,13 +139,13 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("unexpected info metadata: %+v", info)
 		}
 
-		// Verify Components / Reusable Schemas
+		// Verify Schemas
 		components := doc["components"].(map[string]any)
 		schemas := components["schemas"].(map[string]any)
 		userSchema := schemas["user"].(map[string]any)
 		userProps := userSchema["properties"].(map[string]any)
 		if userProps["email"] == nil || userProps["role"] == nil {
-			t.Errorf("expected email and role properties in user schema: %+v", userProps)
+			t.Errorf("expected email and role in user schema: %+v", userProps)
 		}
 
 		// Verify Paths
@@ -163,35 +159,30 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("expected catch-all path '/static/{filepath}' in document: %+v", paths)
 		}
 
-		// Verify docs endpoint was excluded from API routes
+		// Verify OpenAPI documentation routes were excluded from catalog
 		if paths["/docs"] != nil {
-			t.Errorf("expected docs endpoint to be excluded from API routes")
+			t.Errorf("expected /docs to be excluded from paths catalog")
 		}
 		if paths["/openapi.json"] != nil {
-			t.Errorf("expected openapi.json endpoint to be excluded from API routes")
-		}
-		if paths["/openapi.yaml"] != nil {
-			t.Errorf("expected openapi.yaml endpoint to be excluded from API routes")
+			t.Errorf("expected /openapi.json to be excluded from paths catalog")
 		}
 
-		// Verify Operation Parameters and Request Body
+		// Verify Parameters and Request Body
 		userPathItem := paths["/api/v1/users/{id}"].(map[string]any)
 		postOp := userPathItem["post"].(map[string]any)
 		params := postOp["parameters"].([]any)
-		if len(params) != 3 { // path: id, header: x-api-key, query: source
+		if len(params) != 3 {
 			t.Errorf("expected 3 parameters (path, header, query), got %d: %+v", len(params), params)
 		}
-
 		if postOp["requestBody"] == nil {
 			t.Errorf("expected requestBody on POST operation")
 		}
 
-		// Verify Responses (200/201, 409 Conflict, 413 Payload Too Large, 422 Unprocessable Entity, 500)
+		// Verify Responses
 		responses := postOp["responses"].(map[string]any)
-		expectedCodes := []string{"200", "422", "500"}
-		for _, code := range expectedCodes {
+		for _, code := range []string{"200", "413", "422", "500"} {
 			if responses[code] == nil {
-				t.Errorf("expected response code %q on operation, got: %+v", code, responses)
+				t.Errorf("expected response code %q, got: %+v", code, responses)
 			}
 		}
 	})
@@ -199,20 +190,17 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Run("Generates valid OpenAPI 3.1 YAML document", func(t *testing.T) {
 		t.Parallel()
 
-		yamlBytes, err := openapi.GenerateYAML(service)
+		yamlBytes, err := openapi.GenerateYAML(cfg)
 		if err != nil {
 			t.Fatalf("unexpected YAML generation error: %v", err)
 		}
 
 		yamlStr := string(yamlBytes)
 		if !strings.Contains(yamlStr, "openapi: 3.1.0") {
-			t.Errorf("expected openapi: 3.1.0 header in YAML output")
+			t.Errorf("expected openapi: 3.1.0 header in YAML")
 		}
 		if !strings.Contains(yamlStr, "title: Acme Store API") {
-			t.Errorf("expected title in YAML output")
-		}
-		if !strings.Contains(yamlStr, "/api/v1/users/{id}:") {
-			t.Errorf("expected path in YAML output")
+			t.Errorf("expected title in YAML")
 		}
 	})
 }

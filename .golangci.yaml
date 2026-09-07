@@ -142,7 +142,7 @@ formatters:
       custom-order: true
 
     golines:
-      max-len: 130
+      max-len: 140
       tab-len: 4
       shorten-comments: false
       reformat-tags: true

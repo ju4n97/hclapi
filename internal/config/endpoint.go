@@ -9,12 +9,14 @@ type Handler interface {
 	isHandler()
 }
 
+// PipelineHandler executes a sequence of steps.
 type PipelineHandler struct {
 	Steps []ParsedStep
 }
 
 func (PipelineHandler) isHandler() {}
 
+// OpenAPIHandler renders an OpenAPI 3.1 document.
 type OpenAPIHandler struct {
 	Mode        string // "spec", "ui", "template"
 	Format      string // "json", "yaml"
@@ -46,9 +48,10 @@ type RequestRules struct {
 	BodyFields   []Field
 }
 
-// Step definitions for the pipeline.
+// StepType defines the type of a parsed pipeline step.
 type StepType string
 
+// StepType constants for supported step types.
 const (
 	StepTypeGo       StepType = "go"
 	StepTypeStarlark StepType = "starlark"
@@ -56,6 +59,7 @@ const (
 	StepTypeRespond  StepType = "respond"
 )
 
+// ParsedStep is a parsed step definition from the HCL configuration.
 type ParsedStep struct {
 	Type     StepType
 	Name     string
@@ -65,15 +69,18 @@ type ParsedStep struct {
 	Respond  *RespondStep
 }
 
+// GoStep executes a registered native Go function.
 type GoStep struct {
 	Use  string         `hcl:"use,attr"`
 	Args hcl.Expression `hcl:"args,optional"`
 }
 
+// StarlarkStep executes a sandboxed Starlark script.
 type StarlarkStep struct {
 	Source string `hcl:"source,attr"`
 }
 
+// SQLStep executes a database query or mutation with constraint catch blocks.
 type SQLStep struct {
 	Connection hcl.Expression `hcl:"connection,attr"`
 	Query      string         `hcl:"query,attr"`
@@ -81,6 +88,7 @@ type SQLStep struct {
 	Catches    []SQLCatch     `hcl:"catch,block"`
 }
 
+// SQLCatch defines a constraint catch block for SQLStep.
 type SQLCatch struct {
 	Code    string         `hcl:"code,label"`
 	Status  hcl.Expression `hcl:"status,optional"`
@@ -88,6 +96,7 @@ type SQLCatch struct {
 	Body    hcl.Expression `hcl:"body,optional"`
 }
 
+// RespondStep serializes HTTP headers, status code, and payload.
 type RespondStep struct {
 	Condition hcl.Expression `hcl:"condition,optional"`
 	Status    hcl.Expression `hcl:"status,optional"`

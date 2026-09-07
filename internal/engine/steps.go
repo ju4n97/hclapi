@@ -23,6 +23,7 @@ type GoStep struct {
 	Registry *StepRegistry
 }
 
+// Run implements [Step.Run].
 func (s *GoStep) Run(execCtx *runtime.ExecutionContext, w http.ResponseWriter) (StepResult, error) {
 	handler, ok := s.Registry.Get(s.Use)
 	if !ok {
@@ -71,6 +72,7 @@ type SQLStep struct {
 	Catches []config.SQLCatch
 }
 
+// Run implements [Step.Run].
 func (s *SQLStep) Run(execCtx *runtime.ExecutionContext, w http.ResponseWriter) (StepResult, error) {
 	args, err := eval.Map(s.Args, execCtx)
 	if err != nil {
@@ -118,6 +120,7 @@ type StarlarkStep struct {
 	Source string
 }
 
+// Run implements [Step.Run].
 func (s *StarlarkStep) Run(execCtx *runtime.ExecutionContext, w http.ResponseWriter) (StepResult, error) {
 	env := star.Env{
 		Request: star.Request{
@@ -151,6 +154,7 @@ type RespondStep struct {
 	Body      hcl.Expression
 }
 
+// Run implements [Step.Run].
 func (s *RespondStep) Run(execCtx *runtime.ExecutionContext, w http.ResponseWriter) (StepResult, error) {
 	shouldRun, err := eval.Bool(s.Condition, execCtx, true)
 	if err != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -203,7 +204,11 @@ func compileEndpoint(
 	}
 
 	if hasPipeline && hasOpenAPI {
-		return Endpoint{}, fmt.Errorf("endpoint %q defines conflicting handlers: 'openapi %q' and 'pipeline'", ep.MethodAndPath, ep.OpenAPIs[0].Mode)
+		return Endpoint{}, fmt.Errorf(
+			"endpoint %q defines conflicting handlers: 'openapi %q' and 'pipeline'",
+			ep.MethodAndPath,
+			ep.OpenAPIs[0].Mode,
+		)
 	}
 
 	if !hasPipeline && !hasOpenAPI {
@@ -218,7 +223,10 @@ func compileEndpoint(
 	// Branch A: OpenAPI handler
 	if hasOpenAPI {
 		if ep.Request != nil {
-			return Endpoint{}, fmt.Errorf("endpoint %q: openapi endpoints are engine-managed and do not accept a 'request' block", ep.MethodAndPath)
+			return Endpoint{}, fmt.Errorf(
+				"endpoint %q: openapi endpoints are engine-managed and do not accept a 'request' block",
+				ep.MethodAndPath,
+			)
 		}
 		if method != http.MethodGet && method != http.MethodHead {
 			return Endpoint{}, fmt.Errorf("endpoint %q is invalid; openapi endpoints only support HTTP GET and HEAD", ep.MethodAndPath)
@@ -243,7 +251,11 @@ func compileEndpoint(
 			if raw.Format != nil {
 				f := strings.ToLower(strings.TrimSpace(*raw.Format))
 				if f != "json" && f != "yaml" && f != "yml" {
-					return Endpoint{}, fmt.Errorf("endpoint %q: invalid openapi format %q; must be 'json' or 'yaml'", ep.MethodAndPath, *raw.Format)
+					return Endpoint{}, fmt.Errorf(
+						"endpoint %q: invalid openapi format %q; must be 'json' or 'yaml'",
+						ep.MethodAndPath,
+						*raw.Format,
+					)
 				}
 				format = f
 			}
@@ -252,7 +264,10 @@ func compileEndpoint(
 
 		case "ui":
 			if raw.Format != nil || raw.File != nil || raw.Inline != nil {
-				return Endpoint{}, fmt.Errorf("endpoint %q: openapi \"ui\" only accepts 'renderer' and 'spec_url' attributes", ep.MethodAndPath)
+				return Endpoint{}, fmt.Errorf(
+					"endpoint %q: openapi \"ui\" only accepts 'renderer' and 'spec_url' attributes",
+					ep.MethodAndPath,
+				)
 			}
 			renderer := "scalar"
 			if raw.Renderer != nil {
@@ -261,7 +276,11 @@ func compileEndpoint(
 				case "scalar", "elements", "swagger", "redoc":
 					renderer = r
 				default:
-					return Endpoint{}, fmt.Errorf("endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'", ep.MethodAndPath, *raw.Renderer)
+					return Endpoint{}, fmt.Errorf(
+						"endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'",
+						ep.MethodAndPath,
+						*raw.Renderer,
+					)
 				}
 			}
 			handler.Mode = "ui"
@@ -269,10 +288,16 @@ func compileEndpoint(
 
 		case "template":
 			if raw.Format != nil || raw.Renderer != nil {
-				return Endpoint{}, fmt.Errorf("endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes", ep.MethodAndPath)
+				return Endpoint{}, fmt.Errorf(
+					"endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes",
+					ep.MethodAndPath,
+				)
 			}
 			if (raw.File == nil && raw.Inline == nil) || (raw.File != nil && raw.Inline != nil) {
-				return Endpoint{}, fmt.Errorf("endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'", ep.MethodAndPath)
+				return Endpoint{}, fmt.Errorf(
+					"endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'",
+					ep.MethodAndPath,
+				)
 			}
 			handler.Mode = "template"
 			if raw.Inline != nil {
@@ -287,7 +312,11 @@ func compileEndpoint(
 			}
 
 		default:
-			return Endpoint{}, fmt.Errorf("endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"", ep.MethodAndPath, raw.Mode)
+			return Endpoint{}, fmt.Errorf(
+				"endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"",
+				ep.MethodAndPath,
+				raw.Mode,
+			)
 		}
 
 		return Endpoint{
@@ -498,7 +527,10 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		}
 
 		if len(jsonSpecs) == 0 {
-			return fmt.Errorf("cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly", ep.MethodAndPath)
+			return fmt.Errorf(
+				"cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly",
+				ep.MethodAndPath,
+			)
 		}
 
 		if len(jsonSpecs) == 1 {
@@ -527,7 +559,11 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		for _, s := range jsonSpecs {
 			candidatePaths = append(candidatePaths, fmt.Sprintf("%q", s.path))
 		}
-		return fmt.Errorf("ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly", ep.MethodAndPath, strings.Join(candidatePaths, ", "))
+		return fmt.Errorf(
+			"ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly",
+			ep.MethodAndPath,
+			strings.Join(candidatePaths, ", "),
+		)
 	}
 
 	return nil
@@ -543,7 +579,7 @@ func splitMethodAndPath(raw string) (string, string, error) {
 
 func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", fmt.Errorf("missing connection reference expression")
+		return "", errors.New("missing connection reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -562,12 +598,12 @@ func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.Type().Equals(cty.String) {
 		return val.AsString(), nil
 	}
-	return "", fmt.Errorf("invalid connection reference expression")
+	return "", errors.New("invalid connection reference expression")
 }
 
 func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", fmt.Errorf("missing schema reference expression")
+		return "", errors.New("missing schema reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -584,5 +620,5 @@ func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.IsKnown() && !val.IsNull() && val.Type().Equals(cty.String) {
 		return strings.TrimPrefix(val.AsString(), "schema."), nil
 	}
-	return "", fmt.Errorf("invalid schema reference expression")
+	return "", errors.New("invalid schema reference expression")
 }

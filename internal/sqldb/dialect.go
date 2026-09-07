@@ -72,6 +72,7 @@ func (d Dialect) MatchErrorCode(actualCode, targetCode string) bool {
 	return false
 }
 
+// Dialects for common database drivers.
 var (
 	PostgresDialect = Dialect{
 		name: "postgres",

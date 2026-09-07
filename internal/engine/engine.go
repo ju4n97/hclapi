@@ -299,18 +299,22 @@ func (e *Engine) RegisterStep(name string, handler runtime.StepHandler) error {
 	return e.registry.Register(name, handler)
 }
 
+// Handler returns the HTTP handler.
 func (e *Engine) Handler() http.Handler {
 	return e.mux
 }
 
+// Server returns the server configuration.
 func (e *Engine) Server() config.Server {
 	return e.config.Server
 }
 
+// Config returns the loaded configuration.
 func (e *Engine) Config() *config.Config {
 	return e.config
 }
 
+// Close closes the database connection pools and releases all resources.
 func (e *Engine) Close() error {
 	if e.sqlManager != nil {
 		return e.sqlManager.Close()
@@ -320,7 +324,7 @@ func (e *Engine) Close() error {
 
 func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", fmt.Errorf("missing connection reference expression")
+		return "", errors.New("missing connection reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -339,5 +343,5 @@ func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.Type().Equals(cty.String) {
 		return val.AsString(), nil
 	}
-	return "", fmt.Errorf("invalid connection reference expression")
+	return "", errors.New("invalid connection reference expression")
 }

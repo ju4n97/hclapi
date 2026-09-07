@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -23,7 +24,7 @@ func NewStepRegistry() *StepRegistry {
 // Register stores a named callback in the registry. It fails if the name is already in use.
 func (r *StepRegistry) Register(name string, handler runtime.StepHandler) error {
 	if name == "" {
-		return fmt.Errorf("step name cannot be empty")
+		return errors.New("step name cannot be empty")
 	}
 	if handler == nil {
 		return fmt.Errorf("step %q: handler cannot be nil", name)

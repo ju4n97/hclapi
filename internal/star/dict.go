@@ -32,6 +32,7 @@ func NewCaseInsensitiveDictFromStrings(data map[string]string) *CaseInsensitiveD
 	return &CaseInsensitiveDict{m: m}
 }
 
+// ToMap converts the CaseInsensitiveDict to a Go map.
 func (d *CaseInsensitiveDict) ToMap() map[string]any {
 	res := make(map[string]any, len(d.m))
 	for k, v := range d.m {
@@ -40,6 +41,7 @@ func (d *CaseInsensitiveDict) ToMap() map[string]any {
 	return res
 }
 
+// String implements [starlark.Value.String].
 func (d *CaseInsensitiveDict) String() string {
 	parts := make([]string, 0, len(d.m))
 	for k, v := range d.m {
@@ -48,16 +50,20 @@ func (d *CaseInsensitiveDict) String() string {
 	return "{" + strings.Join(parts, ", ") + "}"
 }
 
+// Type implements [starlark.Value.Type].
 func (d *CaseInsensitiveDict) Type() string {
 	return "case_insensitive_dict"
 }
 
+// Freeze implements [starlark.Value.Freeze].
 func (d *CaseInsensitiveDict) Freeze() {}
 
+// Truth implements [starlark.Value.Truth].
 func (d *CaseInsensitiveDict) Truth() starlark.Bool {
 	return len(d.m) > 0
 }
 
+// Hash implements [starlark.Value.Hash].
 func (d *CaseInsensitiveDict) Hash() (uint32, error) {
 	return 0, errors.New("unhashable type: case_insensitive_dict")
 }
@@ -75,7 +81,8 @@ func (d *CaseInsensitiveDict) Get(k starlark.Value) (starlark.Value, bool, error
 	return val, true, nil
 }
 
-// Attr implements starlark.HasAttrs: supports `.get()`, `.keys()`, `.values()`, `.items()`, and dot-notation.
+// Attr implements [starlark.HasAttrs].
+// Supports `.get()`, `.keys()`, `.values()`, `.items()`, and dot-notation.
 func (d *CaseInsensitiveDict) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "get":
@@ -147,6 +154,7 @@ func (d *CaseInsensitiveDict) Attr(name string) (starlark.Value, error) {
 	return nil, nil
 }
 
+// AttrNames implements [starlark.Value.AttrNames].
 func (d *CaseInsensitiveDict) AttrNames() []string {
 	names := []string{"get", "keys", "values", "items"}
 	for k := range d.m {
@@ -155,6 +163,7 @@ func (d *CaseInsensitiveDict) AttrNames() []string {
 	return names
 }
 
+// Iterate implements [starlark.Value.Iterate].
 func (d *CaseInsensitiveDict) Iterate() starlark.Iterator {
 	keys := make([]starlark.Value, 0, len(d.m))
 	for k := range d.m {
@@ -163,6 +172,7 @@ func (d *CaseInsensitiveDict) Iterate() starlark.Iterator {
 	return starlark.NewList(keys).Iterate()
 }
 
+// Len implements [starlark.Value.Len].
 func (d *CaseInsensitiveDict) Len() int {
 	return len(d.m)
 }

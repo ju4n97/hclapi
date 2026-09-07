@@ -29,6 +29,7 @@ type Server struct {
 	MaxBodySize  scalar.ByteSize
 }
 
+// SetDefaults sets default values for unset fields.
 func (s *Server) SetDefaults() {
 	if s.Host == "" {
 		s.Host = "127.0.0.1"
@@ -55,6 +56,7 @@ type Problem struct {
 	TypePrefix string `hcl:"type_prefix,optional"`
 }
 
+// FormatType returns the full error type for a given slug.
 func (p Problem) FormatType(slug string) string {
 	if p.TypePrefix == "" {
 		return "urn:hclapi:error:" + slug
@@ -80,6 +82,7 @@ type OpenAPI struct {
 	Tags    []OpenAPITag
 }
 
+// SetDefaults sets default values for unset fields.
 func (o *OpenAPI) SetDefaults() {
 	if o.Title == "" {
 		o.Title = "API Documentation"
@@ -89,22 +92,26 @@ func (o *OpenAPI) SetDefaults() {
 	}
 }
 
+// OpenAPIServer defines a single OpenAPI server.
 type OpenAPIServer struct {
 	URL         string
 	Description string
 }
 
+// OpenAPITag defines a single OpenAPI tag.
 type OpenAPITag struct {
 	Name        string
 	Description string
 }
 
+// Contact defines a single OpenAPI contact.
 type Contact struct {
 	Name  string `hcl:"name,optional"`
 	Email string `hcl:"email,optional"`
 	URL   string `hcl:"url,optional"`
 }
 
+// License defines a single OpenAPI license.
 type License struct {
 	Name string `hcl:"name,optional"`
 	URL  string `hcl:"url,optional"`
@@ -118,6 +125,7 @@ type Connection struct {
 	Pool   PoolTune
 }
 
+// PoolTune defines the tuning parameters for a connection pool.
 type PoolTune struct {
 	MaxOpen     int
 	MaxIdle     int
@@ -125,6 +133,7 @@ type PoolTune struct {
 	IdleTimeout scalar.Duration
 }
 
+// SetDefaults sets default values for unset fields.
 func (c *Connection) SetDefaults() {
 	if c.Pool.MaxOpen == 0 {
 		c.Pool.MaxOpen = 25
@@ -140,10 +149,12 @@ func (c *Connection) SetDefaults() {
 	}
 }
 
+// Key returns the connection key in the form of "driver.name".
 func (c Connection) Key() string {
 	return c.Driver + "." + c.Name
 }
 
+// Reference returns the connection reference in the form of "connection.driver.name".
 func (c Connection) Reference() string {
 	return "connection." + c.Driver + "." + c.Name
 }

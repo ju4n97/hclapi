@@ -1,3 +1,5 @@
+// Package runtime manages request-scoped execution state, step outputs,
+// and context lifecycles for pipeline runs.
 package runtime
 
 import (
@@ -16,10 +18,10 @@ import (
 	"github.com/ju4n97/hclapi/internal/problem"
 )
 
-// StepResult represents arbitrary step-specific outputs.
+// StepResult represents the exported outputs of a completed pipeline step.
 type StepResult = map[string]any
 
-// RequestState represents normalized HTTP request metadata extracted at runtime.
+// RequestState holds normalized, read-only metadata extracted from an incoming HTTP request.
 type RequestState struct {
 	Method  string            `json:"method"`
 	Path    map[string]string `json:"path"`
@@ -28,6 +30,7 @@ type RequestState struct {
 	Body    any               `json:"body"`
 }
 
+// PathParam returns the route path parameter for key, or fallback if absent.
 func (r *RequestState) PathParam(key string, fallback ...string) string {
 	if r != nil && r.Path != nil {
 		if val, ok := r.Path[key]; ok && val != "" {
@@ -40,6 +43,7 @@ func (r *RequestState) PathParam(key string, fallback ...string) string {
 	return ""
 }
 
+// QueryParam returns the URL query parameter for key, or fallback if absent.
 func (r *RequestState) QueryParam(key string, fallback ...string) string {
 	if r != nil && r.Query != nil {
 		if val, ok := r.Query[key]; ok {
@@ -52,6 +56,7 @@ func (r *RequestState) QueryParam(key string, fallback ...string) string {
 	return ""
 }
 
+// Header returns the case-insensitive HTTP request header for key.
 func (r *RequestState) Header(key string) string {
 	if r == nil || r.Headers == nil {
 		return ""
@@ -59,7 +64,7 @@ func (r *RequestState) Header(key string) string {
 	return r.Headers[strings.ToLower(key)]
 }
 
-// ExecutionContext encapsulates runtime state for a single HTTP request pipeline.
+// ExecutionContext encapsulates the state, context, and accumulated step outputs for a single request.
 type ExecutionContext struct {
 	Request           *RequestState         `json:"request"`
 	Steps             map[string]StepResult `json:"steps"`
@@ -72,14 +77,14 @@ type ExecutionContext struct {
 	mu sync.RWMutex
 }
 
-// Step encapsulates invocation state and evaluated arguments for a Go step.
+// Step wraps ExecutionContext with step-specific metadata and evaluated arguments for a Go step handler.
 type Step struct {
 	*ExecutionContext
 	Name string `json:"name"`
 	Args Args   `json:"args"`
 }
 
-// Problem constructs an RFC 9457 Problem bound to this step's execution context.
+// Problem constructs an RFC 9457 Problem Details error bound to this step's name and request instance.
 func (s *Step) Problem(status int, detail string) problem.Problem {
 	p := problem.New(status, detail)
 	p.Step = s.Name
@@ -97,6 +102,7 @@ func (s *Step) Problem(status int, detail string) problem.Problem {
 	return p
 }
 
+// StepHandler defines the signature for custom native Go step callbacks.
 type StepHandler func(ctx context.Context, step *Step) (any, error)
 
 type executionContextConfig struct {
@@ -105,21 +111,25 @@ type executionContextConfig struct {
 	problemTypePrefix string
 }
 
+// ExecutionContextOption configures optional behavior when initializing an ExecutionContext.
 type ExecutionContextOption func(*executionContextConfig)
 
+// WithPathParams configures the route path parameter names to extract from the request.
 func WithPathParams(paramNames []string) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.pathParams = paramNames }
 }
 
+// WithMaxBodySize enforces an upper byte limit on the incoming HTTP request body.
 func WithMaxBodySize(maxBytes int64) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.maxBodySize = maxBytes }
 }
 
+// WithProblemTypePrefix sets the base URI prefix used when deriving RFC 9457 problem error types.
 func WithProblemTypePrefix(prefix string) ExecutionContextOption {
 	return func(c *executionContextConfig) { c.problemTypePrefix = prefix }
 }
 
-// NewExecutionContext parses the request, enforces body limits, and initializes execution state.
+// NewExecutionContext parses the incoming HTTP request, applies size constraints, and initializes pipeline state.
 func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...ExecutionContextOption) (*ExecutionContext, error) {
 	var cfg executionContextConfig
 	for _, opt := range opts {
@@ -196,6 +206,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, opts ...Executi
 	}, nil
 }
 
+// NewStep creates an execution handle for a named step with evaluated arguments.
 func (e *ExecutionContext) NewStep(name string, args Args) *Step {
 	return &Step{
 		ExecutionContext: e,
@@ -204,6 +215,7 @@ func (e *ExecutionContext) NewStep(name string, args Args) *Step {
 	}
 }
 
+// SetStepResult stores the exported outputs of a completed step.
 func (e *ExecutionContext) SetStepResult(stepName string, result StepResult) {
 	if e == nil || stepName == "" {
 		return
@@ -213,6 +225,7 @@ func (e *ExecutionContext) SetStepResult(stepName string, result StepResult) {
 	e.Steps[stepName] = result
 }
 
+// GetStepResult retrieves the outputs of a previously executed step.
 func (e *ExecutionContext) GetStepResult(stepName string) (StepResult, bool) {
 	if e == nil {
 		return nil, false
@@ -223,6 +236,7 @@ func (e *ExecutionContext) GetStepResult(stepName string) (StepResult, bool) {
 	return res, ok
 }
 
+// SnapshotSteps returns a shallow copy of all step outputs recorded up to this point.
 func (e *ExecutionContext) SnapshotSteps() map[string]StepResult {
 	if e == nil {
 		return nil
@@ -235,6 +249,7 @@ func (e *ExecutionContext) SnapshotSteps() map[string]StepResult {
 	return snapshot
 }
 
+// Context returns the underlying standard library request context.
 func (e *ExecutionContext) Context() context.Context {
 	if e != nil && e.RawRequest != nil {
 		return e.RawRequest.Context()
@@ -242,6 +257,7 @@ func (e *ExecutionContext) Context() context.Context {
 	return context.Background()
 }
 
+// WithContext returns a shallow copy of ExecutionContext with an updated standard library context.
 func (e *ExecutionContext) WithContext(ctx context.Context) *ExecutionContext {
 	if e == nil {
 		return nil

@@ -5,111 +5,110 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/openapi"
-	"github.com/ju4n97/hclapi/internal/scalar"
+	"github.com/ju4n97/hclapi/internal/service"
 )
 
 func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Parallel()
 
-	cfg := &config.Config{
-		Server: &config.Server{
-			MaxBodySize: scalar.ByteSize(10 * 1024 * 1024),
+	svc := &service.Definition{
+		Server: service.Server{
+			MaxBodySize: 10 * 1024 * 1024,
 		},
-		OpenAPI: &config.OpenAPI{
+		OpenAPI: service.OpenAPI{
 			Title:       "Acme Store API",
 			Version:     "1.0.0",
 			Description: "Comprehensive API specification for testing.",
-			Servers: []config.OpenAPIServer{
+			Servers: []service.OpenAPIServer{
 				{URL: "https://api.example.com/v1", Description: "Production"},
 				{URL: "http://localhost:8080", Description: "Local"},
 			},
-			Tags: []config.OpenAPITag{
+			Tags: []service.OpenAPITag{
 				{Name: "users", Description: "User account management"},
 			},
-			Contact: &config.Contact{
+			Contact: &service.Contact{
 				Name:  "API Support",
 				Email: "support@example.com",
 				URL:   "https://example.com/support",
 			},
-			License: &config.License{
+			License: &service.License{
 				Name: "MIT",
 				URL:  "https://opensource.org/licenses/MIT",
 			},
 		},
-		Schemas: []config.Schema{
-			{
+		Schemas: map[string]service.Schema{
+			"user": {
 				Name: "user",
-				Fields: []config.Field{
+				Fields: []service.Field{
 					{Name: "email", Type: "string", Required: true, Format: "email", Description: "User email"},
 					{Name: "role", Type: "string", Default: "member", Enum: []any{"admin", "member"}},
 				},
 			},
 		},
-		Endpoints: []config.Endpoint{
+		Endpoints: []service.Endpoint{
 			{
-				MethodAndPath: "POST /api/v1/users/{id}",
-				Method:        "POST",
-				Path:          "/api/v1/users/{id}",
-				Description:   new("Registers a new user record."),
-				RequestRules: config.RequestRules{
-					PathFields: []config.Field{
+				RoutePattern: "POST /api/v1/users/{id}",
+				Method:       "POST",
+				Path:         "/api/v1/users/{id}",
+				Description:  "Registers a new user record.",
+				RequestRules: service.RequestRules{
+					PathFields: []service.Field{
 						{Name: "id", Type: "int", Required: true, Description: "Unique user ID"},
 					},
-					HeaderFields: []config.Field{
+					HeaderFields: []service.Field{
 						{Name: "x-api-key", Type: "string", Required: true, Format: "uuid"},
 					},
-					QueryFields: []config.Field{
+					QueryFields: []service.Field{
 						{Name: "source", Type: "string", Default: "direct"},
 					},
-					BodyFields: []config.Field{
+					BodyFields: []service.Field{
 						{Name: "email", Type: "string", Required: true, Format: "email"},
 					},
 				},
-				Handler: config.PipelineHandler{
-					Steps: []config.ParsedStep{
+				Handler: service.PipelineHandler{
+					Steps: []service.Step{
 						{
-							Type:    config.StepTypeRespond,
-							Respond: &config.RespondStep{},
+							Type:    service.StepTypeRespond,
+							Respond: &service.RespondStep{},
 						},
 					},
 				},
 			},
 			{
-				MethodAndPath: "GET /static/{filepath...}",
-				Method:        "GET",
-				Path:          "/static/{filepath...}",
-				Description:   new("Serves public assets."),
-				RequestRules: config.RequestRules{
-					PathFields: []config.Field{
+				RoutePattern: "GET /static/{filepath...}",
+				Method:       "GET",
+				Path:         "/static/{filepath...}",
+				Description:  "Serves public assets.",
+				RequestRules: service.RequestRules{
+					PathFields: []service.Field{
 						{Name: "filepath", Type: "string", Required: true},
 					},
 				},
-				Handler: config.PipelineHandler{
-					Steps: []config.ParsedStep{
+				Handler: service.PipelineHandler{
+					Steps: []service.Step{
 						{
-							Type:    config.StepTypeRespond,
-							Respond: &config.RespondStep{},
+							Type:    service.StepTypeRespond,
+							Respond: &service.RespondStep{},
 						},
 					},
 				},
 			},
 			{
-				MethodAndPath: "GET /docs",
-				Method:        "GET",
-				Path:          "/docs",
-				Handler: config.OpenAPIHandler{
+				RoutePattern: "GET /docs",
+				Method:       "GET",
+				Path:         "/docs",
+				Handler: service.OpenAPIHandler{
 					Mode:     "ui",
 					Renderer: "scalar",
 					SpecURL:  "/openapi.json",
 				},
 			},
 			{
-				MethodAndPath: "GET /openapi.json",
-				Method:        "GET",
-				Path:          "/openapi.json",
-				Handler: config.OpenAPIHandler{
+				RoutePattern: "GET /openapi.json",
+				Method:       "GET",
+				Path:         "/openapi.json",
+				Handler: service.OpenAPIHandler{
 					Mode:   "spec",
 					Format: "json",
 				},
@@ -120,7 +119,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Run("Generates fully verified OpenAPI 3.1 JSON document", func(t *testing.T) {
 		t.Parallel()
 
-		jsonBytes, err := openapi.GenerateJSON(cfg, true)
+		jsonBytes, err := openapi.GenerateJSON(svc, true)
 		if err != nil {
 			t.Fatalf("unexpected generation error: %v", err)
 		}
@@ -130,7 +129,6 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Fatalf("failed to unmarshal JSON: %v", err)
 		}
 
-		// Verify OpenAPI Header and Info
 		if doc["openapi"] != "3.1.0" {
 			t.Errorf("expected openapi '3.1.0', got %v", doc["openapi"])
 		}
@@ -139,7 +137,6 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("unexpected info metadata: %+v", info)
 		}
 
-		// Verify Schemas
 		components := doc["components"].(map[string]any)
 		schemas := components["schemas"].(map[string]any)
 		userSchema := schemas["user"].(map[string]any)
@@ -148,18 +145,15 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("expected email and role in user schema: %+v", userProps)
 		}
 
-		// Verify Paths
 		paths := doc["paths"].(map[string]any)
 		if paths["/api/v1/users/{id}"] == nil {
 			t.Fatalf("expected path '/api/v1/users/{id}' in document: %+v", paths)
 		}
 
-		// Verify Catch-all wildcard converted from {filepath...} to {filepath}
 		if paths["/static/{filepath}"] == nil {
 			t.Errorf("expected catch-all path '/static/{filepath}' in document: %+v", paths)
 		}
 
-		// Verify OpenAPI documentation routes were excluded from catalog
 		if paths["/docs"] != nil {
 			t.Errorf("expected /docs to be excluded from paths catalog")
 		}
@@ -167,7 +161,6 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("expected /openapi.json to be excluded from paths catalog")
 		}
 
-		// Verify Parameters and Request Body
 		userPathItem := paths["/api/v1/users/{id}"].(map[string]any)
 		postOp := userPathItem["post"].(map[string]any)
 		params := postOp["parameters"].([]any)
@@ -178,7 +171,6 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 			t.Errorf("expected requestBody on POST operation")
 		}
 
-		// Verify Responses
 		responses := postOp["responses"].(map[string]any)
 		for _, code := range []string{"200", "413", "422", "500"} {
 			if responses[code] == nil {
@@ -190,7 +182,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Run("Generates valid OpenAPI 3.1 YAML document", func(t *testing.T) {
 		t.Parallel()
 
-		yamlBytes, err := openapi.GenerateYAML(cfg)
+		yamlBytes, err := openapi.GenerateYAML(svc)
 		if err != nil {
 			t.Fatalf("unexpected YAML generation error: %v", err)
 		}

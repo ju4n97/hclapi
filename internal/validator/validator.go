@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/scalar"
+	"github.com/ju4n97/hclapi/internal/service"
 )
 
 var (
@@ -30,7 +30,7 @@ var (
 )
 
 // ValidateBody validates and normalizes a JSON request body against schema fields.
-func ValidateBody(data map[string]any, fields []config.Field) (map[string]any, []problem.InvalidParam) {
+func ValidateBody(data map[string]any, fields []service.Field) (map[string]any, []problem.InvalidParam) {
 	result := make(map[string]any, len(fields)+len(data))
 	if len(data) > 0 {
 		maps.Copy(result, data)
@@ -52,7 +52,7 @@ func ValidateBody(data map[string]any, fields []config.Field) (map[string]any, [
 				})
 				continue
 			default:
-				result[field.Name] = nil // Explicit nil so HCL expressions can check != null
+				result[field.Name] = nil
 				continue
 			}
 		}
@@ -78,21 +78,21 @@ func ValidateBody(data map[string]any, fields []config.Field) (map[string]any, [
 	return result, invalidParams
 }
 
-// ValidateStringMap validates string-keyed parameter maps (Path, Query) and injects defaults.
-func ValidateStringMap(data map[string]string, fields []config.Field) []problem.InvalidParam {
+// ValidateStringMap validates string-keyed parameter maps and injects schema defaults.
+func ValidateStringMap(data map[string]string, fields []service.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(data, fields, func(name string) string {
 		return name
 	})
 }
 
 // ValidateHeaders validates incoming HTTP headers against schema fields case-insensitively.
-func ValidateHeaders(headers map[string]string, fields []config.Field) []problem.InvalidParam {
+func ValidateHeaders(headers map[string]string, fields []service.Field) []problem.InvalidParam {
 	return validateStringMapWithLookup(headers, fields, strings.ToLower)
 }
 
 func validateStringMapWithLookup(
 	data map[string]string,
-	fields []config.Field,
+	fields []service.Field,
 	keyLookup func(string) string,
 ) []problem.InvalidParam {
 	var invalidParams []problem.InvalidParam
@@ -135,7 +135,7 @@ func validateStringMapWithLookup(
 	return invalidParams
 }
 
-func validateValue(val any, field config.Field) string {
+func validateValue(val any, field service.Field) string {
 	switch {
 	case field.Type == "string":
 		strVal, ok := val.(string)
@@ -179,7 +179,7 @@ func validateValue(val any, field config.Field) string {
 	return ""
 }
 
-func checkStringConstraints(val string, field config.Field) string {
+func checkStringConstraints(val string, field service.Field) string {
 	runes := []rune(val)
 	if field.MinLength != nil && len(runes) < *field.MinLength {
 		return fmt.Sprintf("length must be at least %d characters", *field.MinLength)
@@ -218,7 +218,7 @@ func matchPattern(pattern, val string) bool {
 	return re.MatchString(val)
 }
 
-func checkNumericConstraints(val float64, rawVal any, field config.Field) string {
+func checkNumericConstraints(val float64, rawVal any, field service.Field) string {
 	if field.Min != nil && val < *field.Min {
 		return fmt.Sprintf("must be greater than or equal to %v", *field.Min)
 	}
@@ -231,7 +231,7 @@ func checkNumericConstraints(val float64, rawVal any, field config.Field) string
 	return ""
 }
 
-func checkListConstraints(val any, field config.Field) string {
+func checkListConstraints(val any, field service.Field) string {
 	rv := reflect.ValueOf(val)
 	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
 		return "must be of type list"

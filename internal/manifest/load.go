@@ -1,4 +1,4 @@
-package config
+package manifest
 
 import (
 	"fmt"
@@ -12,8 +12,18 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
-// Load parses all .hcl files in a directory or single file and returns a validated Config.
-func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
+type fileManifest struct {
+	Server      *ServerBlock      `hcl:"server,block"`
+	OpenAPI     *OpenAPIBlock     `hcl:"openapi,block"`
+	Problem     *ProblemBlock     `hcl:"problem,block"`
+	Connections []ConnectionBlock `hcl:"connection,block"`
+	Schemas     []SchemaBlock     `hcl:"schema,block"`
+	Endpoints   []EndpointBlock   `hcl:"endpoint,block"`
+	Remain      hcl.Body          `hcl:",remain"`
+}
+
+// Load parses all .hcl files in a target directory or file and returns an aggregate Manifest.
+func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("access path %q: %w", path, err)
@@ -21,7 +31,7 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 
 	p := hclparse.NewParser()
 	var (
-		merged      Config
+		merged      Manifest
 		serverFile  string
 		openapiFile string
 		problemFile string
@@ -40,7 +50,7 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 				return fmt.Errorf("parse %s: %s", currentPath, diags.Error())
 			}
 
-			var fileCfg Config
+			var fileCfg fileManifest
 			if diags := gohcl.DecodeBody(file.Body, evalCtx, &fileCfg); diags.HasErrors() {
 				return fmt.Errorf("decode %s: %s", currentPath, diags.Error())
 			}
@@ -50,7 +60,6 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 				manifestDir = absDir
 			}
 
-			// Validate singleton uniqueness: server
 			if fileCfg.Server != nil {
 				if serverFile != "" {
 					return fmt.Errorf("duplicate singleton block 'server' declared in %s and %s: only one 'server' block is permitted across all manifests", serverFile, currentPath)
@@ -59,7 +68,6 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 				serverFile = currentPath
 			}
 
-			// Validate singleton uniqueness: openapi
 			if fileCfg.OpenAPI != nil {
 				if openapiFile != "" {
 					return fmt.Errorf("duplicate singleton block 'openapi' declared in %s and %s: only one 'openapi' block is permitted across all manifests", openapiFile, currentPath)
@@ -68,7 +76,6 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 				openapiFile = currentPath
 			}
 
-			// Validate singleton uniqueness: problem
 			if fileCfg.Problem != nil {
 				if problemFile != "" {
 					return fmt.Errorf("duplicate singleton block 'problem' declared in %s and %s: only one 'problem' block is permitted across all manifests", problemFile, currentPath)
@@ -87,6 +94,7 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 			}
 
 			for i := range fileCfg.Connections {
+				fileCfg.Connections[i].DeclaringDir = manifestDir
 				fileCfg.Connections[i].Source = resolveRelativePath(fileCfg.Connections[i].Source, manifestDir)
 			}
 
@@ -107,10 +115,6 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Config, error) {
 		}
 	}
 
-	if err := merged.Validate(evalCtx); err != nil {
-		return nil, err
-	}
-
 	return &merged, nil
 }
 
@@ -118,8 +122,8 @@ func resolveRelativePath(raw, baseDir string) string {
 	if baseDir == "" || filepath.IsAbs(raw) || raw == ":memory:" || strings.Contains(raw, "://") {
 		return raw
 	}
-	if strings.HasPrefix(raw, "file:") {
-		rest := strings.TrimPrefix(raw, "file:")
+	if after, ok := strings.CutPrefix(raw, "file:"); ok {
+		rest := after
 		pathPart := rest
 		queryPart := ""
 		if idx := strings.Index(rest, "?"); idx != -1 {

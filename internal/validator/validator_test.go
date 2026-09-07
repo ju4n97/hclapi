@@ -3,14 +3,14 @@ package validator_test
 import (
 	"testing"
 
-	"github.com/ju4n97/hclapi/internal/config"
+	"github.com/ju4n97/hclapi/internal/service"
 	"github.com/ju4n97/hclapi/internal/validator"
 )
 
 func TestValidateBody(t *testing.T) {
 	t.Parallel()
 
-	fields := []config.Field{
+	fields := []service.Field{
 		{
 			Name:     "email",
 			Type:     "string",
@@ -69,11 +69,9 @@ func TestValidateBody(t *testing.T) {
 			t.Fatalf("expected 0 errors, got %d: %+v", len(errs), errs)
 		}
 
-		// Defaults injected
 		if normalized["role"] != "member" {
 			t.Errorf("expected default role 'member', got %v", normalized["role"])
 		}
-		// Optional missing fields normalized to explicit nil
 		if normalized["bio"] != nil {
 			t.Errorf("expected missing optional field 'bio' to be nil, got %v", normalized["bio"])
 		}
@@ -113,7 +111,7 @@ func TestValidateBody(t *testing.T) {
 func TestValidateStringMap(t *testing.T) {
 	t.Parallel()
 
-	fields := []config.Field{
+	fields := []service.Field{
 		{Name: "page", Type: "int", Default: 1},
 		{Name: "limit", Type: "int", Required: true, Default: int64(25), Min: new(float64(1)), Max: new(float64(100))},
 		{Name: "sort", Type: "string", Enum: []any{"asc", "desc"}},
@@ -145,7 +143,7 @@ func TestValidateStringMap(t *testing.T) {
 		t.Parallel()
 
 		data := map[string]string{
-			"limit":  "200", // exceeds max 100
+			"limit":  "200",
 			"sort":   "random",
 			"active": "invalid",
 		}
@@ -160,7 +158,7 @@ func TestValidateStringMap(t *testing.T) {
 func TestValidateHeaders(t *testing.T) {
 	t.Parallel()
 
-	fields := []config.Field{
+	fields := []service.Field{
 		{Name: "Authorization", Type: "string", Required: true},
 		{Name: "X-Trace-Sampled", Type: "bool", Default: true},
 	}
@@ -169,7 +167,7 @@ func TestValidateHeaders(t *testing.T) {
 		t.Parallel()
 
 		headers := map[string]string{
-			"authorization": "Bearer token", // Ingress lowercases all headers
+			"authorization": "Bearer token",
 		}
 
 		errs := validator.ValidateHeaders(headers, fields)

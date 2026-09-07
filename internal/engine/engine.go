@@ -11,23 +11,22 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/hashicorp/hcl/v2"
-	"github.com/zclconf/go-cty/cty"
-
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/manifest"
 	"github.com/ju4n97/hclapi/internal/openapi"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
+	"github.com/ju4n97/hclapi/internal/scalar"
+	"github.com/ju4n97/hclapi/internal/service"
 	"github.com/ju4n97/hclapi/internal/sqldb"
 )
 
 var pathParamRegex = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(?:\.{3})?\}`)
 
-// Engine is the central HTTP coordinator managing routing, pools, and pipelines.
+// Engine coordinates routing, connection pools, and pipeline execution.
 type Engine struct {
 	options    Options
-	config     *config.Config
+	service    *service.Definition
 	mux        *http.ServeMux
 	sqlManager *sqldb.Manager
 	registry   *StepRegistry
@@ -35,7 +34,7 @@ type Engine struct {
 	logger     *slog.Logger
 }
 
-// New initializes an Engine by loading and verifying manifests from ConfigPath.
+// New initializes an Engine by loading manifests and lowering them into a service definition.
 func New(options Options) (*Engine, error) {
 	logger := options.Logger
 	if logger == nil {
@@ -43,15 +42,20 @@ func New(options Options) (*Engine, error) {
 	}
 
 	evalCtx := eval.BaseContext()
-	cfg, err := config.Load(options.ConfigPath, evalCtx)
+	rawManifest, err := manifest.Load(options.ConfigPath, evalCtx)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, fmt.Errorf("load manifest: %w", err)
+	}
+
+	svc, err := service.Build(rawManifest, evalCtx)
+	if err != nil {
+		return nil, fmt.Errorf("build service: %w", err)
 	}
 
 	bootCtx := context.Background()
 	sqlManager := sqldb.NewManager()
 
-	for _, conn := range cfg.Connections {
+	for _, conn := range svc.Connections {
 		if sqldb.IsSupportedDriver(conn.Driver) {
 			dbCfg := sqldb.Config{
 				Driver: conn.Driver,
@@ -60,8 +64,8 @@ func New(options Options) (*Engine, error) {
 				Pool: sqldb.PoolConfig{
 					MaxOpen:     conn.Pool.MaxOpen,
 					MaxIdle:     conn.Pool.MaxIdle,
-					MaxLifetime: conn.Pool.MaxLifetime.Duration(),
-					IdleTimeout: conn.Pool.IdleTimeout.Duration(),
+					MaxLifetime: conn.Pool.MaxLifetime,
+					IdleTimeout: conn.Pool.IdleTimeout,
 				},
 			}
 			if err := sqlManager.Open(bootCtx, dbCfg); err != nil {
@@ -72,17 +76,12 @@ func New(options Options) (*Engine, error) {
 		}
 	}
 
-	var probConfig config.Problem
-	if cfg.Problem != nil {
-		probConfig = *cfg.Problem
-	}
-
 	registry := NewStepRegistry()
-	errorResponder := NewErrorResponder(probConfig, options.ProblemHandler, logger)
+	errorResponder := NewErrorResponder(svc.Problem, options.ProblemHandler, logger)
 
 	e := &Engine{
 		options:    options,
-		config:     cfg,
+		service:    svc,
 		mux:        http.NewServeMux(),
 		sqlManager: sqlManager,
 		registry:   registry,
@@ -90,7 +89,6 @@ func New(options Options) (*Engine, error) {
 		logger:     logger,
 	}
 
-	// Precompute OpenAPI specifications and ETags
 	var (
 		specJSON     []byte
 		specYAML     []byte
@@ -99,19 +97,19 @@ func New(options Options) (*Engine, error) {
 	)
 
 	hasOpenAPI := false
-	for _, endpoint := range cfg.Endpoints {
-		if _, ok := endpoint.Handler.(config.OpenAPIHandler); ok {
+	for _, endpoint := range svc.Endpoints {
+		if _, ok := endpoint.Handler.(service.OpenAPIHandler); ok {
 			hasOpenAPI = true
 			break
 		}
 	}
 
 	if hasOpenAPI {
-		specJSON, err = openapi.GenerateJSON(cfg, true)
+		specJSON, err = openapi.GenerateJSON(svc, true)
 		if err != nil {
 			return nil, fmt.Errorf("generate OpenAPI 3.1 JSON: %w", err)
 		}
-		specYAML, err = openapi.GenerateYAML(cfg)
+		specYAML, err = openapi.GenerateYAML(svc)
 		if err != nil {
 			return nil, fmt.Errorf("generate OpenAPI 3.1 YAML: %w", err)
 		}
@@ -122,12 +120,11 @@ func New(options Options) (*Engine, error) {
 		specYAMLETag = fmt.Sprintf("%q", hex.EncodeToString(hYAML[:]))
 	}
 
-	// Mount all endpoints onto http.ServeMux using sealed interface dispatch
-	for _, ep := range cfg.Endpoints {
+	for _, ep := range svc.Endpoints {
 		switch h := ep.Handler.(type) {
-		case config.OpenAPIHandler:
+		case service.OpenAPIHandler:
 			e.bindOpenAPIRoute(ep, h, specJSON, specYAML, specJSONETag, specYAMLETag)
-		case config.PipelineHandler:
+		case service.PipelineHandler:
 			e.bindPipelineRoute(ep, h)
 		}
 	}
@@ -136,12 +133,12 @@ func New(options Options) (*Engine, error) {
 }
 
 func (e *Engine) bindOpenAPIRoute(
-	ep config.Endpoint,
-	h config.OpenAPIHandler,
+	ep service.Endpoint,
+	h service.OpenAPIHandler,
 	specJSON, specYAML []byte,
 	specJSONETag, specYAMLETag string,
 ) {
-	e.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+	e.mux.HandleFunc(ep.RoutePattern, func(w http.ResponseWriter, r *http.Request) {
 		switch h.Mode {
 		case "spec":
 			isYAML := strings.EqualFold(h.Format, "yaml") || strings.EqualFold(h.Format, "yml")
@@ -193,9 +190,9 @@ func (e *Engine) bindOpenAPIRoute(
 	})
 }
 
-func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler) {
+func (e *Engine) bindPipelineRoute(ep service.Endpoint, h service.PipelineHandler) {
 	var paramNames []string
-	matches := pathParamRegex.FindAllStringSubmatch(ep.MethodAndPath, -1)
+	matches := pathParamRegex.FindAllStringSubmatch(ep.RoutePattern, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
 			paramNames = append(paramNames, match[1])
@@ -205,16 +202,9 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 	steps := e.buildSteps(h.Steps)
 	pipeline := NewPipeline(steps...)
 
-	e.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
-		var maxBodySize int64
-		if e.config.Server != nil {
-			maxBodySize = e.config.Server.MaxBodySize.Bytes()
-		}
-
-		var problemPrefix string
-		if e.config.Problem != nil {
-			problemPrefix = e.config.Problem.TypePrefix
-		}
+	e.mux.HandleFunc(ep.RoutePattern, func(w http.ResponseWriter, r *http.Request) {
+		maxBodySize := e.service.Server.MaxBodySize
+		problemPrefix := e.service.Problem.TypePrefix
 
 		execCtx, err := runtime.NewExecutionContext(w, r,
 			runtime.WithPathParams(paramNames),
@@ -224,10 +214,7 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 		if err != nil {
 			var maxBytesErr *http.MaxBytesError
 			if errors.As(err, &maxBytesErr) {
-				bodySizeStr := "10MB"
-				if e.config.Server != nil {
-					bodySizeStr = e.config.Server.MaxBodySize.String()
-				}
+				bodySizeStr := scalar.ByteSize(maxBodySize).String()
 				e.errors.Respond(w, r, problem.Problem{
 					Type:     e.formatProblemType("payload-too-large"),
 					Title:    "Request Entity Too Large",
@@ -238,7 +225,6 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 				return
 			}
 
-			// Malformed JSON payload or read failure -> HTTP 400 Bad Request
 			e.errors.Respond(w, r, problem.Problem{
 				Type:     e.formatProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
@@ -249,7 +235,6 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 			return
 		}
 
-		// Ingress schema validation
 		invalidParams := validateRequest(execCtx, ep.RequestRules)
 		if len(invalidParams) > 0 {
 			e.logger.WarnContext(r.Context(), "request schema validation failed", "path", r.URL.Path, "invalid_count", len(invalidParams))
@@ -264,7 +249,6 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 			return
 		}
 
-		// Execute pipeline steps
 		if err := pipeline.Execute(execCtx, w); err != nil {
 			e.errors.Respond(w, r, err)
 		}
@@ -272,18 +256,15 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 }
 
 func (e *Engine) formatProblemType(slug string) string {
-	if e.config.Problem != nil {
-		return e.config.Problem.FormatType(slug)
-	}
-	return "urn:hclapi:error:" + slug
+	return e.service.Problem.FormatType(slug)
 }
 
-func (e *Engine) buildSteps(parsedSteps []config.ParsedStep) []Step {
+func (e *Engine) buildSteps(parsedSteps []service.Step) []Step {
 	steps := make([]Step, 0, len(parsedSteps))
 
 	for _, ps := range parsedSteps {
 		switch ps.Type {
-		case config.StepTypeGo:
+		case service.StepTypeGo:
 			steps = append(steps, &GoStep{
 				Name:     ps.Name,
 				Use:      ps.Go.Use,
@@ -291,15 +272,14 @@ func (e *Engine) buildSteps(parsedSteps []config.ParsedStep) []Step {
 				Registry: e.registry,
 			})
 
-		case config.StepTypeStarlark:
+		case service.StepTypeStarlark:
 			steps = append(steps, &StarlarkStep{
 				Name:   ps.Name,
 				Source: ps.Starlark.Source,
 			})
 
-		case config.StepTypeSQL:
-			connRef, _ := resolveConnectionRef(ps.SQL.Connection)
-			pool, _ := e.sqlManager.Get(connRef)
+		case service.StepTypeSQL:
+			pool, _ := e.sqlManager.Get(ps.SQL.ConnectionKey)
 			steps = append(steps, &SQLStep{
 				Name:    ps.Name,
 				Pool:    pool,
@@ -308,7 +288,7 @@ func (e *Engine) buildSteps(parsedSteps []config.ParsedStep) []Step {
 				Catches: ps.SQL.Catches,
 			})
 
-		case config.StepTypeRespond:
+		case service.StepTypeRespond:
 			steps = append(steps, &RespondStep{
 				Condition: ps.Respond.Condition,
 				Status:    ps.Respond.Status,
@@ -332,49 +312,19 @@ func (e *Engine) Handler() http.Handler {
 }
 
 // Server returns a copy of the resolved server transport configuration.
-func (e *Engine) Server() config.Server {
-	if e.config.Server != nil {
-		return *e.config.Server
-	}
-	var def config.Server
-	def.SetDefaults()
-	return def
+func (e *Engine) Server() service.Server {
+	return e.service.Server
 }
 
-// Config returns a copy of the loaded configuration.
-func (e *Engine) Config() *config.Config {
-	return e.config
+// Service returns a copy of the active service definition.
+func (e *Engine) Service() *service.Definition {
+	return e.service
 }
 
-// Close closes the database connection pools and releases all resources.
+// Close closes all active database connection pools.
 func (e *Engine) Close() error {
 	if e.sqlManager != nil {
 		return e.sqlManager.Close()
 	}
 	return nil
-}
-
-// ResolveConnectionRef resolves a connection reference expression into a connection key.
-func resolveConnectionRef(expr hcl.Expression) (string, error) {
-	if expr == nil {
-		return "", fmt.Errorf("missing connection reference expression")
-	}
-	vars := expr.Variables()
-	if len(vars) > 0 {
-		var parts []string
-		for _, split := range vars[0] {
-			switch step := split.(type) {
-			case hcl.TraverseRoot:
-				parts = append(parts, step.Name)
-			case hcl.TraverseAttr:
-				parts = append(parts, step.Name)
-			}
-		}
-		return strings.Join(parts, "."), nil
-	}
-	val, diags := expr.Value(nil)
-	if !diags.HasErrors() && val.Type().Equals(cty.String) {
-		return val.AsString(), nil
-	}
-	return "", fmt.Errorf("invalid connection reference expression")
 }

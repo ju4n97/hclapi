@@ -11,9 +11,9 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/engine"
 	"github.com/ju4n97/hclapi/internal/runtime"
+	"github.com/ju4n97/hclapi/internal/service"
 	"github.com/ju4n97/hclapi/internal/sqldb"
 )
 
@@ -196,7 +196,7 @@ def execute(ctx):
 				Pool:  pool,
 				Query: "INSERT INTO accounts (id, email) VALUES (2, @email)",
 				Args:  parseExpr(t, `{ email = ctx.request.body.email }`),
-				Catches: []config.SQLCatch{
+				Catches: []service.SQLCatch{
 					{
 						Code:    "19",
 						Status:  parseExpr(t, `409`),

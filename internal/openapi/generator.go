@@ -11,21 +11,18 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
+	"github.com/ju4n97/hclapi/internal/service"
 )
 
-// Generate builds a validated OpenAPI 3.1.0 document from a *config.Config.
-func Generate(cfg *config.Config) (*openapi3.T, error) {
+// Generate builds a validated OpenAPI 3.1.0 document from a Service Definition.
+func Generate(svc *service.Definition) (*openapi3.T, error) {
 	info := &openapi3.Info{
-		Title:   "API Documentation",
-		Version: "1.0.0",
+		Title:   svc.OpenAPI.Title,
+		Version: svc.OpenAPI.Version,
 	}
-
-	if cfg.OpenAPI != nil {
-		info.Title = cfg.OpenAPI.Title
-		info.Version = cfg.OpenAPI.Version
-		info.Description = cfg.OpenAPI.Description
+	if svc.OpenAPI.Description != "" {
+		info.Description = svc.OpenAPI.Description
 	}
 
 	doc := &openapi3.T{
@@ -35,46 +32,36 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 		Components: &openapi3.Components{Schemas: make(openapi3.Schemas)},
 	}
 
-	if cfg.OpenAPI != nil {
-		if cfg.OpenAPI.Contact != nil {
-			doc.Info.Contact = &openapi3.Contact{
-				Name:  cfg.OpenAPI.Contact.Name,
-				Email: cfg.OpenAPI.Contact.Email,
-				URL:   cfg.OpenAPI.Contact.URL,
-			}
-		}
-
-		if cfg.OpenAPI.License != nil {
-			doc.Info.License = &openapi3.License{
-				Name: cfg.OpenAPI.License.Name,
-				URL:  cfg.OpenAPI.License.URL,
-			}
-		}
-
-		for _, srv := range cfg.OpenAPI.Servers {
-			doc.Servers = append(doc.Servers, &openapi3.Server{
-				URL:         srv.URL,
-				Description: srv.Description,
-			})
-		}
-
-		for _, tag := range cfg.OpenAPI.Tags {
-			doc.Tags = append(doc.Tags, &openapi3.Tag{
-				Name:        tag.Name,
-				Description: tag.Description,
-			})
+	if svc.OpenAPI.Contact != nil {
+		doc.Info.Contact = &openapi3.Contact{
+			Name:  svc.OpenAPI.Contact.Name,
+			Email: svc.OpenAPI.Contact.Email,
+			URL:   svc.OpenAPI.Contact.URL,
 		}
 	}
 
-	schemas := cfg.SchemaMap
-	if len(schemas) == 0 && len(cfg.Schemas) > 0 {
-		schemas = make(map[string]config.Schema, len(cfg.Schemas))
-		for _, s := range cfg.Schemas {
-			schemas[s.Name] = s
+	if svc.OpenAPI.License != nil {
+		doc.Info.License = &openapi3.License{
+			Name: svc.OpenAPI.License.Name,
+			URL:  svc.OpenAPI.License.URL,
 		}
 	}
 
-	for schemaName, schema := range schemas {
+	for _, srv := range svc.OpenAPI.Servers {
+		doc.Servers = append(doc.Servers, &openapi3.Server{
+			URL:         srv.URL,
+			Description: srv.Description,
+		})
+	}
+
+	for _, tag := range svc.OpenAPI.Tags {
+		doc.Tags = append(doc.Tags, &openapi3.Tag{
+			Name:        tag.Name,
+			Description: tag.Description,
+		})
+	}
+
+	for schemaName, schema := range svc.Schemas {
 		schemaObj, err := fieldsToObjectSchema(schema.Fields)
 		if err != nil {
 			return nil, fmt.Errorf("schema %q: %w", schemaName, err)
@@ -82,15 +69,15 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 		doc.Components.Schemas[schemaName] = &openapi3.SchemaRef{Value: schemaObj}
 	}
 
-	for _, endpoint := range cfg.Endpoints {
-		if _, isDocs := endpoint.Handler.(config.OpenAPIHandler); isDocs {
-			continue // Exclude documentation and spec routes from the operations catalog
+	for _, endpoint := range svc.Endpoints {
+		if _, isDocs := endpoint.Handler.(service.OpenAPIHandler); isDocs {
+			continue
 		}
 
 		openapiPath := convertToOpenAPIPath(endpoint.Path)
-		op, err := buildOperation(endpoint, cfg)
+		op, err := buildOperation(endpoint, svc)
 		if err != nil {
-			return nil, fmt.Errorf("endpoint %q: %w", endpoint.MethodAndPath, err)
+			return nil, fmt.Errorf("endpoint %q: %w", endpoint.RoutePattern, err)
 		}
 
 		pathItem := doc.Paths.Find(openapiPath)
@@ -101,7 +88,6 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 		pathItem.SetOperation(endpoint.Method, op)
 	}
 
-	// Validate spec adherence
 	if err := doc.Validate(context.Background()); err != nil {
 		return nil, fmt.Errorf("validate generated openapi spec: %w", err)
 	}
@@ -109,11 +95,11 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 	return doc, nil
 }
 
-func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation, error) {
+func buildOperation(ep service.Endpoint, svc *service.Definition) (*openapi3.Operation, error) {
 	op := openapi3.NewOperation()
-	if ep.Description != nil {
-		op.Summary = *ep.Description
-		op.Description = *ep.Description
+	if ep.Description != "" {
+		op.Summary = ep.Description
+		op.Description = ep.Description
 	}
 
 	tag := deriveTag(ep.Path)
@@ -172,14 +158,14 @@ func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation
 	}
 
 	statusCodes := make(map[int]bool)
-	if pipeline, ok := ep.Handler.(config.PipelineHandler); ok {
+	if pipeline, ok := ep.Handler.(service.PipelineHandler); ok {
 		for _, step := range pipeline.Steps {
-			if step.Type == config.StepTypeRespond && step.Respond != nil {
+			if step.Type == service.StepTypeRespond && step.Respond != nil {
 				if code := evaluateStaticStatus(step.Respond.Status); code > 0 {
 					statusCodes[code] = true
 				}
 			}
-			if step.Type == config.StepTypeSQL && step.SQL != nil {
+			if step.Type == service.StepTypeSQL && step.SQL != nil {
 				for _, c := range step.SQL.Catches {
 					if code := evaluateStaticStatus(c.Status); code > 0 {
 						statusCodes[code] = true
@@ -196,7 +182,7 @@ func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation
 		len(ep.RequestRules.HeaderFields) > 0 || len(ep.RequestRules.BodyFields) > 0 {
 		statusCodes[http.StatusUnprocessableEntity] = true
 	}
-	if cfg.Server != nil && cfg.Server.MaxBodySize.Bytes() > 0 {
+	if svc.Server.MaxBodySize > 0 {
 		statusCodes[http.StatusRequestEntityTooLarge] = true
 	}
 	statusCodes[http.StatusInternalServerError] = true
@@ -212,7 +198,7 @@ func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation
 	return op, nil
 }
 
-func fieldToSchema(f config.Field) (*openapi3.Schema, error) {
+func fieldToSchema(f service.Field) (*openapi3.Schema, error) {
 	schema := &openapi3.Schema{}
 
 	switch {
@@ -257,7 +243,7 @@ func fieldToSchema(f config.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeArray}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "list("), ")")
 		if elemType != "" && elemType != f.Type {
-			subSchema, err := fieldToSchema(config.Field{Type: elemType})
+			subSchema, err := fieldToSchema(service.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -276,7 +262,7 @@ func fieldToSchema(f config.Field) (*openapi3.Schema, error) {
 		schema.Type = &openapi3.Types{openapi3.TypeObject}
 		elemType := strings.TrimSuffix(strings.TrimPrefix(f.Type, "map("), ")")
 		if elemType != "" && elemType != f.Type && elemType != "any" {
-			valSchema, err := fieldToSchema(config.Field{Type: elemType})
+			valSchema, err := fieldToSchema(service.Field{Type: elemType})
 			if err != nil {
 				return nil, err
 			}
@@ -305,7 +291,7 @@ func fieldToSchema(f config.Field) (*openapi3.Schema, error) {
 	return schema, nil
 }
 
-func fieldsToObjectSchema(fields []config.Field) (*openapi3.Schema, error) {
+func fieldsToObjectSchema(fields []service.Field) (*openapi3.Schema, error) {
 	obj := openapi3.NewObjectSchema()
 	for _, f := range fields {
 		s, err := fieldToSchema(f)
@@ -346,9 +332,9 @@ func deriveTag(p string) string {
 	return "default"
 }
 
-// GenerateJSON serializes the OpenAPI 3.1 specification to formatted JSON.
-func GenerateJSON(cfg *config.Config, pretty bool) ([]byte, error) {
-	doc, err := Generate(cfg)
+// GenerateJSON serializes the OpenAPI 3.1 specification to JSON.
+func GenerateJSON(svc *service.Definition, pretty bool) ([]byte, error) {
+	doc, err := Generate(svc)
 	if err != nil {
 		return nil, err
 	}
@@ -359,8 +345,8 @@ func GenerateJSON(cfg *config.Config, pretty bool) ([]byte, error) {
 }
 
 // GenerateYAML converts the specification into clean YAML.
-func GenerateYAML(cfg *config.Config) ([]byte, error) {
-	jsonBytes, err := GenerateJSON(cfg, false)
+func GenerateYAML(svc *service.Definition) ([]byte, error) {
+	jsonBytes, err := GenerateJSON(svc, false)
 	if err != nil {
 		return nil, err
 	}

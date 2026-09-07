@@ -8,9 +8,9 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/eval"
 	"github.com/ju4n97/hclapi/internal/runtime"
+	"github.com/ju4n97/hclapi/internal/service"
 	"github.com/ju4n97/hclapi/internal/sqldb"
 	"github.com/ju4n97/hclapi/internal/star"
 )
@@ -69,7 +69,7 @@ type SQLStep struct {
 	Pool    *sqldb.Pool
 	Query   string
 	Args    hcl.Expression
-	Catches []config.SQLCatch
+	Catches []service.SQLCatch
 }
 
 // Run implements [Step.Run].

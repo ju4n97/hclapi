@@ -65,7 +65,7 @@ func newServeCommand() *cli.Command {
 
 			logger.Info("booting hclapi API engine...")
 
-			engine, err := hclapi.NewEngine(hclapi.Options{
+			eng, err := hclapi.NewEngine(hclapi.Options{
 				ConfigPath:   cmd.String("config"),
 				StrictTyping: true,
 				Logger:       logger,
@@ -73,8 +73,13 @@ func newServeCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			defer func() {
+				if closeErr := eng.Close(); closeErr != nil {
+					logger.Warn("failed to close engine connection pools", "error", closeErr)
+				}
+			}()
 
-			srv := engine.Server()
+			srv := eng.Server()
 
 			host := srv.Host
 			if cmd.IsSet("host") {
@@ -88,38 +93,33 @@ func newServeCommand() *cli.Command {
 
 			server := &http.Server{
 				Addr:         fmt.Sprintf("%s:%d", host, port),
-				Handler:      engine.Handler(),
-				ReadTimeout:  srv.ReadTimeout.Duration(),
-				WriteTimeout: srv.WriteTimeout.Duration(),
-				IdleTimeout:  srv.IdleTimeout.Duration(),
+				Handler:      eng.Handler(),
+				ReadTimeout:  srv.ReadTimeout,
+				WriteTimeout: srv.WriteTimeout,
+				IdleTimeout:  srv.IdleTimeout,
 			}
+
+			sigCtx, stopSignals := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+			defer stopSignals()
 
 			errCh := make(chan error, 1)
 
 			go func() {
 				logger.Info("server started", "addr", server.Addr)
-
-				if err := server.ListenAndServe(); err != nil &&
-					!errors.Is(err, http.ErrServerClosed) {
+				if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 					errCh <- err
 				}
 			}()
-
-			stop := make(chan os.Signal, 1)
-			signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-			defer signal.Stop(stop)
 
 			select {
 			case err := <-errCh:
 				logger.Error("server crashed", "error", err)
 				return err
-			case <-stop:
+			case <-sigCtx.Done():
 				logger.Info("shutting down server...")
-			case <-ctx.Done():
-				logger.Info("context cancelled, shutting down server...")
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
 			if err := server.Shutdown(shutdownCtx); err != nil {

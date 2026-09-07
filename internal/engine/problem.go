@@ -5,19 +5,19 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/problem"
+	"github.com/ju4n97/hclapi/internal/service"
 )
 
 // ErrorResponder centralizes RFC 9457 error formatting and response serialization.
 type ErrorResponder struct {
-	problemConfig config.Problem
+	problemConfig service.Problem
 	handler       problem.Handler
 	logger        *slog.Logger
 }
 
 // NewErrorResponder initializes an error responder with the given problem configuration.
-func NewErrorResponder(p config.Problem, h problem.Handler, logger *slog.Logger) *ErrorResponder {
+func NewErrorResponder(p service.Problem, h problem.Handler, logger *slog.Logger) *ErrorResponder {
 	if h == nil {
 		h = problem.DefaultHandler
 	}

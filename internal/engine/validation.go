@@ -1,14 +1,14 @@
 package engine
 
 import (
-	"github.com/ju4n97/hclapi/internal/config"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
+	"github.com/ju4n97/hclapi/internal/service"
 	"github.com/ju4n97/hclapi/internal/validator"
 )
 
 // validateRequest enforces ingress constraints across path, query, headers, and body fields.
-func validateRequest(execCtx *runtime.ExecutionContext, rules config.RequestRules) []problem.InvalidParam {
+func validateRequest(execCtx *runtime.ExecutionContext, rules service.RequestRules) []problem.InvalidParam {
 	var invalidParams []problem.InvalidParam
 
 	if len(rules.PathFields) > 0 {

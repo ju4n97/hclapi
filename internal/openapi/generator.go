@@ -15,50 +15,66 @@ import (
 	"github.com/ju4n97/hclapi/internal/eval"
 )
 
-// Generate builds a validated OpenAPI 3.1.0 document from a validated *config.Config.
+// Generate builds a validated OpenAPI 3.1.0 document from a *config.Config.
 func Generate(cfg *config.Config) (*openapi3.T, error) {
+	info := &openapi3.Info{
+		Title:   "API Documentation",
+		Version: "1.0.0",
+	}
+
+	if cfg.OpenAPI != nil {
+		info.Title = cfg.OpenAPI.Title
+		info.Version = cfg.OpenAPI.Version
+		info.Description = cfg.OpenAPI.Description
+	}
+
 	doc := &openapi3.T{
-		OpenAPI: "3.1.0",
-		Info: &openapi3.Info{
-			Title:       cfg.OpenAPI.Title,
-			Version:     cfg.OpenAPI.Version,
-			Description: cfg.OpenAPI.Description,
-		},
+		OpenAPI:    "3.1.0",
+		Info:       info,
 		Paths:      openapi3.NewPaths(),
 		Components: &openapi3.Components{Schemas: make(openapi3.Schemas)},
 	}
 
-	if cfg.OpenAPI.Contact != nil {
-		doc.Info.Contact = &openapi3.Contact{
-			Name:  cfg.OpenAPI.Contact.Name,
-			Email: cfg.OpenAPI.Contact.Email,
-			URL:   cfg.OpenAPI.Contact.URL,
+	if cfg.OpenAPI != nil {
+		if cfg.OpenAPI.Contact != nil {
+			doc.Info.Contact = &openapi3.Contact{
+				Name:  cfg.OpenAPI.Contact.Name,
+				Email: cfg.OpenAPI.Contact.Email,
+				URL:   cfg.OpenAPI.Contact.URL,
+			}
+		}
+
+		if cfg.OpenAPI.License != nil {
+			doc.Info.License = &openapi3.License{
+				Name: cfg.OpenAPI.License.Name,
+				URL:  cfg.OpenAPI.License.URL,
+			}
+		}
+
+		for _, srv := range cfg.OpenAPI.Servers {
+			doc.Servers = append(doc.Servers, &openapi3.Server{
+				URL:         srv.URL,
+				Description: srv.Description,
+			})
+		}
+
+		for _, tag := range cfg.OpenAPI.Tags {
+			doc.Tags = append(doc.Tags, &openapi3.Tag{
+				Name:        tag.Name,
+				Description: tag.Description,
+			})
 		}
 	}
 
-	if cfg.OpenAPI.License != nil {
-		doc.Info.License = &openapi3.License{
-			Name: cfg.OpenAPI.License.Name,
-			URL:  cfg.OpenAPI.License.URL,
+	schemas := cfg.SchemaMap
+	if len(schemas) == 0 && len(cfg.Schemas) > 0 {
+		schemas = make(map[string]config.Schema, len(cfg.Schemas))
+		for _, s := range cfg.Schemas {
+			schemas[s.Name] = s
 		}
 	}
 
-	for _, srv := range cfg.OpenAPI.Servers {
-		doc.Servers = append(doc.Servers, &openapi3.Server{
-			URL:         srv.URL,
-			Description: srv.Description,
-		})
-	}
-
-	for _, tag := range cfg.OpenAPI.Tags {
-		doc.Tags = append(doc.Tags, &openapi3.Tag{
-			Name:        tag.Name,
-			Description: tag.Description,
-		})
-	}
-
-	// 1. Map reusable schema components
-	for schemaName, schema := range cfg.Schemas {
+	for schemaName, schema := range schemas {
 		schemaObj, err := fieldsToObjectSchema(schema.Fields)
 		if err != nil {
 			return nil, fmt.Errorf("schema %q: %w", schemaName, err)
@@ -66,7 +82,6 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 		doc.Components.Schemas[schemaName] = &openapi3.SchemaRef{Value: schemaObj}
 	}
 
-	// 2. Map API endpoints (excluding documentation UI and spec routes)
 	for _, endpoint := range cfg.Endpoints {
 		if _, isDocs := endpoint.Handler.(config.OpenAPIHandler); isDocs {
 			continue // Exclude documentation and spec routes from the operations catalog
@@ -96,9 +111,9 @@ func Generate(cfg *config.Config) (*openapi3.T, error) {
 
 func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation, error) {
 	op := openapi3.NewOperation()
-	if ep.Description != "" {
-		op.Summary = ep.Description
-		op.Description = ep.Description
+	if ep.Description != nil {
+		op.Summary = *ep.Description
+		op.Description = *ep.Description
 	}
 
 	tag := deriveTag(ep.Path)
@@ -181,7 +196,7 @@ func buildOperation(ep config.Endpoint, cfg *config.Config) (*openapi3.Operation
 		len(ep.RequestRules.HeaderFields) > 0 || len(ep.RequestRules.BodyFields) > 0 {
 		statusCodes[http.StatusUnprocessableEntity] = true
 	}
-	if cfg.Server.MaxBodySize > 0 {
+	if cfg.Server != nil && cfg.Server.MaxBodySize.Bytes() > 0 {
 		statusCodes[http.StatusRequestEntityTooLarge] = true
 	}
 	statusCodes[http.StatusInternalServerError] = true

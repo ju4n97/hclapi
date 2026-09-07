@@ -72,8 +72,13 @@ func New(options Options) (*Engine, error) {
 		}
 	}
 
+	var probConfig config.Problem
+	if cfg.Problem != nil {
+		probConfig = *cfg.Problem
+	}
+
 	registry := NewStepRegistry()
-	errorResponder := NewErrorResponder(cfg.Problem, options.ProblemHandler, logger)
+	errorResponder := NewErrorResponder(probConfig, options.ProblemHandler, logger)
 
 	e := &Engine{
 		options:    options,
@@ -172,7 +177,7 @@ func (e *Engine) bindOpenAPIRoute(
 			htmlBytes, err := openapi.RenderHTML(h.Renderer, h.Template, data)
 			if err != nil {
 				e.errors.Respond(w, r, problem.Problem{
-					Type:     e.config.Problem.FormatType("internal-error"),
+					Type:     e.formatProblemType("internal-error"),
 					Title:    "Documentation Render Error",
 					Status:   http.StatusInternalServerError,
 					Detail:   err.Error(),
@@ -201,26 +206,41 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 	pipeline := NewPipeline(steps...)
 
 	e.mux.HandleFunc(ep.MethodAndPath, func(w http.ResponseWriter, r *http.Request) {
+		var maxBodySize int64
+		if e.config.Server != nil {
+			maxBodySize = e.config.Server.MaxBodySize.Bytes()
+		}
+
+		var problemPrefix string
+		if e.config.Problem != nil {
+			problemPrefix = e.config.Problem.TypePrefix
+		}
+
 		execCtx, err := runtime.NewExecutionContext(w, r,
 			runtime.WithPathParams(paramNames),
-			runtime.WithMaxBodySize(e.config.Server.MaxBodySize.Bytes()),
-			runtime.WithProblemTypePrefix(e.config.Problem.TypePrefix),
+			runtime.WithMaxBodySize(maxBodySize),
+			runtime.WithProblemTypePrefix(problemPrefix),
 		)
 		if err != nil {
-			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				bodySizeStr := "10MB"
+				if e.config.Server != nil {
+					bodySizeStr = e.config.Server.MaxBodySize.String()
+				}
 				e.errors.Respond(w, r, problem.Problem{
-					Type:     e.config.Problem.FormatType("payload-too-large"),
+					Type:     e.formatProblemType("payload-too-large"),
 					Title:    "Request Entity Too Large",
 					Status:   http.StatusRequestEntityTooLarge,
-					Detail:   "request body exceeded maximum allowed size",
+					Detail:   "request body exceeded maximum size limit of " + bodySizeStr,
 					Instance: r.URL.Path,
 				})
 				return
 			}
 
-			// Malformed JSON payload or unreadable request body -> HTTP 400 Bad Request
+			// Malformed JSON payload or read failure -> HTTP 400 Bad Request
 			e.errors.Respond(w, r, problem.Problem{
-				Type:     e.config.Problem.FormatType("bad-request"),
+				Type:     e.formatProblemType("bad-request"),
 				Title:    "Invalid Request Payload",
 				Status:   http.StatusBadRequest,
 				Detail:   err.Error(),
@@ -234,7 +254,7 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 		if len(invalidParams) > 0 {
 			e.logger.WarnContext(r.Context(), "request schema validation failed", "path", r.URL.Path, "invalid_count", len(invalidParams))
 			e.errors.Respond(w, r, problem.Problem{
-				Type:          e.config.Problem.FormatType("validation-error"),
+				Type:          e.formatProblemType("validation-error"),
 				Title:         "Unprocessable Entity",
 				Status:        http.StatusUnprocessableEntity,
 				Detail:        "Request payload failed schema validation constraints",
@@ -249,6 +269,13 @@ func (e *Engine) bindPipelineRoute(ep config.Endpoint, h config.PipelineHandler)
 			e.errors.Respond(w, r, err)
 		}
 	})
+}
+
+func (e *Engine) formatProblemType(slug string) string {
+	if e.config.Problem != nil {
+		return e.config.Problem.FormatType(slug)
+	}
+	return "urn:hclapi:error:" + slug
 }
 
 func (e *Engine) buildSteps(parsedSteps []config.ParsedStep) []Step {
@@ -299,17 +326,22 @@ func (e *Engine) RegisterStep(name string, handler runtime.StepHandler) error {
 	return e.registry.Register(name, handler)
 }
 
-// Handler returns the HTTP handler.
+// Handler returns the HTTP handler for the engine.
 func (e *Engine) Handler() http.Handler {
 	return e.mux
 }
 
-// Server returns the server configuration.
+// Server returns a copy of the resolved server transport configuration.
 func (e *Engine) Server() config.Server {
-	return e.config.Server
+	if e.config.Server != nil {
+		return *e.config.Server
+	}
+	var def config.Server
+	def.SetDefaults()
+	return def
 }
 
-// Config returns the loaded configuration.
+// Config returns a copy of the loaded configuration.
 func (e *Engine) Config() *config.Config {
 	return e.config
 }
@@ -322,9 +354,10 @@ func (e *Engine) Close() error {
 	return nil
 }
 
+// ResolveConnectionRef resolves a connection reference expression into a connection key.
 func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", errors.New("missing connection reference expression")
+		return "", fmt.Errorf("missing connection reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -343,5 +376,5 @@ func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.Type().Equals(cty.String) {
 		return val.AsString(), nil
 	}
-	return "", errors.New("invalid connection reference expression")
+	return "", fmt.Errorf("invalid connection reference expression")
 }

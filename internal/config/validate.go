@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,181 +15,171 @@ import (
 	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
-// validate converts the raw parsed HCL structures into a verified Config.
-func validate(raw rawManifest, evalCtx *hcl.EvalContext) (*Config, error) {
-	cfg := &Config{
-		Schemas: make(map[string]Schema),
-	}
-
+// Validate enriches all AST nodes in-place and checks invariant constraints.
+func (cfg *Config) Validate(evalCtx *hcl.EvalContext) error {
 	// Server settings
-	if raw.Server != nil {
-		cfg.Server.Host = raw.Server.Host
-		cfg.Server.Port = raw.Server.Port
-		if raw.Server.ReadTimeout != "" {
-			d, err := scalar.ParseDuration(raw.Server.ReadTimeout)
+	if cfg.Server != nil {
+		if cfg.Server.ReadTimeoutRaw != "" {
+			d, err := scalar.ParseDuration(cfg.Server.ReadTimeoutRaw)
 			if err != nil {
-				return nil, fmt.Errorf("server: invalid read_timeout: %w", err)
+				return fmt.Errorf("server: invalid read_timeout: %w", err)
 			}
 			cfg.Server.ReadTimeout = d
 		}
-		if raw.Server.WriteTimeout != "" {
-			d, err := scalar.ParseDuration(raw.Server.WriteTimeout)
+		if cfg.Server.WriteTimeoutRaw != "" {
+			d, err := scalar.ParseDuration(cfg.Server.WriteTimeoutRaw)
 			if err != nil {
-				return nil, fmt.Errorf("server: invalid write_timeout: %w", err)
+				return fmt.Errorf("server: invalid write_timeout: %w", err)
 			}
 			cfg.Server.WriteTimeout = d
 		}
-		if raw.Server.IdleTimeout != "" {
-			d, err := scalar.ParseDuration(raw.Server.IdleTimeout)
+		if cfg.Server.IdleTimeoutRaw != "" {
+			d, err := scalar.ParseDuration(cfg.Server.IdleTimeoutRaw)
 			if err != nil {
-				return nil, fmt.Errorf("server: invalid idle_timeout: %w", err)
+				return fmt.Errorf("server: invalid idle_timeout: %w", err)
 			}
 			cfg.Server.IdleTimeout = d
 		}
-		if raw.Server.MaxBodySize != "" {
-			b, err := scalar.ParseByteSize(raw.Server.MaxBodySize)
+		if cfg.Server.MaxBodySizeRaw != "" {
+			b, err := scalar.ParseByteSize(cfg.Server.MaxBodySizeRaw)
 			if err != nil {
-				return nil, fmt.Errorf("server: invalid max_body_size: %w", err)
+				return fmt.Errorf("server: invalid max_body_size: %w", err)
 			}
 			cfg.Server.MaxBodySize = b
 		}
+		cfg.Server.SetDefaults()
+	} else {
+		var def Server
+		def.SetDefaults()
+		cfg.Server = &def
 	}
-	cfg.Server.SetDefaults()
+
+	// OpenAPI metadata
+	if cfg.OpenAPI != nil {
+		if cfg.OpenAPI.ServersExpr != nil {
+			raw, err := eval.Any(cfg.OpenAPI.ServersExpr, nil)
+			if err != nil {
+				return fmt.Errorf("openapi servers: %w", err)
+			}
+			if list, ok := raw.([]any); ok {
+				for _, item := range list {
+					if m, ok := item.(map[string]any); ok {
+						s := OpenAPIServer{}
+						if u, ok := m["url"].(string); ok {
+							s.URL = u
+						}
+						if d, ok := m["description"].(string); ok {
+							s.Description = d
+						}
+						cfg.OpenAPI.Servers = append(cfg.OpenAPI.Servers, s)
+					}
+				}
+			}
+		}
+		if cfg.OpenAPI.TagsExpr != nil {
+			raw, err := eval.Any(cfg.OpenAPI.TagsExpr, nil)
+			if err != nil {
+				return fmt.Errorf("openapi tags: %w", err)
+			}
+			if list, ok := raw.([]any); ok {
+				for _, item := range list {
+					if m, ok := item.(map[string]any); ok {
+						t := OpenAPITag{}
+						if n, ok := m["name"].(string); ok {
+							t.Name = n
+						}
+						if d, ok := m["description"].(string); ok {
+							t.Description = d
+						}
+						cfg.OpenAPI.Tags = append(cfg.OpenAPI.Tags, t)
+					}
+				}
+			}
+		}
+		cfg.OpenAPI.SetDefaults()
+	} else {
+		var def OpenAPI
+		def.SetDefaults()
+		cfg.OpenAPI = &def
+	}
 
 	// Problem settings
-	if raw.Problem != nil {
-		cfg.Problem = *raw.Problem
+	if cfg.Problem == nil {
+		cfg.Problem = &Problem{}
 	}
 
-	// OpenAPI settings
-	if raw.OpenAPI != nil {
-		cfg.OpenAPI = *raw.OpenAPI
-		if raw.OpenAPI.ServersExpr != nil {
-			rawServers, err := eval.Any(raw.OpenAPI.ServersExpr, nil)
-			if err != nil {
-				return nil, fmt.Errorf("openapi servers: %w", err)
-			}
-			if list, ok := rawServers.([]any); ok {
-				for _, item := range list {
-					if m, ok := item.(map[string]any); ok {
-						srv := OpenAPIServer{}
-						if u, ok := m["url"].(string); ok {
-							srv.URL = u
-						}
-						if d, ok := m["description"].(string); ok {
-							srv.Description = d
-						}
-						cfg.OpenAPI.Servers = append(cfg.OpenAPI.Servers, srv)
-					}
-				}
-			}
-		}
-		if raw.OpenAPI.TagsExpr != nil {
-			rawTags, err := eval.Any(raw.OpenAPI.TagsExpr, nil)
-			if err != nil {
-				return nil, fmt.Errorf("openapi tags: %w", err)
-			}
-			if list, ok := rawTags.([]any); ok {
-				for _, item := range list {
-					if m, ok := item.(map[string]any); ok {
-						tag := OpenAPITag{}
-						if n, ok := m["name"].(string); ok {
-							tag.Name = n
-						}
-						if d, ok := m["description"].(string); ok {
-							tag.Description = d
-						}
-						cfg.OpenAPI.Tags = append(cfg.OpenAPI.Tags, tag)
-					}
-				}
-			}
-		}
-	}
-	cfg.OpenAPI.SetDefaults()
-
-	// Validate connections
+	// Validate connections in-place
 	connIndex := make(map[string]bool)
-	for _, rawConn := range raw.Connections {
-		conn := Connection{
-			Driver: rawConn.Driver,
-			Name:   rawConn.Name,
-			Source: rawConn.Source,
-			Pool: PoolTune{
-				MaxOpen: rawConn.Pool.MaxOpen,
-				MaxIdle: rawConn.Pool.MaxIdle,
-			},
-		}
-		if rawConn.Pool.MaxLifetime != "" {
-			d, err := scalar.ParseDuration(rawConn.Pool.MaxLifetime)
+	for i := range cfg.Connections {
+		conn := &cfg.Connections[i]
+		if conn.Pool.MaxLifetimeRaw != "" {
+			d, err := scalar.ParseDuration(conn.Pool.MaxLifetimeRaw)
 			if err != nil {
-				return nil, fmt.Errorf("connection %q: invalid max_lifetime: %w", conn.Name, err)
+				return fmt.Errorf("connection %q: invalid max_lifetime: %w", conn.Name, err)
 			}
 			conn.Pool.MaxLifetime = d
 		}
-		if rawConn.Pool.IdleTimeout != "" {
-			d, err := scalar.ParseDuration(rawConn.Pool.IdleTimeout)
+		if conn.Pool.IdleTimeoutRaw != "" {
+			d, err := scalar.ParseDuration(conn.Pool.IdleTimeoutRaw)
 			if err != nil {
-				return nil, fmt.Errorf("connection %q: invalid idle_timeout: %w", conn.Name, err)
+				return fmt.Errorf("connection %q: invalid idle_timeout: %w", conn.Name, err)
 			}
 			conn.Pool.IdleTimeout = d
 		}
 		conn.SetDefaults()
 
 		if connIndex[conn.Key()] {
-			return nil, fmt.Errorf("duplicate connection declaration %q", conn.Reference())
+			return fmt.Errorf("duplicate connection declaration %q", conn.Reference())
 		}
 		connIndex[conn.Key()] = true
 		connIndex[conn.Reference()] = true
-		cfg.Connections = append(cfg.Connections, conn)
 	}
 
-	// Validate schemas and evaluate field properties
-	for _, s := range raw.Schemas {
-		if _, exists := cfg.Schemas[s.Name]; exists {
-			return nil, fmt.Errorf("duplicate schema declaration %q", "schema."+s.Name)
+	// Index schemas and evaluate fields in-place
+	cfg.SchemaMap = make(map[string]Schema, len(cfg.Schemas))
+	for i := range cfg.Schemas {
+		s := &cfg.Schemas[i]
+		if _, exists := cfg.SchemaMap[s.Name]; exists {
+			return fmt.Errorf("duplicate schema declaration %q", "schema."+s.Name)
 		}
-		for i := range s.Fields {
-			if err := evaluateField(&s.Fields[i], evalCtx); err != nil {
-				return nil, fmt.Errorf("schema %q: %w", s.Name, err)
+		for j := range s.Fields {
+			if err := evaluateField(&s.Fields[j], evalCtx); err != nil {
+				return fmt.Errorf("schema %q: %w", s.Name, err)
 			}
 		}
-		cfg.Schemas[s.Name] = s
+		cfg.SchemaMap[s.Name] = *s
 	}
 
-	// Validate endpoints & construct sealed handlers
+	// Validate endpoints in-place and construct sealed handlers
 	seenRoutes := make(map[string]bool)
-	for _, ep := range raw.Endpoints {
+	for i := range cfg.Endpoints {
+		ep := &cfg.Endpoints[i]
 		if seenRoutes[ep.MethodAndPath] {
-			return nil, fmt.Errorf("duplicate endpoint route %q", ep.MethodAndPath)
+			return fmt.Errorf("duplicate endpoint route %q", ep.MethodAndPath)
 		}
 		seenRoutes[ep.MethodAndPath] = true
 
-		compiled, err := compileEndpoint(ep, connIndex, cfg.Schemas, cfg.OpenAPI, evalCtx)
-		if err != nil {
-			return nil, err
+		if err := ep.enrichAndValidate(connIndex, cfg.SchemaMap, *cfg.OpenAPI, evalCtx); err != nil {
+			return err
 		}
-		cfg.Endpoints = append(cfg.Endpoints, compiled)
 	}
 
 	// Auto-derive spec_url for OpenAPI endpoints
-	if err := resolveSpecURLs(cfg.Endpoints); err != nil {
-		return nil, err
-	}
-
-	return cfg, nil
+	return resolveSpecURLs(cfg.Endpoints)
 }
 
-func compileEndpoint(
-	ep rawEndpoint,
+func (ep *Endpoint) enrichAndValidate(
 	connIndex map[string]bool,
 	schemas map[string]Schema,
-	openapiConfig OpenAPI,
+	openapi OpenAPI,
 	evalCtx *hcl.EvalContext,
-) (Endpoint, error) {
+) error {
 	method, path, err := splitMethodAndPath(ep.MethodAndPath)
 	if err != nil {
-		return Endpoint{}, err
+		return err
 	}
+	ep.Method = method
+	ep.Path = path
 
 	hasPipeline := ep.Pipeline != nil && ep.Pipeline.Body != nil
 	hasOpenAPI := len(ep.OpenAPIs) > 0
@@ -200,74 +189,53 @@ func compileEndpoint(
 		for i, o := range ep.OpenAPIs {
 			modes[i] = fmt.Sprintf("%q", o.Mode)
 		}
-		return Endpoint{}, fmt.Errorf("endpoint %q defines multiple openapi handlers (%s)", ep.MethodAndPath, strings.Join(modes, ", "))
+		return fmt.Errorf("endpoint %q defines multiple openapi handlers (%s)", ep.MethodAndPath, strings.Join(modes, ", "))
 	}
-
 	if hasPipeline && hasOpenAPI {
-		return Endpoint{}, fmt.Errorf(
-			"endpoint %q defines conflicting handlers: 'openapi %q' and 'pipeline'",
-			ep.MethodAndPath,
-			ep.OpenAPIs[0].Mode,
-		)
+		return fmt.Errorf("endpoint %q defines conflicting handlers: 'openapi %q' and 'pipeline'", ep.MethodAndPath, ep.OpenAPIs[0].Mode)
 	}
-
 	if !hasPipeline && !hasOpenAPI {
-		return Endpoint{}, fmt.Errorf("endpoint %q: must declare either a pipeline or an openapi block", ep.MethodAndPath)
-	}
-
-	desc := ""
-	if ep.Description != nil {
-		desc = *ep.Description
+		return fmt.Errorf("endpoint %q: must declare either a pipeline or an openapi block", ep.MethodAndPath)
 	}
 
 	// Branch A: OpenAPI handler
 	if hasOpenAPI {
 		if ep.Request != nil {
-			return Endpoint{}, fmt.Errorf(
-				"endpoint %q: openapi endpoints are engine-managed and do not accept a 'request' block",
-				ep.MethodAndPath,
-			)
+			return fmt.Errorf("endpoint %q: openapi endpoints are engine-managed and do not accept a 'request' block", ep.MethodAndPath)
 		}
 		if method != http.MethodGet && method != http.MethodHead {
-			return Endpoint{}, fmt.Errorf("endpoint %q is invalid; openapi endpoints only support HTTP GET and HEAD", ep.MethodAndPath)
+			return fmt.Errorf("endpoint %q is invalid; openapi endpoints only support HTTP GET and HEAD", ep.MethodAndPath)
 		}
 
 		raw := ep.OpenAPIs[0]
-		handler := OpenAPIHandler{
-			Title:       openapiConfig.Title,
-			Version:     openapiConfig.Version,
-			Description: openapiConfig.Description,
+		h := OpenAPIHandler{
+			Title:       openapi.Title,
+			Version:     openapi.Version,
+			Description: openapi.Description,
 		}
 		if raw.SpecURL != nil {
-			handler.SpecURL = *raw.SpecURL
+			h.SpecURL = *raw.SpecURL
 		}
 
 		switch raw.Mode {
 		case "spec":
 			if raw.Renderer != nil || raw.File != nil || raw.Inline != nil {
-				return Endpoint{}, fmt.Errorf("endpoint %q: openapi \"spec\" only accepts the 'format' attribute", ep.MethodAndPath)
+				return fmt.Errorf("endpoint %q: openapi \"spec\" only accepts the 'format' attribute", ep.MethodAndPath)
 			}
 			format := "json"
 			if raw.Format != nil {
 				f := strings.ToLower(strings.TrimSpace(*raw.Format))
 				if f != "json" && f != "yaml" && f != "yml" {
-					return Endpoint{}, fmt.Errorf(
-						"endpoint %q: invalid openapi format %q; must be 'json' or 'yaml'",
-						ep.MethodAndPath,
-						*raw.Format,
-					)
+					return fmt.Errorf("endpoint %q: invalid openapi format %q; must be 'json' or 'yaml'", ep.MethodAndPath, *raw.Format)
 				}
 				format = f
 			}
-			handler.Mode = "spec"
-			handler.Format = format
+			h.Mode = "spec"
+			h.Format = format
 
 		case "ui":
 			if raw.Format != nil || raw.File != nil || raw.Inline != nil {
-				return Endpoint{}, fmt.Errorf(
-					"endpoint %q: openapi \"ui\" only accepts 'renderer' and 'spec_url' attributes",
-					ep.MethodAndPath,
-				)
+				return fmt.Errorf("endpoint %q: openapi \"ui\" only accepts 'renderer' and 'spec_url' attributes", ep.MethodAndPath)
 			}
 			renderer := "scalar"
 			if raw.Renderer != nil {
@@ -276,103 +244,78 @@ func compileEndpoint(
 				case "scalar", "elements", "swagger", "redoc":
 					renderer = r
 				default:
-					return Endpoint{}, fmt.Errorf(
-						"endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'",
-						ep.MethodAndPath,
-						*raw.Renderer,
-					)
+					return fmt.Errorf("endpoint %q: unsupported openapi renderer %q; must be 'scalar', 'elements', 'swagger', or 'redoc'", ep.MethodAndPath, *raw.Renderer)
 				}
 			}
-			handler.Mode = "ui"
-			handler.Renderer = renderer
+			h.Mode = "ui"
+			h.Renderer = renderer
 
 		case "template":
 			if raw.Format != nil || raw.Renderer != nil {
-				return Endpoint{}, fmt.Errorf(
-					"endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes",
-					ep.MethodAndPath,
-				)
+				return fmt.Errorf("endpoint %q: openapi \"template\" only accepts 'file', 'inline', and 'spec_url' attributes", ep.MethodAndPath)
 			}
 			if (raw.File == nil && raw.Inline == nil) || (raw.File != nil && raw.Inline != nil) {
-				return Endpoint{}, fmt.Errorf(
-					"endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'",
-					ep.MethodAndPath,
-				)
+				return fmt.Errorf("endpoint %q: openapi \"template\" requires exactly one of 'file' or 'inline'", ep.MethodAndPath)
 			}
-			handler.Mode = "template"
+			h.Mode = "template"
 			if raw.Inline != nil {
-				handler.Template = *raw.Inline
+				h.Template = *raw.Inline
 			} else if raw.File != nil {
-				resolvedPath := resolveRelativePath(*raw.File, ep.DeclaringDir)
-				content, err := os.ReadFile(resolvedPath)
+				content, err := os.ReadFile(resolveRelativePath(*raw.File, ep.DeclaringDir))
 				if err != nil {
-					return Endpoint{}, fmt.Errorf("endpoint %q: read template file %q: %w", ep.MethodAndPath, *raw.File, err)
+					return fmt.Errorf("endpoint %q: read template file %q: %w", ep.MethodAndPath, *raw.File, err)
 				}
-				handler.Template = string(content)
+				h.Template = string(content)
 			}
 
 		default:
-			return Endpoint{}, fmt.Errorf(
-				"endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"",
-				ep.MethodAndPath,
-				raw.Mode,
-			)
+			return fmt.Errorf("endpoint %q: unsupported openapi mode %q; allowed modes are \"spec\", \"ui\", \"template\"", ep.MethodAndPath, raw.Mode)
 		}
 
-		return Endpoint{
-			MethodAndPath: ep.MethodAndPath,
-			Method:        method,
-			Path:          path,
-			Description:   desc,
-			Handler:       handler,
-		}, nil
+		ep.Handler = h
+		return nil
 	}
 
 	// Branch B: Pipeline handler
 	steps, err := decodePipelineSteps(ep.Pipeline)
 	if err != nil {
-		return Endpoint{}, fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
+		return fmt.Errorf("endpoint %q: %w", ep.MethodAndPath, err)
 	}
 	if len(steps) == 0 {
-		return Endpoint{}, fmt.Errorf("endpoint %q: pipeline must declare at least one step", ep.MethodAndPath)
+		return fmt.Errorf("endpoint %q: pipeline must declare at least one step", ep.MethodAndPath)
 	}
 
 	seenStepNames := make(map[string]bool)
-	for _, step := range steps {
-		if step.Name != "" {
-			if seenStepNames[step.Name] {
-				return Endpoint{}, fmt.Errorf("endpoint %q: duplicate step name %q in pipeline", ep.MethodAndPath, step.Name)
+	for _, s := range steps {
+		if s.Name != "" {
+			if seenStepNames[s.Name] {
+				return fmt.Errorf("endpoint %q: duplicate step name %q in pipeline", ep.MethodAndPath, s.Name)
 			}
-			seenStepNames[step.Name] = true
+			seenStepNames[s.Name] = true
 		}
-		if step.Type == StepTypeSQL && step.SQL != nil {
-			connRef, err := resolveConnectionRef(step.SQL.Connection)
+		if s.Type == StepTypeSQL && s.SQL != nil {
+			connRef, err := resolveConnectionRef(s.SQL.Connection)
 			if err != nil {
-				return Endpoint{}, fmt.Errorf("endpoint %q: step %q connection: %w", ep.MethodAndPath, step.Name, err)
+				return fmt.Errorf("endpoint %q: step %q connection: %w", ep.MethodAndPath, s.Name, err)
 			}
 			cleanRef := strings.TrimPrefix(connRef, "connection.")
 			if !connIndex[cleanRef] && !connIndex[connRef] {
-				return Endpoint{}, fmt.Errorf("endpoint %q: step %q: unknown connection %q", ep.MethodAndPath, step.Name, connRef)
+				return fmt.Errorf("endpoint %q: step %q: unknown connection %q", ep.MethodAndPath, s.Name, connRef)
 			}
 		}
 	}
 
 	rules, err := compileRequestRules(ep.MethodAndPath, ep.Request, schemas, evalCtx)
 	if err != nil {
-		return Endpoint{}, err
+		return err
 	}
 
-	return Endpoint{
-		MethodAndPath: ep.MethodAndPath,
-		Method:        method,
-		Path:          path,
-		Description:   desc,
-		RequestRules:  rules,
-		Handler:       PipelineHandler{Steps: steps},
-	}, nil
+	ep.RequestRules = rules
+	ep.Handler = PipelineHandler{Steps: steps}
+	return nil
 }
 
-func decodePipelineSteps(pipeline *rawPipeline) ([]ParsedStep, error) {
+func decodePipelineSteps(pipeline *PipelineBlock) ([]ParsedStep, error) {
 	schema := &hcl.BodySchema{
 		Blocks: []hcl.BlockHeaderSchema{
 			{Type: string(StepTypeGo), LabelNames: []string{"name"}},
@@ -396,24 +339,52 @@ func decodePipelineSteps(pipeline *rawPipeline) ([]ParsedStep, error) {
 				return nil, fmt.Errorf("go step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{Type: StepTypeGo, Name: block.Labels[0], Go: &cfg})
+
 		case string(StepTypeStarlark):
 			var cfg StarlarkStep
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("starlark step %q: %s", block.Labels[0], diags.Error())
 			}
 			steps = append(steps, ParsedStep{Type: StepTypeStarlark, Name: block.Labels[0], Starlark: &cfg})
+
 		case string(StepTypeSQL):
-			var cfg SQLStep
+			var cfg struct {
+				Connection hcl.Expression `hcl:"connection,attr"`
+				Query      string         `hcl:"query,attr"`
+				Args       hcl.Expression `hcl:"args,optional"`
+				Catches    []struct {
+					Code    string         `hcl:"code,label"`
+					Status  hcl.Expression `hcl:"status,optional"`
+					Headers hcl.Expression `hcl:"headers,optional"`
+					Body    hcl.Expression `hcl:"body,optional"`
+				} `hcl:"catch,block"`
+			}
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("sql step %q: %s", block.Labels[0], diags.Error())
 			}
-			steps = append(steps, ParsedStep{Type: StepTypeSQL, Name: block.Labels[0], SQL: &cfg})
+
+			catches := make([]SQLCatch, len(cfg.Catches))
+			for i, c := range cfg.Catches {
+				catches[i] = SQLCatch{Code: c.Code, Status: c.Status, Headers: c.Headers, Body: c.Body}
+			}
+			steps = append(steps, ParsedStep{
+				Type: StepTypeSQL,
+				Name: block.Labels[0],
+				SQL: &SQLStep{
+					Connection: cfg.Connection,
+					Query:      cfg.Query,
+					Args:       cfg.Args,
+					Catches:    catches,
+				},
+			})
+
 		case string(StepTypeRespond):
 			var cfg RespondStep
 			if diags := gohcl.DecodeBody(block.Body, nil, &cfg); diags.HasErrors() {
 				return nil, fmt.Errorf("respond step: %s", diags.Error())
 			}
 			steps = append(steps, ParsedStep{Type: StepTypeRespond, Respond: &cfg})
+
 		default:
 			return nil, fmt.Errorf("unknown step type %q", block.Type)
 		}
@@ -424,51 +395,49 @@ func decodePipelineSteps(pipeline *rawPipeline) ([]ParsedStep, error) {
 func evaluateField(f *Field, evalCtx *hcl.EvalContext) error {
 	f.Type = "any"
 	if f.TypeExpr != nil {
-		typeVal, err := eval.Any(f.TypeExpr, nil)
+		val, err := eval.Any(f.TypeExpr, nil)
 		if err != nil {
 			return fmt.Errorf("field %q type: %w", f.Name, err)
 		}
-		if typeVal != nil {
-			f.Type = fmt.Sprintf("%v", typeVal)
+		if val != nil {
+			f.Type = fmt.Sprintf("%v", val)
 		}
 	}
 	if f.EnumExpr != nil {
-		rawEnum, err := eval.Any(f.EnumExpr, nil)
+		val, err := eval.Any(f.EnumExpr, nil)
 		if err != nil {
 			return fmt.Errorf("field %q enum: %w", f.Name, err)
 		}
-		if list, ok := rawEnum.([]any); ok {
+		if list, ok := val.([]any); ok {
 			f.Enum = list
 		}
 	}
 	if f.DefaultExpr != nil {
-		rawDefault, err := eval.Any(f.DefaultExpr, nil)
+		val, err := eval.Any(f.DefaultExpr, nil)
 		if err != nil {
 			return fmt.Errorf("field %q default: %w", f.Name, err)
 		}
-		f.Default = rawDefault
+		f.Default = val
 	}
 	return nil
 }
 
-func compileRequestRules(route string, req *rawRequest, schemas map[string]Schema, evalCtx *hcl.EvalContext) (RequestRules, error) {
+func compileRequestRules(route string, req *RequestBlock, schemas map[string]Schema, evalCtx *hcl.EvalContext) (RequestRules, error) {
 	var rules RequestRules
 	if req == nil {
 		return rules, nil
 	}
 
 	compileFields := func(fields []Field) ([]Field, error) {
-		res := make([]Field, len(fields))
 		for i := range fields {
-			res[i] = fields[i]
-			if err := evaluateField(&res[i], evalCtx); err != nil {
+			if err := evaluateField(&fields[i], evalCtx); err != nil {
 				return nil, err
 			}
 		}
-		return res, nil
+		return fields, nil
 	}
 
-	resolveTarget := func(target string, inline *rawFieldGroup, expr hcl.Expression) ([]Field, error) {
+	resolveTarget := func(target string, inline *FieldGroup, expr hcl.Expression) ([]Field, error) {
 		if inline != nil {
 			return compileFields(inline.Fields)
 		}
@@ -481,7 +450,7 @@ func compileRequestRules(route string, req *rawRequest, schemas map[string]Schem
 			if !exists {
 				return nil, fmt.Errorf("unknown schema reference %q", "schema."+ref)
 			}
-			return s.Fields, nil
+			return compileFields(s.Fields)
 		}
 		return nil, nil
 	}
@@ -527,10 +496,7 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		}
 
 		if len(jsonSpecs) == 0 {
-			return fmt.Errorf(
-				"cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly",
-				ep.MethodAndPath,
-			)
+			return fmt.Errorf("cannot auto-derive 'spec_url' for endpoint %q: no 'openapi \"spec\"' endpoint with format \"json\" found; declare a spec endpoint or specify 'spec_url' explicitly", ep.MethodAndPath)
 		}
 
 		if len(jsonSpecs) == 1 {
@@ -559,11 +525,7 @@ func resolveSpecURLs(endpoints []Endpoint) error {
 		for _, s := range jsonSpecs {
 			candidatePaths = append(candidatePaths, fmt.Sprintf("%q", s.path))
 		}
-		return fmt.Errorf(
-			"ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly",
-			ep.MethodAndPath,
-			strings.Join(candidatePaths, ", "),
-		)
+		return fmt.Errorf("ambiguous 'spec_url' for endpoint %q: multiple JSON spec endpoints found (%s); specify 'spec_url' explicitly", ep.MethodAndPath, strings.Join(candidatePaths, ", "))
 	}
 
 	return nil
@@ -579,7 +541,7 @@ func splitMethodAndPath(raw string) (string, string, error) {
 
 func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", errors.New("missing connection reference expression")
+		return "", fmt.Errorf("missing connection reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -598,12 +560,12 @@ func resolveConnectionRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.Type().Equals(cty.String) {
 		return val.AsString(), nil
 	}
-	return "", errors.New("invalid connection reference expression")
+	return "", fmt.Errorf("invalid connection reference expression")
 }
 
 func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if expr == nil {
-		return "", errors.New("missing schema reference expression")
+		return "", fmt.Errorf("missing schema reference expression")
 	}
 	vars := expr.Variables()
 	if len(vars) > 0 {
@@ -620,5 +582,5 @@ func resolveSchemaRef(expr hcl.Expression) (string, error) {
 	if !diags.HasErrors() && val.IsKnown() && !val.IsNull() && val.Type().Equals(cty.String) {
 		return strings.TrimPrefix(val.AsString(), "schema."), nil
 	}
-	return "", errors.New("invalid schema reference expression")
+	return "", fmt.Errorf("invalid schema reference expression")
 }

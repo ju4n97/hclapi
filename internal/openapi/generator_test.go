@@ -14,10 +14,10 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 	t.Parallel()
 
 	cfg := &config.Config{
-		Server: config.Server{
+		Server: &config.Server{
 			MaxBodySize: scalar.ByteSize(10 * 1024 * 1024),
 		},
-		OpenAPI: config.OpenAPI{
+		OpenAPI: &config.OpenAPI{
 			Title:       "Acme Store API",
 			Version:     "1.0.0",
 			Description: "Comprehensive API specification for testing.",
@@ -38,8 +38,8 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 				URL:  "https://opensource.org/licenses/MIT",
 			},
 		},
-		Schemas: map[string]config.Schema{
-			"user": {
+		Schemas: []config.Schema{
+			{
 				Name: "user",
 				Fields: []config.Field{
 					{Name: "email", Type: "string", Required: true, Format: "email", Description: "User email"},
@@ -52,7 +52,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 				MethodAndPath: "POST /api/v1/users/{id}",
 				Method:        "POST",
 				Path:          "/api/v1/users/{id}",
-				Description:   "Registers a new user record.",
+				Description:   new("Registers a new user record."),
 				RequestRules: config.RequestRules{
 					PathFields: []config.Field{
 						{Name: "id", Type: "int", Required: true, Description: "Unique user ID"},
@@ -80,7 +80,7 @@ func TestOpenAPI_ComprehensiveGeneration(t *testing.T) {
 				MethodAndPath: "GET /static/{filepath...}",
 				Method:        "GET",
 				Path:          "/static/{filepath...}",
-				Description:   "Serves public assets.",
+				Description:   new("Serves public assets."),
 				RequestRules: config.RequestRules{
 					PathFields: []config.Field{
 						{Name: "filepath", Type: "string", Required: true},

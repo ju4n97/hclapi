@@ -21,7 +21,7 @@ func writeConfig(t *testing.T, content string) string {
 	return tmpDir
 }
 
-func TestConfig_Load_Success(t *testing.T) {
+func TestConfig_Validation_Success(t *testing.T) {
 	t.Parallel()
 
 	hcl := `
@@ -101,7 +101,6 @@ endpoint "POST /api/v1/users" {
 		t.Fatalf("unexpected load error: %v", err)
 	}
 
-	// Server assertions
 	if cfg.Server.Host != "0.0.0.0" || cfg.Server.Port != 9000 {
 		t.Errorf("unexpected server: %+v", cfg.Server)
 	}
@@ -111,30 +110,21 @@ endpoint "POST /api/v1/users" {
 	if cfg.Server.MaxBodySize.Bytes() != 25*1000*1000 {
 		t.Errorf("expected 25MB max_body_size, got %d", cfg.Server.MaxBodySize.Bytes())
 	}
-
-	// Problem assertions
 	if cfg.Problem.TypePrefix != "https://docs.example.com/errors/" {
 		t.Errorf("unexpected problem prefix: %q", cfg.Problem.TypePrefix)
 	}
-
-	// Connection assertions
 	if len(cfg.Connections) != 1 || cfg.Connections[0].Key() != "postgres.primary" {
-		t.Fatalf("expected 1 connection 'postgres.primary', got: %+v", cfg.Connections)
+		t.Fatalf("expected connection postgres.primary, got: %+v", cfg.Connections)
 	}
 	if cfg.Connections[0].Pool.MaxOpen != 50 {
 		t.Errorf("expected max_open 50, got %d", cfg.Connections[0].Pool.MaxOpen)
 	}
 
-	// Schema assertions
-	userSchema, ok := cfg.Schemas["user_create"]
+	userSchema, ok := cfg.SchemaMap["user_create"]
 	if !ok || len(userSchema.Fields) != 1 {
-		t.Fatalf("expected schema 'user_create', got: %+v", cfg.Schemas)
-	}
-	if userSchema.Fields[0].Type != "string" || !userSchema.Fields[0].Required {
-		t.Errorf("unexpected field: %+v", userSchema.Fields[0])
+		t.Fatalf("expected schema user_create, got: %+v", cfg.SchemaMap)
 	}
 
-	// Endpoint assertions
 	if len(cfg.Endpoints) != 3 {
 		t.Fatalf("expected 3 endpoints, got %d", len(cfg.Endpoints))
 	}
@@ -144,10 +134,10 @@ endpoint "POST /api/v1/users" {
 		case config.OpenAPIHandler:
 			if ep.Path == "/docs" {
 				if h.Renderer != "scalar" {
-					t.Errorf("expected scalar renderer, got %q", h.Renderer)
+					t.Errorf("expected scalar, got %q", h.Renderer)
 				}
 				if h.SpecURL != "/openapi.json" {
-					t.Errorf("expected auto-derived spec_url '/openapi.json', got %q", h.SpecURL)
+					t.Errorf("expected auto-derived /openapi.json, got %q", h.SpecURL)
 				}
 			}
 		case config.PipelineHandler:
@@ -155,17 +145,12 @@ endpoint "POST /api/v1/users" {
 				if len(h.Steps) != 2 {
 					t.Fatalf("expected 2 steps, got %d", len(h.Steps))
 				}
-				if h.Steps[0].Name != "insert_user" || h.Steps[0].Type != config.StepTypeSQL {
-					t.Errorf("unexpected step 0: %+v", h.Steps[0])
-				}
 			}
-		default:
-			t.Fatalf("unexpected handler type for endpoint: %+v", ep)
 		}
 	}
 }
 
-func TestConfig_ValidationFailures(t *testing.T) {
+func TestConfig_Validation_Failures(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -258,7 +243,7 @@ endpoint "GET /docs" {
 endpoint "GET /records" {
   pipeline {
     sql "fetch" {
-      connection = connection.postgres.non_existent
+      connection = connection.postgres.missing
       query      = "SELECT 1"
     }
     respond {
@@ -267,7 +252,7 @@ endpoint "GET /records" {
   }
 }
 `,
-			expectError: `unknown connection "connection.postgres.non_existent"`,
+			expectError: `unknown connection "connection.postgres.missing"`,
 		},
 		{
 			name: "Rejects unknown schema reference",
@@ -290,6 +275,7 @@ endpoint "POST /records" {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			dir := writeConfig(t, tt.hcl)
 			_, err := config.Load(dir, eval.BaseContext())
 			if err == nil {

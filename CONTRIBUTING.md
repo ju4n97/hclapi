@@ -2,12 +2,12 @@
 
 Thanks for contributing to `hclapi`. This project follows standard [Effective Go](https://go.dev/doc/effective_go) idioms to keep the codebase simple, fast, and easy to maintain.
 
-It's recommended that you read the [documentation](https://ju4n97.github.io/hclapi/) before contributing for full context.
+It is recommended that you read the [documentation](https://ju4n97.github.io/hclapi/) before contributing for full context.
 
 ## How the Engine Works
 
-1. **Boot time:** `hclapi serve` walks manifest directories, parses `.hcl` files into an AST, validates constraints, initializes database pools, compiles OpenAPI specs, and mounts routes to standard `http.ServeMux`.
-2. **Request time:** Each HTTP request initializes an isolated `ExecutionContext`. Pipeline steps (`sqldb`, `star`, native Go) run sequentially until terminated by a `respond` step or an error.
+* **Boot time:** `hclapi serve` walks manifest directories, parses `.hcl` files into an ephemeral syntax AST (`manifest`), lowers and validates constraints into an immutable runtime specification (`service`), initializes database pools, precomputes OpenAPI specifications, and mounts routes onto standard `http.ServeMux`.
+* **Request time:** Each HTTP request initializes an isolated `ExecutionContext`. Pipeline steps (`sqldb`, `star`, native Go) execute sequentially until terminated by a `respond` step or an unhandled error.
 
 ## Project Structure
 
@@ -16,7 +16,8 @@ hclapi/
 ├── cmd/hclapi/        # CLI: serve, openapi, version
 ├── hclapi.go          # Public Go library facade
 └── internal/
-    ├── config/        # Unified AST, HCL parsing, and boot validation
+    ├── manifest/      # Ephemeral HCL syntax parsing, file discovery, and raw AST blocks
+    ├── service/       # Immutable domain specification, lowering, and boot validation
     ├── engine/        # HTTP routing, StepRegistry, and pipeline execution
     ├── sqldb/         # Multi-dialect SQL pooling, placeholders, and execution
     ├── star/          # Sandboxed Starlark script execution
@@ -32,18 +33,23 @@ hclapi/
 
 Imports must form a strict, unidirectional directed acyclic graph:
 
-$$\text{cmd} \longrightarrow \text{engine} \longrightarrow \text{config} \longrightarrow \text{eval} \longrightarrow \text{runtime} \longrightarrow \text{problem}$$
+$$\text{cmd} \longrightarrow \text{engine} \longrightarrow \text{service} \longrightarrow \text{manifest}$$
 
-- Leaf packages (`problem`, `scalar`, `star`, `sqldb`, `runtime`) must not depend on higher-level packages like `config` or `engine`.
-- Nothing under `internal/` can import the root package `github.com/ju4n97/hclapi`.
-- Dynamic request execution (`runtime`) must never import static manifest parsing (`config`).
+$$\text{service} \longrightarrow \text{eval} \longrightarrow \text{runtime} \longrightarrow \text{problem}$$
+
+* Leaf packages (`problem`, `scalar`, `star`, `sqldb`, `runtime`) must not depend on higher-level packages like `service`, `manifest`, or `engine`.
+* Nothing under `internal/` can import the root package `github.com/ju4n97/hclapi`.
+* Dynamic request execution (`runtime`) must never import manifest syntax (`manifest`) or service definitions (`service`).
+* The syntax layer (`manifest`) must remain strictly ephemeral and decoupled; it must never import `service` or runtime execution logic.
+* Runtime consumers (`engine`, `validator`, `openapi`) depend solely on `service.Definition` and never inspect raw HCL syntax blocks.
 
 ## Key engineering rules
 
-- Cross-compilation must work cleanly for all platforms. All database drivers must be pure Go.
-- Syntax errors, invalid durations, missing connections, or conflicting routes must halt startup immediately with actionable diagnostics; never during request handling.
-- No hidden state or implicit fallbacks. Steps always export data under explicit keys (`.rows`, `.row`, `.result`).
-- Never mutate shared request state across step handlers.
+* Cross-compilation must work cleanly for all platforms. All database drivers must be pure Go.
+* Syntax errors, invalid durations, missing connections, or conflicting routes must halt startup immediately with actionable diagnostics; never during request handling.
+* No hidden state or implicit fallbacks. Steps always export data under explicit keys (`.rows`, `.row`, `.result`).
+* Never mutate shared request state across step handlers.
+* Maintain deep immutability: once `service.Build` returns, the service specification must never be mutated during the server lifecycle.
 
 ## Development workflow
 
@@ -65,11 +71,12 @@ This project uses trunk-based development with small, focused pull requests into
 
 Commit messages must follow [Conventional Commits](https://www.conventionalcommits.org/):
 
-- `feat(config): add support for custom scalar units`
-- `fix(sqldb): handle sqlite primary key collision`
-- `chore: update dependencies`
+* `feat(service): add support for custom scalar units`
+* `fix(manifest): handle sqlite relative file path resolution`
+* `fix(sqldb): handle sqlite primary key collision`
+* `chore: update dependencies`
 
-**Breaking changes:** Append an exclamation mark (`!`) before the colon in the subject (e.g. `feat(config)!: move openapi to root block`) and explain the migration steps under a `BREAKING CHANGE:` footer. This is needed for automated changelog generation.
+**Breaking changes:** Append an exclamation mark (`!`) before the colon in the subject (e.g. `feat(service)!: enforce strict type assertions on ingress headers`) and explain the migration steps under a `BREAKING CHANGE:` footer. This is required for automated changelog generation.
 
 ## Release process
 
@@ -89,9 +96,9 @@ Releases are automated via GitHub Actions and [GoReleaser](https://goreleaser.co
 
 ## Guidelines on AI tools and workspace config
 
-- AI tools are allowed. However, you're responsible for testing, understanding, and verifying that contributions meet the architecture standards.
-- Keep descriptions and commit messages direct and concise. Avoid pasting large AI generated summaries.
-- Don't commit personal editor or AI tooling configurations (`.vscode/`, `.zed/`, `.cursor/`, `CLAUDE.md`, etc.).
+* AI tools are allowed. However, you are responsible for testing, understanding, and verifying that contributions meet the architecture standards.
+* Keep issues, pull request descriptions, and commit messages direct and concise. Avoid pasting large AI generated summaries.
+* Don't commit personal editor or AI tooling configurations (`.vscode/`, `.zed/`, `.cursor/`, `CLAUDE.md`, etc.).
 
 ## License
 

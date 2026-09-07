@@ -40,7 +40,7 @@ endpoint "POST /api/v1/data" {
 		})
 	}
 
-	engine, err := hclapi.NewEngine(hclapi.Options{
+	engine, err := hclapi.New(hclapi.Options{
 		ConfigPath:     tmpDir,
 		ProblemHandler: customHandler,
 	})

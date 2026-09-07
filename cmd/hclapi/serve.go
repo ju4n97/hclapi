@@ -65,7 +65,7 @@ func newServeCommand() *cli.Command {
 
 			logger.Info("booting hclapi API engine...")
 
-			eng, err := hclapi.NewEngine(hclapi.Options{
+			eng, err := hclapi.New(hclapi.Options{
 				ConfigPath:   cmd.String("config"),
 				StrictTyping: true,
 				Logger:       logger,

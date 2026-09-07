@@ -5,63 +5,49 @@ import (
 	"github.com/ju4n97/hclapi/internal/engine"
 	"github.com/ju4n97/hclapi/internal/problem"
 	"github.com/ju4n97/hclapi/internal/runtime"
-	"github.com/ju4n97/hclapi/internal/scalar"
 )
 
-// Engine is the root coordinator managing manifests, step registries, and HTTP routing.
-type Engine = engine.Engine
+type (
+	// Engine coordinates manifest execution, connection pools, and HTTP routing.
+	Engine = engine.Engine
 
-// Options defines configuration parameters for the hclapi engine.
-type Options = engine.Options
+	// Options defines configuration parameters for initializing an Engine.
+	Options = engine.Options
 
-// Runtime
+	// Step provides invocation arguments and request context to a Go step callback.
+	Step = runtime.Step
 
-// Step encapsulates the invocation state, arguments, and request metadata for a Go step.
-type Step = runtime.Step
+	// StepHandler defines the signature for custom native Go step callbacks.
+	StepHandler = runtime.StepHandler
 
-// StepHandler defines the signature for custom native Go step callbacks.
-type StepHandler = runtime.StepHandler
+	// Args represents evaluated arguments passed to a Go step callback.
+	Args = runtime.Args
 
-// Args represents evaluated arguments passed to a Go step from an HCL manifest.
-type Args = runtime.Args
+	// ExecutionContext encapsulates the state for a single HTTP pipeline run.
+	ExecutionContext = runtime.ExecutionContext
 
-// ExecutionContext encapsulates the runtime state for a single HTTP request pipeline execution.
-type ExecutionContext = runtime.ExecutionContext
+	// RequestState holds normalized, read-only HTTP request metadata.
+	RequestState = runtime.RequestState
 
-// RequestState represents normalized HTTP request metadata extracted at runtime.
-type RequestState = runtime.RequestState
+	// Problem represents an RFC 9457 compliant error object.
+	Problem = problem.Problem
 
-// StepResult represents arbitrary step-specific outputs.
-type StepResult = runtime.StepResult
+	// ProblemHandler defines the contract for serializing Problem Details to an HTTP client.
+	ProblemHandler = problem.Handler
 
-// Scalar unit types
+	// InvalidParam captures a single field validation constraint failure.
+	InvalidParam = problem.InvalidParam
+)
 
-// Duration wraps a time.Duration with human-readable text deserialization (e.g. "15m", "30s").
-type Duration = scalar.Duration
-
-// ByteSize represents a quantity of bytes unmarshaled from text (e.g. "25MB", "10GiB").
-type ByteSize = scalar.ByteSize
-
-// Problem
-
-// Problem represents an RFC 9457 compliant error object.
-type Problem = problem.Problem
-
-// NewProblem creates a Problem with title and type derived from the HTTP status code.
-func NewProblem(status int, detail ...string) Problem {
-	return problem.New(status, detail...)
-}
-
-// ProblemHandler defines the contract for custom error serialization.
-type ProblemHandler = problem.Handler
-
-// DefaultProblemHandler serializes Problem as application/problem+json.
+// DefaultProblemHandler formats and serializes errors as application/problem+json.
 var DefaultProblemHandler = problem.DefaultHandler
 
-// InvalidParam represents a single field-level schema validation constraint failure.
-type InvalidParam = problem.InvalidParam
-
-// NewEngine parses manifests, statically verifies routes, and initializes the HTTP engine.
-func NewEngine(options Options) (*Engine, error) {
+// New compiles manifests and initializes the HTTP engine.
+func New(options Options) (*Engine, error) {
 	return engine.New(options)
+}
+
+// NewProblem constructs a Problem with canonical title and type derived from the status code.
+func NewProblem(status int, detail ...string) Problem {
+	return problem.New(status, detail...)
 }

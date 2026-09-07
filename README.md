@@ -177,7 +177,7 @@ import (
 func main() {
   logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-  engine, err := hclapi.NewEngine(hclapi.Options{
+  engine, err := hclapi.New(hclapi.Options{
     ConfigPath:   "./api",
     StrictTyping: true,
     Logger:       logger,

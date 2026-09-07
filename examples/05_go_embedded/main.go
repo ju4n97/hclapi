@@ -44,7 +44,7 @@ func run() error {
 		Level: slog.LevelInfo,
 	}))
 
-	engine, err := hclapi.NewEngine(hclapi.Options{
+	engine, err := hclapi.New(hclapi.Options{
 		ConfigPath:   ".",
 		StrictTyping: true,
 		Logger:       logger,

@@ -1,9 +1,11 @@
 package eval
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 
 	"github.com/zclconf/go-cty/cty"
 )
@@ -57,6 +59,8 @@ func anyToCty(val any) cty.Value {
 		return cty.NumberFloatVal(float64(v))
 	case float64:
 		return cty.NumberFloatVal(v)
+	case time.Time:
+		return cty.StringVal(v.Format(time.RFC3339))
 	case map[string]any:
 		if len(v) == 0 {
 			return cty.EmptyObjectVal
@@ -104,8 +108,17 @@ func anyToCty(val any) cty.Value {
 		return cty.TupleVal(list)
 	}
 
-	// Reflection fallback for any other slice, array, or custom map
+	// Reflection fallback for pointers, slices, arrays, maps, and structs
 	rv := reflect.ValueOf(val)
+
+	// Handle pointer dereferencing
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return cty.NullVal(cty.DynamicPseudoType)
+		}
+		return anyToCty(rv.Elem().Interface())
+	}
+
 	switch rv.Kind() {
 	case reflect.Slice, reflect.Array:
 		if rv.Len() == 0 {
@@ -116,6 +129,7 @@ func anyToCty(val any) cty.Value {
 			list[i] = anyToCty(rv.Index(i).Interface())
 		}
 		return cty.TupleVal(list)
+
 	case reflect.Map:
 		if rv.Len() == 0 {
 			return cty.EmptyObjectVal
@@ -125,6 +139,18 @@ func anyToCty(val any) cty.Value {
 			dict[fmt.Sprintf("%v", key.Interface())] = anyToCty(rv.MapIndex(key).Interface())
 		}
 		return cty.ObjectVal(dict)
+
+	case reflect.Struct:
+		data, err := json.Marshal(val)
+		if err != nil {
+			return cty.StringVal(fmt.Sprintf("%v", val))
+		}
+		var raw any
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return cty.StringVal(fmt.Sprintf("%v", val))
+		}
+		return anyToCty(raw)
+
 	default:
 		return cty.StringVal(fmt.Sprintf("%v", val))
 	}

@@ -1,6 +1,10 @@
 package scalar
 
-import "math"
+import (
+	"math"
+	"strconv"
+	"strings"
+)
 
 // Number represents all integer and floating-point numeric types.
 type Number interface {
@@ -37,6 +41,11 @@ func ToInt64(val any) (int64, bool) {
 		return int64(v), true
 	case float64:
 		return int64(v), true
+	case string:
+		if i, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			return i, true
+		}
+		return 0, false
 	default:
 		return 0, false
 	}
@@ -69,6 +78,11 @@ func ToFloat64(val any) (float64, bool) {
 		return float64(v), true
 	case uint64:
 		return float64(v), true
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return f, true
+		}
+		return 0, false
 	default:
 		return 0, false
 	}

@@ -97,7 +97,7 @@ func standardFunctions() map[string]function.Function {
 		"coalesce": coalesceFunc,
 		"length":   lengthFunc,
 		"merge":    stdlib.MergeFunc,
-		"lookup":   stdlib.LookupFunc,
+		"lookup":   lookupFunc,
 		"keys":     stdlib.KeysFunc,
 		"values":   stdlib.ValuesFunc,
 		"contains": stdlib.ContainsFunc,
@@ -401,6 +401,63 @@ var coalesceFunc = function.New(&function.Spec{
 			return arg, nil
 		}
 		return cty.NullVal(cty.DynamicPseudoType), nil
+	},
+})
+
+// lookupFunc performs a map lookup with case-insensitive fallback.
+var lookupFunc = function.New(&function.Spec{
+	Description: "Retrieves the value of a key from a map, with automatic case-insensitive fallback.",
+	Params: []function.Parameter{
+		{
+			Name:             "collection",
+			Type:             cty.DynamicPseudoType,
+			AllowDynamicType: true,
+		},
+		{
+			Name: "key",
+			Type: cty.String,
+		},
+		{
+			Name:             "default",
+			Type:             cty.DynamicPseudoType,
+			AllowNull:        true,
+			AllowDynamicType: true,
+		},
+	},
+	Type: function.StaticReturnType(cty.DynamicPseudoType),
+	Impl: func(args []cty.Value, retType cty.Type) (cty.Value, error) {
+		coll := args[0]
+		key := args[1].AsString()
+		defaultVal := args[2]
+
+		if !coll.IsKnown() || coll.IsNull() {
+			return defaultVal, nil
+		}
+
+		if !coll.Type().IsMapType() && !coll.Type().IsObjectType() {
+			return cty.NilVal, fmt.Errorf("lookup() requires a map or object, got %s", coll.Type().FriendlyName())
+		}
+
+		// Exact key match
+		if coll.Type().IsObjectType() {
+			if coll.Type().HasAttribute(key) {
+				return coll.GetAttr(key), nil
+			}
+		} else if coll.Type().IsMapType() {
+			if coll.HasIndex(cty.StringVal(key)).True() {
+				return coll.Index(cty.StringVal(key)), nil
+			}
+		}
+
+		// Case-insensitive fallback
+		for it := coll.ElementIterator(); it.Next(); {
+			k, v := it.Element()
+			if strings.EqualFold(k.AsString(), key) {
+				return v, nil
+			}
+		}
+
+		return defaultVal, nil
 	},
 })
 

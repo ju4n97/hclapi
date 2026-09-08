@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/ju4n97/hclapi/internal/scalar"
 )
@@ -39,23 +41,48 @@ func (a Args) Get[T any](key string) (T, bool) {
 		return zero, false
 	}
 
-	// Exact type match
 	if v, ok := val.(T); ok {
 		return v, true
 	}
 
-	// Numeric coercion
-	if num, ok := scalar.CoerceNumber[T](val); ok {
-		return num, true
+	targetType := reflect.TypeOf(zero)
+	if targetType == nil {
+		return zero, false
 	}
 
-	// String coercion if T is string
-	if _, isString := any(zero).(string); isString {
+	switch targetType.Kind() {
+	case reflect.String:
 		switch s := val.(type) {
 		case fmt.Stringer:
-			return any(s.String()).(T), true
+			return reflect.ValueOf(s.String()).Convert(targetType).Interface().(T), true
 		default:
-			return any(fmt.Sprintf("%v", val)).(T), true
+			str := fmt.Sprintf("%v", val)
+			return reflect.ValueOf(str).Convert(targetType).Interface().(T), true
+		}
+
+	case reflect.Bool:
+		switch b := val.(type) {
+		case bool:
+			return reflect.ValueOf(b).Convert(targetType).Interface().(T), true
+		case string:
+			if parsedBool, err := strconv.ParseBool(strings.TrimSpace(b)); err == nil {
+				return reflect.ValueOf(parsedBool).Convert(targetType).Interface().(T), true
+			}
+		}
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if n, ok := scalar.ToInt64(val); ok {
+			return reflect.ValueOf(n).Convert(targetType).Interface().(T), true
+		}
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if n, ok := scalar.ToInt64(val); ok && n >= 0 {
+			return reflect.ValueOf(n).Convert(targetType).Interface().(T), true
+		}
+
+	case reflect.Float32, reflect.Float64:
+		if f, ok := scalar.ToFloat64(val); ok {
+			return reflect.ValueOf(f).Convert(targetType).Interface().(T), true
 		}
 	}
 
@@ -91,47 +118,31 @@ func (a Args) Slice[T any](key string) []T {
 		return nil
 	}
 
-	// Exact slice type match
 	if raw, ok := val.([]T); ok {
 		return raw
 	}
 
 	var zero T
-	_, isString := any(zero).(string)
-
-	// Default dynamic slice ([]any)
-	if raw, ok := val.([]any); ok {
-		res := make([]T, 0, len(raw))
-		for _, item := range raw {
-			if item == nil {
-				continue
-			}
-			if v, ok := item.(T); ok {
-				res = append(res, v)
-			} else if num, ok := scalar.CoerceNumber[T](item); ok {
-				res = append(res, num)
-			} else if isString {
-				res = append(res, any(fmt.Sprintf("%v", item)).(T))
-			}
-		}
-		return res
+	targetElemType := reflect.TypeOf(zero)
+	if targetElemType == nil {
+		return nil
 	}
 
-	// Fallback: arbitrary slice types, like []int64 from prior Go step
+	coerceItem := func(item any) (T, bool) {
+		tempArgs := Args{"_": item}
+		return tempArgs.Get[T]("_")
+	}
+
 	rv := reflect.ValueOf(val)
-	if rv.Kind() == reflect.Slice {
+	if rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
 		res := make([]T, 0, rv.Len())
 		for i := 0; i < rv.Len(); i++ {
-			item := rv.Index(i).Interface()
-			if item == nil {
+			elem := rv.Index(i).Interface()
+			if elem == nil {
 				continue
 			}
-			if v, ok := item.(T); ok {
-				res = append(res, v)
-			} else if num, ok := scalar.CoerceNumber[T](item); ok {
-				res = append(res, num)
-			} else if isString {
-				res = append(res, any(fmt.Sprintf("%v", item)).(T))
+			if coerced, ok := coerceItem(elem); ok {
+				res = append(res, coerced)
 			}
 		}
 		return res

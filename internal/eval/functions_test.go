@@ -429,7 +429,7 @@ func TestFunctions_Collections(t *testing.T) {
 	t.Run("lookup", func(t *testing.T) {
 		t.Parallel()
 
-		// 1. Key exists
+		// Key exists
 		res1, err := evalExpr(t, `lookup({ role = "admin" }, "role", "user")`)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -438,13 +438,48 @@ func TestFunctions_Collections(t *testing.T) {
 			t.Errorf("expected 'admin', got %v", res1)
 		}
 
-		// 2. Key missing -> returns default
+		// Key missing -> returns default
 		res2, err := evalExpr(t, `lookup({ role = "admin" }, "missing", "user")`)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if res2 != "user" {
 			t.Errorf("expected default 'user', got %v", res2)
+		}
+	})
+
+	t.Run("lookup with case-insensitive fallback (RFC 9110)", func(t *testing.T) {
+		t.Parallel()
+
+		// Exact match works as expected
+		res1, err := evalExpr(t, `lookup({ role = "admin" }, "role", "user")`)
+		if err != nil || res1 != "admin" {
+			t.Errorf("expected 'admin', got %v", res1)
+		}
+
+		// Case-insensitive lookup (PascalCase lookup on lowercase header)
+		res2, err := evalExpr(t, `lookup({ authorization = "Bearer token-123" }, "Authorization", "")`)
+		if err != nil || res2 != "Bearer token-123" {
+			t.Errorf("PascalCase lookup failed: got %v (err: %v)", res2, err)
+		}
+
+		// Case-insensitive lookup (UPPERCASE lookup)
+		res3, err := evalExpr(t, `lookup({ "x-api-key" = "uuid-456" }, "X-API-KEY", "")`)
+		if err != nil || res3 != "uuid-456" {
+			t.Errorf("UPPERCASE lookup failed: got %v (err: %v)", res3, err)
+		}
+
+		// Case-insensitive lookup (camelCase lookup)
+		res4, err := evalExpr(t, `lookup({ "content-type" = "application/json" }, "contentType", "")`)
+		// Not equal fold (hyphen difference), should return default
+		if err != nil || res4 != "" {
+			t.Errorf("mismatched name should return default, got %v", res4)
+		}
+
+		// Key missing completely -> returns default
+		res5, err := evalExpr(t, `lookup({ authorization = "Bearer token" }, "Missing-Header", "fallback")`)
+		if err != nil || res5 != "fallback" {
+			t.Errorf("expected default 'fallback', got %v", res5)
 		}
 	})
 

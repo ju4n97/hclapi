@@ -366,3 +366,88 @@ func TestArgs_NilReceiver(t *testing.T) {
 		t.Errorf("nil.Bind() error = %v; want nil", err)
 	}
 }
+
+type (
+	customStrategy string
+	customID       int
+	customFlag     bool
+)
+
+func TestArgs_CustomTypesAndCoercion(t *testing.T) {
+	t.Parallel()
+
+	t.Run("coerces to custom string enum (type Strategy string)", func(t *testing.T) {
+		t.Parallel()
+
+		args := Args{
+			"strategy": "cloud",
+		}
+
+		val, ok := args.Get[customStrategy]("strategy")
+		if !ok || val != "cloud" {
+			t.Errorf("Get[customStrategy]() = (%v, %v); want (\"cloud\", true)", val, ok)
+		}
+	})
+
+	t.Run("coerces numeric string from query to custom int enum", func(t *testing.T) {
+		t.Parallel()
+
+		args := Args{
+			"request_id": "307471",
+		}
+
+		val, ok := args.Get[customID]("request_id")
+		if !ok || val != 307471 {
+			t.Errorf("Get[customID](\"307471\") = (%v, %v); want (307471, true)", val, ok)
+		}
+	})
+
+	t.Run("coerces string boolean from query string", func(t *testing.T) {
+		t.Parallel()
+
+		args := Args{
+			"active_str": "true",
+			"active_num": "1",
+			"inactive":   "false",
+			"custom_b":   "true",
+			"invalid":    "not-a-bool",
+		}
+
+		if val, ok := args.Get[bool]("active_str"); !ok || !val {
+			t.Errorf("Get[bool](\"true\") = (%v, %v); want (true, true)", val, ok)
+		}
+		if val, ok := args.Get[bool]("active_num"); !ok || !val {
+			t.Errorf("Get[bool](\"1\") = (%v, %v); want (true, true)", val, ok)
+		}
+		if val, ok := args.Get[bool]("inactive"); !ok || val {
+			t.Errorf("Get[bool](\"false\") = (%v, %v); want (false, true)", val, ok)
+		}
+		if val, ok := args.Get[customFlag]("custom_b"); !ok || val != true {
+			t.Errorf("Get[customFlag](\"true\") = (%v, %v); want (true, true)", val, ok)
+		}
+		if val, ok := args.Get[bool]("invalid"); ok || val {
+			t.Errorf("Get[bool](\"not-a-bool\") = (%v, %v); want (false, false)", val, ok)
+		}
+	})
+
+	t.Run("Slice coerces to custom enum slices", func(t *testing.T) {
+		t.Parallel()
+
+		args := Args{
+			"strategies": []any{"cloud", "local"},
+			"ids":        []any{"10", "20", int64(30)},
+		}
+
+		strategies := args.Slice[customStrategy]("strategies")
+		wantStrategies := []customStrategy{"cloud", "local"}
+		if !reflect.DeepEqual(strategies, wantStrategies) {
+			t.Errorf("Slice[customStrategy] = %v; want %v", strategies, wantStrategies)
+		}
+
+		ids := args.Slice[customID]("ids")
+		wantIDs := []customID{10, 20, 30}
+		if !reflect.DeepEqual(ids, wantIDs) {
+			t.Errorf("Slice[customID] = %v; want %v", ids, wantIDs)
+		}
+	})
+}

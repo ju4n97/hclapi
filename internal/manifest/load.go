@@ -35,6 +35,7 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 		serverFile  string
 		openapiFile string
 		problemFile string
+		fileCount   int
 	)
 
 	walkFn := func(currentPath string, d fs.DirEntry, walkErr error) error {
@@ -45,6 +46,8 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 			return filepath.SkipDir
 		}
 		if !d.IsDir() && strings.ToLower(filepath.Ext(d.Name())) == ".hcl" {
+			fileCount++
+
 			file, diags := p.ParseHCLFile(currentPath)
 			if diags.HasErrors() {
 				return fmt.Errorf("parse %s: %s", currentPath, diags.Error())
@@ -125,6 +128,10 @@ func Load(path string, evalCtx *hcl.EvalContext) (*Manifest, error) {
 		if err := walkFn(path, fs.FileInfoToDirEntry(info), nil); err != nil {
 			return nil, err
 		}
+	}
+
+	if fileCount == 0 {
+		return nil, fmt.Errorf("no .hcl files found in path %q", path)
 	}
 
 	return &merged, nil

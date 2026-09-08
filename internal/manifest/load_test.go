@@ -280,6 +280,25 @@ server {
 	}
 }
 
+func TestLoad_NoHCLFilesFound(t *testing.T) {
+	t.Parallel()
+
+	files := map[string]string{
+		"notes.txt":        `this is not hcl`,
+		"schema.json":      `{"type": "object"}`,
+		".hidden/test.hcl": `server { port = 8080 }`, // Should be skipped
+	}
+
+	dir := writeFiles(t, files)
+	_, err := manifest.Load(dir, eval.BaseContext())
+	if err == nil {
+		t.Fatal("expected error when zero .hcl files are found, got nil")
+	}
+	if !strings.Contains(err.Error(), "no .hcl files found") {
+		t.Errorf("expected 'no .hcl files found' error, got: %v", err)
+	}
+}
+
 func TestLoad_SyntaxError(t *testing.T) {
 	t.Parallel()
 

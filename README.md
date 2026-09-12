@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> `hclapi` is in early development (`v0.1.x`) and follows documentation-driven development. [Some documented features haven't been implemented yet](https://github.com/ju4n97/hclapi/issues). Bugs and breaking changes are to be expected. Feedback and issue reports are welcome.
+> hclapi is in early development (`v0.1.x`) and follows documentation-driven development. [Some documented features haven't been implemented yet](https://github.com/ju4n97/hclapi/issues). Bugs and breaking changes are to be expected. Feedback and issue reports are welcome.
 
 # hclapi
 
@@ -7,15 +7,15 @@
 [![Release](https://img.shields.io/github/v/release/ju4n97/hclapi?style=flat-square&label=Release)](https://github.com/ju4n97/hclapi/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/ju4n97/hclapi/ci.yaml?style=flat-square&label=CI)](https://github.com/ju4n97/hclapi/actions/workflows/ci.yaml)
 
-`hclapi` is a declarative backend runtime distributed as a single lightweight static binary. It compiles HashiCorp Configuration Language (HCL) manifests, SQL queries, and sandboxed Starlark scripts into structured HTTP services with native connection pooling, schema validation, and automatic OpenAPI 3.1 documentation.
+hclapi is a declarative backend runtime distributed as a single lightweight static binary. It compiles HashiCorp Configuration Language (HCL) manifests, SQL queries, and sandboxed Starlark scripts into structured HTTP services with native connection pooling, schema validation, and automatic OpenAPI 3.1 documentation.
 
-Manifests are parsed and validated at boot time and executed directly at runtime. `hclapi` doesn't generate or compile Go code.
+Manifests are parsed and validated at boot time and executed directly at runtime. hclapi doesn't generate or compile Go code.
 
 [Documentation](https://ju4n97.github.io/hclapi/) · [Quickstart](https://ju4n97.github.io/hclapi/docs/quickstart.html) · [Why hclapi](https://ju4n97.github.io/hclapi/docs/why.html) · [Patterns](https://ju4n97.github.io/hclapi/docs/patterns.html) · [Examples](./examples)
 
 ## Supported connectors
 
-`hclapi` connects natively to databases and storage layers using zero-CGO pure Go drivers:
+hclapi connects natively to databases and storage layers using zero-CGO pure Go drivers:
 
 | Category              | Driver          | Supported engines                             | Status        |
 | :-------------------- | :-------------- | :-------------------------------------------- | :------------ |

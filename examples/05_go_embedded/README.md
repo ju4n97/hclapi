@@ -1,6 +1,6 @@
 # 05_go_embedded
 
-Demonstrates embedding `hclapi` as a library inside an existing Go application, mounting onto `http.ServeMux`, and registering thread-safe native Go step handlers.
+Demonstrates embedding hclapi as a library inside an existing Go application, mounting onto `http.ServeMux`, and registering thread-safe native Go step handlers.
 
 ## Running
 

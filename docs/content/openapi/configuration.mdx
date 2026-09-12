@@ -1,6 +1,6 @@
 # OpenAPI configuration
 
-Configuring OpenAPI in `hclapi` is split into two concerns:
+Configuring OpenAPI in hclapi is split into two concerns:
 
 1. **Global specification metadata**: Declared inside `openapi {}` to configure document headers, contact info, licenses, tags, and deployment servers.
 2. **Endpoint handlers**: Declared inside `endpoint "GET /path"` using `openapi "<mode>"` to serve raw specifications or interactive UIs.
@@ -94,7 +94,7 @@ endpoint "GET /openapi.yaml" {
 
 ### 2. `openapi "ui"`
 
-Renders a pre-compiled, embedded interactive reference viewer. Assets (CSS/JS) are embedded inside the `hclapi` binary with zero external CDN dependencies.
+Renders a pre-compiled, embedded interactive reference viewer. Assets (CSS/JS) are embedded inside the hclapi binary with zero external CDN dependencies.
 
 ```hcl
 endpoint "GET /docs" {

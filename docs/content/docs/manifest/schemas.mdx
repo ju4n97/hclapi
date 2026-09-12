@@ -87,6 +87,8 @@ All field constraints map 1:1 to OpenAPI 3.1 / JSON Schema standards:
 
 ## Binding schemas to endpoints
 
+Declared schemas can be reused across endpoints as response contracts by assigning them to the `schema` attribute of a `respond` step.
+
 ### Named schema reference
 
 ```hcl

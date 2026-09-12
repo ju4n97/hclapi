@@ -1,6 +1,6 @@
 # Contributing to hclapi
 
-Thanks for contributing to `hclapi`. This project follows standard [Effective Go](https://go.dev/doc/effective_go) idioms to keep the codebase simple, fast, and easy to maintain.
+Thanks for contributing to hclapi. This project follows standard [Effective Go](https://go.dev/doc/effective_go) idioms to keep the codebase simple, fast, and easy to maintain.
 
 It is recommended that you read the [documentation](https://ju4n97.github.io/hclapi/) before contributing for full context.
 

@@ -1,9 +1,11 @@
 ---
 title: respond
-description: Terminate a pipeline and define the HTTP status, headers, and response body.
+description: Terminate a pipeline, define HTTP status and headers, and bind or infer typed response schemas.
 ---
 
-Terminates the pipeline. Sets the status, headers, and body. No step after `respond` runs once it fires.
+Terminates the pipeline. Sets the status, headers, and body. No step runs after `respond` once its condition evaluates to `true`.
+
+`respond` also defines the HTTP response contract exported to the OpenAPI specification. Response schemas are either explicitly declared via `schema` or statically inferred from the `body` expression at boot time.
 
 ## Declaration
 
@@ -11,27 +13,116 @@ Terminates the pipeline. Sets the status, headers, and body. No step after `resp
 respond {
   condition = steps.find_user.rows_affected == 0
   status    = 404
-  headers = {
-    "Cache-Control" = "no-store"
-    "X-Trace-ID"    = uuid()
-  }
-  body = {
-    error = "User not found"
-  }
+  body      = problem(404, "User not found")
+}
+
+respond {
+  status = 200
+  schema = schema.user
+  body   = steps.find_user.row
 }
 ```
 
 ## Attributes
 
-| Attribute   | Type                  | Default | Description                        |
-| :---------- | :-------------------- | :------ | :--------------------------------- |
-| `condition` | `Expression`          | `true`  | Step is skipped if `false`         |
-| `status`    | `int` or `Expression` | `200`   | HTTP status code                   |
-| `headers`   | `map` or `Expression` | `{}`    | Dynamic or static response headers |
-| `body`      | `any` or `Expression` | `null`  | Payload to serialize               |
+| Attribute   | Type                  | Default | Description                                                                       |
+| :---------- | :-------------------- | :------ | :-------------------------------------------------------------------------------- |
+| `condition` | `Expression`          | `true`  | Step is skipped if `false`                                                        |
+| `status`    | `int` or `Expression` | `200`   | HTTP status code                                                                  |
+| `headers`   | `map` or `Expression` | `{}`    | Dynamic or static response headers                                                |
+| `body`      | `any` or `Expression` | `null`  | Payload to serialize                                                              |
+| `schema`    | `Schema` or `map`     | `null`  | Explicit response schema contract used for OpenAPI generation and egress masking. |
+
+## Response typing and schemas
+
+Response schemas are compiled into the OpenAPI document using one of three mechanisms, prioritized in order.
+
+### 1. Explicit schema reference
+
+Use an explicit schema reference when returning opaque step outputs, such as SQL rows, Starlark results, or Go step values.
+
+```hcl
+# Single record
+respond {
+  status = 200
+  schema = schema.user
+  body   = steps.find_user.row
+}
+
+# Collection
+respond {
+  status = 200
+  schema = list(schema.user)
+  body   = steps.find_user.rows
+}
+```
+
+### 2. Compact inline type map
+
+For responses that don't need a top-level `schema` block, declare field types inline using standard scalar types.
+
+```hcl
+respond {
+  status = 200
+  schema = {
+    count = int
+    tags  = list(string)
+    total = float
+  }
+  body = steps.format_tags.result
+}
+```
+
+### 3. Static AST expression inference
+
+When `schema` is omitted and `body` is an object literal, hclapi statically inspects the expression AST at boot time and derives the OpenAPI schema automatically with zero drift:
+
+```hcl
+respond {
+  status = 201
+  body = {
+    message    = "User created"
+    user       = ctx.request.body
+    api_key    = ctx.request.headers.x-api-key
+    source     = ctx.request.query.source
+    created_at = now()
+  }
+}
+```
+
+The compiler resolves types using context coordinates and expression returns:
+
+| Expression construct               | Inferred OpenAPI 3.1 type                               |
+| ---------------------------------- | ------------------------------------------------------- |
+| String literal (`"..."`)           | `type: string`                                          |
+| Integer literal (`42`)             | `type: integer`                                         |
+| Float literal (`3.14`)             | `type: number`                                          |
+| Boolean literal (`true`, `false`)  | `type: boolean`                                         |
+| `now()`                            | `type: string`, `format: date-time`                     |
+| `uuid()`, `uuid_v4()`, `uuid_v7()` | `type: string`, `format: uuid`                          |
+| `ctx.timestamp_epoch`              | `type: integer`                                         |
+| `ctx.request.body`                 | Borrowed from `request.body` schema reference (`$ref`)  |
+| `ctx.request.headers.<field>`      | Borrowed from `request.headers.<field>` type and format |
+| `ctx.request.query.<field>`        | Borrowed from `request.query.<field>` type and enum     |
+| `ctx.request.path.<field>`         | Borrowed from `request.path.<field>` type               |
+
+## Automatic RFC 9457 error schemas
+
+All error responses (`4xx` and `5xx`) automatically map to the standard RFC 9457 Problem Details schema (`application/problem+json`).
+
+## Egress masking
+
+When a `schema` is declared on a `respond` step, hclapi uses it as an active egress mask at runtime:
+
+- Only keys defined in the schema are serialized into the JSON response. Extra columns returned by SQL queries such as `password_hash` or internal metadata are pruned before transmission.
+- Values are coerced to match declared schema types.
+- In `StrictTyping` mode, responses missing required schema fields fail immediately with an internal server diagnostic rather than emitting an invalid payload.
+
+If `schema` is omitted, the payload produced by `body` is serialized directly without masking.
 
 ## Serialization
 
 - If `Content-Type` is absent, hclapi sets `application/json` and JSON-encodes `body`.
+- For `problem()` payloads and status codes `4xx` and `5xx`, hclapi sets `application/problem+json`.
 - If a custom content type is provided and `body` is a string or byte slice, the raw payload is written.
 - Header names and values are sanitized to remove carriage-return and newline characters, preventing response-splitting attacks.

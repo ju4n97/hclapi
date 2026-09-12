@@ -1,6 +1,6 @@
 # 06_modular_production
 
-Demonstrates how `hclapi` walks and merges a multi-file directory tree (`server.hcl`, `connections.hcl`, `schemas/`, `routes/`) into a single unified service.
+Demonstrates how hclapi walks and merges a multi-file directory tree (`server.hcl`, `connections.hcl`, `schemas/`, `routes/`) into a single unified service.
 
 ## Running
 

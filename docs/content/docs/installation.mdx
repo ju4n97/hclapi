@@ -5,7 +5,7 @@ description: Install hclapi on Linux, macOS, Windows, or run it with Docker and 
 
 # Installation
 
-`hclapi` is distributed as a single, statically compiled binary with zero runtime dependencies.
+hclapi is distributed as a single, statically compiled binary with zero runtime dependencies.
 
 ## Quick install
 
@@ -27,7 +27,7 @@ irm https://raw.githubusercontent.com/ju4n97/hclapi/main/scripts/install.ps1 | i
 
 ## Linux package managers
 
-Direct package installations include the `hclapi` binary in `/usr/bin` and system man pages in `/usr/share/man/man1/hclapi.1`.
+Direct package installations include the hclapi binary in `/usr/bin` and system man pages in `/usr/share/man/man1/hclapi.1`.
 
 ### Debian / Ubuntu (`.deb`)
 
@@ -97,7 +97,7 @@ sudo install -m 0755 hclapi /usr/local/bin/hclapi
 
 ## Container (Docker and Podman)
 
-`hclapi` is published as a minimal, distroless multi-architecture OCI image on GitHub Container Registry (supporting `linux/amd64` and `linux/arm64`).
+hclapi is published as a minimal, distroless multi-architecture OCI image on GitHub Container Registry (supporting `linux/amd64` and `linux/arm64`).
 
 ### Pull the image
 
@@ -131,7 +131,7 @@ docker run --rm -v "$(pwd):/app:ro" ghcr.io/ju4n97/hclapi:latest openapi -c /app
 
 ## Docker Compose
 
-Run `hclapi` alongside PostgreSQL and Valkey in a local development environment:
+Run hclapi alongside PostgreSQL and Valkey in a local development environment:
 
 ```yaml title="docker-compose.yaml"
 services:
@@ -207,7 +207,7 @@ task build
 
 ## Verification
 
-Check that `hclapi` is installed:
+Check that hclapi is installed:
 
 ```bash
 hclapi version
@@ -234,7 +234,7 @@ sha256sum --ignore-missing --check checksums.txt
 
 ## Shell autocompletion
 
-`hclapi` supports dynamic command completion for subcommands and flags.
+hclapi supports dynamic command completion for subcommands and flags.
 
 ### Bash
 
@@ -273,7 +273,7 @@ Linux package installations like `.deb`, `.rpm`, and `.pkg.tar.zst` install man 
 
 ### Manual installation (Linux and macOS)
 
-If you installed `hclapi` via precompiled binary or `go install`, you can install the man page manually:
+If you installed hclapi via precompiled binary or `go install`, you can install the man page manually:
 
 ```bash
 # 1. Create the system man directory

@@ -1,14 +1,14 @@
 # OpenAPI overview
 
-`hclapi` statically analyzes your manifest Abstract Syntax Tree (AST) at boot time to compile a strict, 100% compliant **OpenAPI 3.1** specification.
+hclapi statically analyzes your manifest Abstract Syntax Tree (AST) at boot time to compile a strict, 100% compliant **OpenAPI 3.1** specification.
 
 You don't need to maintain separate YAML files, code annotations, or run external generators. The HCL manifest is the single source of truth for your API contract.
 
-Additionally, `hclapi` mounts zero hidden routes. If an OpenAPI specification file or interactive reference portal is served by your application, it must be explicitly declared as an `endpoint` using an `openapi` handler.
+Additionally, hclapi mounts zero hidden routes. If an OpenAPI specification file or interactive reference portal is served by your application, it must be explicitly declared as an `endpoint` using an `openapi` handler.
 
 ## Derived elements
 
-Because `hclapi` manifests are statically typed, the compiler maps every part of your manifest directly into the OpenAPI 3.1 document model:
+Because hclapi manifests are statically typed, the compiler maps every part of your manifest directly into the OpenAPI 3.1 document model:
 
 | Manifest construct                   | OpenAPI 3.1 mapping                                            |
 | :----------------------------------- | :------------------------------------------------------------- |
@@ -18,10 +18,14 @@ Because `hclapi` manifests are statically typed, the compiler maps every part of
 | `request.query` fields               | `parameters` with `in: query` (types, bounds, and defaults)    |
 | `request.headers` fields             | `parameters` with `in: header` (casing and format constraints) |
 | `request.body = schema.<name>`       | `requestBody.content["application/json"].schema`               |
-| `respond { status = 200 }`           | `responses["200"]`                                             |
-| `catch "23505" { status = 409 }`     | `responses["409"]` (Conflict)                                  |
-| Schema validation engine             | `responses["422"]` (Unprocessable Entity)                      |
-| `server.max_body_size` enforcement   | `responses["413"]` (Payload Too Large)                         |
+| `respond { schema = schema.<name> }` | `responses["200"].content["application/json"].schema` (`$ref`) |
+| `respond { schema = { ... } }`       | `responses["200"].content["application/json"].schema` (inline) |
+| `respond { body = { ... } }`         | Inferred `responses["200"].content["application/json"].schema` |
+| `respond { body = problem(...) }`    | `responses["4xx"].content["application/problem+json"].schema`  |
+| `catch "23505" { status = 409 }`     | `responses["409"].content["application/problem+json"].schema`  |
+| Schema validation engine             | `responses["422"].content["application/problem+json"].schema`  |
+| `server.max_body_size` enforcement   | `responses["413"].content["application/problem+json"].schema`  |
+| Uncaught pipeline failure            | `responses["500"].content["application/problem+json"].schema`  |
 
 :::info Catalog exclusion
 Endpoints configured with an `openapi` handler (`"spec"`, `"ui"`, or `"template"`) are automatically excluded from the compiled OpenAPI operations catalog (`paths`) to prevent polluting client SDKs.

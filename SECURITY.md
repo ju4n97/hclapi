@@ -1,10 +1,10 @@
 # Security policy
 
-If you find a security vulnerability in `hclapi`, please report it privately. Don't open public issues for security vulnerabilities.
+If you find a security vulnerability in hclapi, please report it privately. Don't open public issues for security vulnerabilities.
 
 ## Supported versions
 
-`hclapi` uses trunk-based development and does not maintain previous release branches.
+hclapi uses trunk-based development and does not maintain previous release branches.
 
 Security fixes are provided only for the latest release. Older releases are not maintained and should be upgraded to the latest version when a security issue is fixed.
 
@@ -20,13 +20,13 @@ Please include:
 - A minimal `.hcl` manifest, `curl` command, or other steps needed to reproduce it.
 - The expected impact and the actual impact you observed.
 
-`hclapi` is a free, open-source project and does not operate a bug bounty program. Security reports are appreciated, but no payment or other reward should be expected.
+hclapi is a free, open-source project and does not operate a bug bounty program. Security reports are appreciated, but no payment or other reward should be expected.
 
 We will review security reports and, when appropriate, publish fixes along with security release notes.
 
 ## Security model
 
-`hclapi` includes several protections by default:
+hclapi includes several protections by default:
 
 - **SQL injection:** SQL queries use prepared statement parameters (`$1`, `?`, `@p1`). Raw string interpolation is not supported.
 - **Denial of service (DoS):** Request bodies are limited with `http.MaxBytesReader` to prevent memory exhaustion from oversized payloads.
